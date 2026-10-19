@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Radar da Carteira</title>
+<meta name="description" content="Sua carteira da B3 com cotações, notícias, termômetro do mercado, diversificação e recomendações dos analistas.">
+<meta name="theme-color" content="#1F4FD1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231F4FD1'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: painel de uma coluna no celular, duas no computador; resumo primeiro, detalhes depois */
+:root{
+  --bg:#EEF1F0; --surface:#FFFFFF; --sunk:#E3E8E6; --line:#CFD7D4;
+  --fg:#14201C; --muted:#5A6964;
+  --accent:#1F4FD1; --accent-ink:#FFFFFF; --accent-bg:#E2E9FB;
+  --up:#0B7D53; --up-bg:#DDF2E8; --down:#BF2F26; --down-bg:#F8E1DE; --warn:#9A6400; --warn-bg:#F7ECD3;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:10px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1513; --surface:#16201D; --sunk:#1D2925; --line:#2B3A35;
+  --fg:#E6EEEB; --muted:#93A39D;
+  --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1C2647;
+  --up:#4FD39C; --up-bg:#123326; --down:#FF8A80; --down-bg:#3A1A17; --warn:#F2BE5C; --warn-bg:#352812;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1513; --surface:#16201D; --sunk:#1D2925; --line:#2B3A35;
+  --fg:#E6EEEB; --muted:#93A39D;
+  --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1C2647;
+  --up:#4FD39C; --up-bg:#123326; --down:#FF8A80; --down-bg:#3A1A17; --warn:#F2BE5C; --warn-bg:#352812;
+  color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5}
+[hidden]{display:none!important}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(18px + env(safe-area-inset-top,0px)) 48px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+.label{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.brand h1{font-size:30px;font-weight:800;font-stretch:72%;letter-spacing:-.01em;line-height:1}
+.brand p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13px;color:var(--muted)}
+.pregao{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--fg)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pregao.aberto .dot{background:var(--up);box-shadow:0 0 0 3px var(--up-bg)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted);padding:6px 8px}
+.btn.ghost:hover{color:var(--fg)}
+.btn.danger{color:var(--down);border-color:var(--down)}
+.notice{background:var(--warn-bg);border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:16px}
+.tabs{display:flex;gap:4px;overflow-x:auto;margin:-4px 0 18px;padding-bottom:2px;scrollbar-width:none}
+.tabs a{white-space:nowrap;text-decoration:none;color:var(--muted);font-weight:600;font-size:14px;padding:6px 12px;border-radius:999px;border:1px solid transparent}
+.tabs a:hover{color:var(--fg);border-color:var(--line)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+@media (min-width:920px){.grid{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:20px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0;scroll-margin-top:16px}
+.panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.panel-head h2{font-size:21px;font-weight:700;font-stretch:85%}
+.when{font-size:12px;color:var(--muted)}
+.sub{margin:-8px 0 14px;color:var(--muted);font-size:13.5px}
+.skel{color:var(--muted);font-size:14px}
+.up{color:var(--up)} .down{color:var(--down)}
+.positivo{color:var(--up)} .negativo{color:var(--down)} .neutro{color:var(--muted)}
+
+/* Login */
+.auth{max-width:420px;margin:8vh auto 0}
+.auth .panel{padding:24px}
+.auth h2{font-size:26px;font-stretch:80%;margin-bottom:4px}
+.auth p{color:var(--muted);margin:0 0 18px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:12px}
+.field input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:11px 12px;font-size:16px;color:var(--fg)}
+.auth .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:6px}
+.msg{font-size:13.5px;min-height:1.2em;margin:10px 0 0}
+
+/* Termômetro */
+.thermo{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:18px;align-items:center}
+@media (max-width:560px){.thermo{grid-template-columns:minmax(0,1fr)}}
+.gauge{width:100%;max-width:240px;margin:0 auto;display:block}
+.gauge-read{text-align:center;margin-top:-6px}
+.gauge-read .rot{font-family:var(--display);font-weight:800;font-stretch:80%;font-size:22px}
+.gauge-read .score{font-size:12px;color:var(--muted)}
+#needle{transition:transform .8s cubic-bezier(.2,.8,.2,1);transform-origin:110px 110px}
+.macro{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.macro div{background:var(--sunk);border-radius:8px;padding:8px 10px;min-width:0}
+.macro b{display:block;font-family:var(--mono);font-size:clamp(13px,3.6vw,15px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.macro small{font-family:var(--mono);font-size:12px}
+.resumo{margin:0 0 10px}
+.fatores{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.fatores li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px}
+.mark{font-family:var(--mono);font-weight:700}
+
+/* Carteira */
+.alerts{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.alert{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;align-items:baseline;border-radius:8px;padding:9px 12px;font-size:14px;background:var(--warn-bg);border:0;text-align:left;width:100%}
+.alert.neg{background:var(--down-bg)} .alert.pos{background:var(--up-bg)}
+.totais{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px}
+@media (max-width:520px){.totais{grid-template-columns:repeat(2,minmax(0,1fr))}.totais .t-patr{grid-column:1 / -1}}
+.totais div{border-left:3px solid var(--line);padding:2px 0 2px 10px;min-width:0}
+.totais b{display:block;font-family:var(--mono);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hint{font-size:12px;color:var(--muted);font-weight:400;font-family:var(--body);white-space:normal}
+.pos-list{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.pos{border-bottom:1px solid var(--line)}
+.pos-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px 4px;width:100%;text-align:left;background:none;border:0}
+.pos-row:hover{background:var(--sunk)}
+.tk{font-family:var(--display);font-weight:800;font-stretch:80%;font-size:18px;letter-spacing:.01em}
+.nm{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.cell{text-align:right;min-width:0}
+.cell b{display:block;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:500;font-size:14.5px}
+.cell small{font-family:var(--mono);font-size:12px}
+@media (max-width:560px){.pos-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.pos-row .c-preco{display:none}}
+.pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.s-reforcar{background:var(--up-bg);color:var(--up)}
+.s-manter{background:var(--sunk);color:var(--fg)}
+.s-atencao{background:var(--warn-bg);color:var(--warn)}
+.s-reduzir{background:var(--down-bg);color:var(--down)}
+.s-pendente{background:transparent;color:var(--muted);border:1px dashed var(--line)}
+.pos-detail{padding:2px 4px 16px;display:flex;flex-direction:column;gap:10px}
+.pos-detail p{margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.meta b{color:var(--fg);font-family:var(--mono);font-weight:500}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.empty{padding:22px 4px;color:var(--muted)}
+.empty strong{color:var(--fg);display:block;font-family:var(--display);font-stretch:85%;font-size:18px;margin-bottom:4px}
+form.add{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:16px;padding-top:16px;border-top:1px dashed var(--line)}
+@media (max-width:560px){form.add{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}form.add .f-btn{grid-column:1 / -1}}
+form.add label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
+form.add input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 10px;font-size:16px;width:100%;min-width:0}
+#f-ticker{text-transform:uppercase;font-family:var(--mono)}
+.form-msg{grid-column:1 / -1;font-size:13px;min-height:1em;margin:0}
+
+/* Diversificação */
+.div-top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:center;margin-bottom:16px}
+@media (max-width:520px){.div-top{grid-template-columns:minmax(0,1fr)}}
+.dscore{width:108px;height:108px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--sc,var(--accent)) calc(var(--p,0)*1%), var(--sunk) 0);position:relative;margin:0 auto}
+.dscore::after{content:"";position:absolute;inset:10px;border-radius:50%;background:var(--surface)}
+.dscore span{position:relative;z-index:1;text-align:center;line-height:1.1}
+.dscore b{display:block;font-family:var(--mono);font-size:28px;font-weight:600}
+.dscore small{font-size:11px;color:var(--muted)}
+.obs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.obs li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px}
+.bars{display:flex;flex-direction:column;gap:8px;margin:4px 0 18px}
+.bar{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr) 52px;gap:10px;align-items:center;font-size:13.5px}
+@media (max-width:520px){.bar{grid-template-columns:minmax(0,1fr) 52px}.bar .track{grid-column:1 / -1;grid-row:2}}
+.bar .nm2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{height:10px;background:var(--sunk);border-radius:5px;overflow:hidden}
+.track i{display:block;height:100%;background:var(--accent);border-radius:5px}
+.track i.hot{background:var(--warn)}
+.bar .pc{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.h3{font-family:var(--display);font-stretch:85%;font-size:17px;font-weight:700;margin:0 0 10px}
+.gaps{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.gap{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.gap-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.gap-h strong{font-family:var(--display);font-stretch:85%;font-size:16px}
+.why{font-size:12.5px;color:var(--muted)}
+.cand{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center;padding-top:8px;border-top:1px dashed var(--line)}
+.cand p{grid-column:1 / -1;margin:0;font-size:13px}
+.add-btn{border:1px solid var(--line);background:transparent;border-radius:6px;padding:4px 9px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.add-btn:hover{border-color:var(--accent);color:var(--accent)}
+.have{font-size:12px;color:var(--accent);font-weight:600;white-space:nowrap}
+
+/* Recomendações */
+.recs{display:flex;flex-direction:column}
+.rec{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.rec:last-child{border-bottom:0}
+.rec-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-width:0}
+.rec p{grid-column:1 / -1;margin:0;font-size:14px}
+.rec .risco{color:var(--muted);font-size:13px}
+.casas{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.casas i{display:inline-block;width:7px;height:14px;border-radius:2px;background:var(--sunk)}
+.casas i.on{background:var(--accent)}
+.price{font-family:var(--mono);font-size:13px;white-space:nowrap}
+.hot-list{display:flex;flex-direction:column;gap:8px}
+.hot{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:baseline;font-size:14px}
+
+/* Notícias */
+.news{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.news li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.news li:last-child{border-bottom:0}
+.tag{font-family:var(--mono);font-size:11.5px;font-weight:600;background:var(--sunk);border-radius:4px;padding:2px 6px;align-self:start;margin-top:2px}
+.news a{color:var(--fg);text-decoration:none;font-weight:500}
+.news a:hover{text-decoration:underline}
+.news .src{grid-column:2;font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.tom{width:7px;height:7px;border-radius:50%;display:inline-block;background:var(--muted)}
+.tom.positivo{background:var(--up)} .tom.negativo{background:var(--down)}
+
+/* Todas as ações */
+.filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;margin-bottom:12px}
+@media (max-width:640px){.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.filters input{grid-column:1 / -1}}
+.filters input,.filters select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 10px;font-size:16px;width:100%;min-width:0}
+.tbl-wrap{overflow-x:auto;border-top:1px solid var(--line)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface)}
+.tbl td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tr:hover td{background:var(--sunk)}
+.tbl .r{text-align:right}
+.tbl td.r{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl .tk{font-size:16px}
+.tbl .nm{max-width:34ch}
+@media (max-width:640px){.hide-sm{display:none}.tbl .nm{max-width:18ch}}
+.more-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.foot{margin-top:28px;font-size:12.5px;color:var(--muted);max-width:80ch}
+.flash{animation:flash 1.2s ease}
+@keyframes flash{from{background:var(--accent-bg)}to{background:transparent}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Radar da Carteira</h1>
+      <p>B3 · cotações, notícias, diversificação e o que os analistas recomendam</p>
+    </div>
+    <div class="status">
+      <span class="pregao" id="pregao"><span class="dot"></span><span id="pregao-txt">Pregão</span></span>
+      <span id="last-upd"></span>
+      <button class="btn primary" id="btn-refresh" type="button" hidden>Atualizar cotações</button>
+      <button class="btn ghost" id="btn-sair" type="button" hidden>Sair</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <!-- Login -->
+  <section class="auth" id="auth" hidden>
+    <div class="panel">
+      <h2 id="auth-title">Entrar</h2>
+      <p id="auth-sub">Acesse sua carteira de qualquer celular ou computador.</p>
+      <form id="auth-form" autocomplete="on">
+        <label class="field">E-mail<input id="a-email" type="email" autocomplete="email" required></label>
+        <label class="field">Senha<input id="a-senha" type="password" autocomplete="current-password" minlength="6" required></label>
+        <div class="row">
+          <button class="btn primary" id="a-go" type="submit">Entrar</button>
+          <button class="btn ghost" id="a-toggle" type="button">Criar conta</button>
+        </div>
+        <button class="btn ghost" id="a-reset" type="button" style="padding-left:0;margin-top:6px">Esqueci minha senha</button>
+        <p class="msg" id="a-msg" role="status"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- App -->
+  <main id="app" hidden>
+    <nav class="tabs" aria-label="Seções">
+      <a href="#sec-carteira">Carteira</a>
+      <a href="#sec-div">Diversificação</a>
+      <a href="#sec-recs">Recomendações</a>
+      <a href="#sec-noticias">Notícias</a>
+      <a href="#todas">Todas as ações</a>
+    </nav>
+    <div class="grid">
+      <div class="col">
+        <section class="panel" aria-labelledby="h-thermo">
+          <div class="panel-head"><h2 id="h-thermo">Termômetro do mercado</h2><span class="when" id="thermo-when"></span></div>
+          <div class="thermo">
+            <div>
+              <svg class="gauge" viewBox="0 0 220 130" role="img" aria-labelledby="gauge-title">
+                <title id="gauge-title">Termômetro do mercado</title>
+                <g id="arcs"></g>
+                <g id="needle"><line x1="110" y1="110" x2="110" y2="34" stroke="var(--fg)" stroke-width="3" stroke-linecap="round"/></g>
+                <circle cx="110" cy="110" r="7" fill="var(--fg)"/>
+                <text x="14" y="126" font-size="10" fill="var(--muted)" font-family="IBM Plex Sans, sans-serif">Queda</text>
+                <text x="206" y="126" font-size="10" fill="var(--muted)" text-anchor="end" font-family="IBM Plex Sans, sans-serif">Alta</text>
+              </svg>
+              <div class="gauge-read"><div class="rot" id="thermo-rot">—</div><div class="score" id="thermo-score" style="font-size:12px;color:var(--muted)">nota de 0 a 100</div></div>
+            </div>
+            <div style="min-width:0">
+              <div class="macro">
+                <div><span class="label">Ibovespa</span><b id="m-ibov">—</b><small id="m-ibov-v"></small></div>
+                <div><span class="label">Dólar</span><b id="m-dolar">—</b><small id="m-dolar-v"></small></div>
+                <div><span class="label">Selic</span><b id="m-selic">—</b><small id="m-copom" class="neutro"></small></div>
+              </div>
+              <p class="resumo" id="thermo-resumo"><span class="skel">Carregando o clima do mercado…</span></p>
+              <ul class="fatores" id="fatores"></ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="h-cart" id="sec-carteira">
+          <div class="panel-head"><h2 id="h-cart">Minha carteira</h2><span class="when" id="cart-when"></span></div>
+          <div class="alerts" id="alerts" hidden></div>
+          <div class="totais">
+            <div class="t-patr"><span class="label">Patrimônio</span><b id="t-patr">—</b></div>
+            <div><span class="label">Hoje</span><b id="t-dia">—</b></div>
+            <div><span class="label">Resultado</span><b id="t-res">—</b></div>
+          </div>
+          <div class="pos-list" id="pos-list"><div class="empty skel">Carregando carteira…</div></div>
+          <form class="add" id="form-add" autocomplete="off">
+            <label>Ação (código)<input id="f-ticker" placeholder="PETR4" maxlength="7" list="dl-tickers" required><datalist id="dl-tickers"></datalist></label>
+            <label>Quantidade<input id="f-qtd" type="number" min="1" step="1" inputmode="numeric" placeholder="100" required></label>
+            <label>Preço médio (R$)<input id="f-pm" type="number" min="0" step="0.01" inputmode="decimal" placeholder="opcional"></label>
+            <div class="f-btn"><button class="btn primary" id="f-submit" type="submit" style="width:100%">Adicionar</button></div>
+            <p class="form-msg" id="form-msg" role="status"></p>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="h-div" id="sec-div">
+          <div class="panel-head"><h2 id="h-div">Diversificação da carteira</h2></div>
+          <div id="div-body"><p class="skel">Cadastre suas ações para ver como a carteira está distribuída entre os setores.</p></div>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="panel" aria-labelledby="h-recs" id="sec-recs">
+          <div class="panel-head"><h2 id="h-recs">O que os analistas recomendam</h2><span class="when" id="recs-when"></span></div>
+          <p class="sub">Ações mais citadas nas carteiras recomendadas pelas corretoras este mês. As barras mostram em quantas carteiras cada uma aparece.</p>
+          <div class="recs" id="recs"><p class="skel">Carregando…</p></div>
+          <p class="when" id="recs-fonte" style="margin:10px 0 0"></p>
+        </section>
+        <section class="panel" aria-labelledby="h-hot">
+          <div class="panel-head"><h2 id="h-hot">Em destaque hoje</h2></div>
+          <div class="hot-list" id="hot"><p class="skel">Carregando…</p></div>
+        </section>
+        <section class="panel" aria-labelledby="h-news" id="sec-noticias">
+          <div class="panel-head"><h2 id="h-news">Notícias das suas empresas</h2></div>
+          <ul class="news" id="news-own"><li class="skel" style="display:block">As notícias aparecem aqui depois que você cadastrar suas ações.</li></ul>
+        </section>
+        <section class="panel" aria-labelledby="h-mkt">
+          <div class="panel-head"><h2 id="h-mkt">Mercado agora</h2></div>
+          <ul class="news" id="news-mkt"><li class="skel" style="display:block">Carregando manchetes…</li></ul>
+        </section>
+      </div>
+    </div>
+
+    <section class="panel" aria-labelledby="h-all" id="todas" style="margin-top:20px">
+      <div class="panel-head"><h2 id="h-all">Todas as ações da B3</h2><span class="when" id="all-when"></span></div>
+      <div class="filters">
+        <input id="q-busca" type="search" placeholder="Buscar por código ou empresa" aria-label="Buscar ação">
+        <select id="q-ordem" aria-label="Ordenar">
+          <option value="volume">Mais negociadas</option>
+          <option value="alta">Maiores altas do dia</option>
+          <option value="baixa">Maiores baixas do dia</option>
+          <option value="mc">Maior valor de mercado</option>
+          <option value="az">Código de A a Z</option>
+        </select>
+        <select id="q-setor" aria-label="Setor"><option value="">Todos os setores</option></select>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Ação</th><th class="r">Preço</th><th class="r">Dia</th><th class="r hide-sm">Volume</th><th class="r hide-sm">Valor de mercado</th><th class="r"><span class="hide-sm">Carteira</span></th></tr></thead>
+          <tbody id="all-body"><tr><td colspan="6" class="skel">Carregando as cotações da B3…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="more-row"><span id="all-count" class="when"></span><button class="btn" id="all-more" type="button" hidden>Mostrar mais 50</button></div>
+    </section>
+
+    <p class="foot">Cotações de todas as ações da B3 pela brapi.dev, atualizadas a cada 2 minutos durante o pregão, com atraso de até cerca de 30 minutos da fonte gratuita. Notícias, sinais, termômetro e recomendações são revisados a cada hora pelo Claude a partir de fontes públicas. Nada aqui é recomendação individual de investimento: confira antes de comprar ou vender.</p>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(function(){
+  const SUPABASE_URL = "https://urdtzrquiypewetklwxm.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyZHR6cnF1aXlwZXdldGtsd3htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0MzYzODksImV4cCI6MjEwODAxMjM4OX0.kd8j09OBpMrUcnKVyYqgFcBLhbOqSfPi3ccmlviAFdo";
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const $ = (s) => document.querySelector(s);
+  const S = { user:null, carteira:[], cot:[], cotMap:{}, cotTs:null, analises:{}, painel:{}, open:null, confirmDel:null, lim:50, signup:false };
+
+  const brl = (n) => (n==null||isNaN(n)) ? "—" : Number(n).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  const num = (n,d=2) => (n==null||isNaN(n)) ? "—" : Number(n).toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const pct = (n) => (n==null||isNaN(n)) ? "—" : (n>0?"+":"") + num(n,2) + "%";
+  const cls = (n) => n>0 ? "up" : n<0 ? "down" : "";
+  const esc = (s) => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const safeUrl = (u) => /^https?:\/\//i.test(u||"") ? u : null;
+  const TICKER_RE = /^[A-Z][A-Z0-9]{2}[A-Z]\d{1,2}$/;
+  const compacto = (n) => n>=1e9 ? num(n/1e9,1)+" bi" : n>=1e6 ? num(n/1e6,1)+" mi" : n>=1e3 ? num(n/1e3,0)+" mil" : num(n,0);
+  function bonito(s){ return String(s||"").toLowerCase().replace(/(^|[\s\-\/(])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()).replace(/\bS\.a\.?/gi,"S.A."); }
+  function ago(iso){
+    if(!iso) return ""; const t=Date.parse(iso); if(isNaN(t)) return "";
+    const m=Math.round((Date.now()-t)/60000);
+    if(m<1) return "agora há pouco"; if(m<60) return "há "+m+" min";
+    const h=Math.round(m/60); if(h<24) return "há "+h+" h";
+    const d=Math.round(h/24); return "há "+d+(d===1?" dia":" dias");
+  }
+  function showNotice(t){ const n=$("#notice"); n.textContent=t; n.hidden=false; clearTimeout(showNotice._t); showNotice._t=setTimeout(()=>{n.hidden=true;},10000); }
+
+  /* Pregão */
+  function pregao(){
+    const parts=new Intl.DateTimeFormat("en-US",{timeZone:"America/Sao_Paulo",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date());
+    const g=(t)=>(parts.find(p=>p.type===t)||{}).value; const mins=(+g("hour"))*60+(+g("minute")); const util=!["Sat","Sun"].includes(g("weekday"));
+    const aberto=util&&mins>=600&&mins<1020;
+    $("#pregao").classList.toggle("aberto",aberto);
+    $("#pregao-txt").textContent=aberto?"Pregão aberto":(util&&mins<600?"Pregão abre às 10h":"Pregão fechado");
+  }
+  pregao(); setInterval(pregao,60000);
+
+  /* ---------- Login ---------- */
+  function setAuthMode(signup){
+    S.signup=signup;
+    $("#auth-title").textContent = signup ? "Criar conta" : "Entrar";
+    $("#auth-sub").textContent = signup ? "Use seu e-mail e uma senha de pelo menos 6 caracteres." : "Acesse sua carteira de qualquer celular ou computador.";
+    $("#a-go").textContent = signup ? "Criar conta" : "Entrar";
+    $("#a-toggle").textContent = signup ? "Já tenho conta" : "Criar conta";
+    $("#a-senha").autocomplete = signup ? "new-password" : "current-password";
+    $("#a-msg").textContent=""; $("#a-reset").hidden = signup;
+  }
+  $("#a-toggle").addEventListener("click",()=>setAuthMode(!S.signup));
+  $("#auth-form").addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    const email=$("#a-email").value.trim(), senha=$("#a-senha").value, msg=$("#a-msg");
+    $("#a-go").disabled=true; msg.className="msg"; msg.textContent = S.signup ? "Criando conta…" : "Entrando…";
+    try{
+      if(S.signup){
+        const {data,error}=await sb.auth.signUp({email,password:senha,options:{emailRedirectTo:location.origin+location.pathname}});
+        if(error) throw error;
+        if(!data.session){ msg.textContent="Conta criada. Abra o e-mail de confirmação que enviamos para "+email+" e depois entre aqui."; setAuthMode(false); msg.textContent="Conta criada. Confirme pelo link enviado para "+email+" e depois entre aqui."; }
+      }else{
+        const {error}=await sb.auth.signInWithPassword({email,password:senha});
+        if(error) throw error;
+      }
+    }catch(err){
+      const m=String(err&&err.message||"");
+      msg.className="msg down";
+      msg.textContent = /invalid login/i.test(m) ? "E-mail ou senha incorretos." : /not confirmed/i.test(m) ? "Confirme seu e-mail pelo link que enviamos antes de entrar." : /already registered/i.test(m) ? "Este e-mail já tem conta. Use Entrar." : /rate limit/i.test(m) ? "Muitas tentativas. Espere alguns minutos e tente de novo." : "Não deu certo: "+m;
+    }finally{ $("#a-go").disabled=false; }
+  });
+  $("#a-reset").addEventListener("click", async ()=>{
+    const email=$("#a-email").value.trim(), msg=$("#a-msg");
+    if(!email){ msg.className="msg down"; msg.textContent="Digite seu e-mail acima e toque de novo em Esqueci minha senha."; return; }
+    const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+    msg.className = error?"msg down":"msg"; msg.textContent = error ? "Não foi possível enviar agora. Tente em alguns minutos." : "Enviamos um link para criar uma nova senha em "+email+".";
+  });
+  $("#btn-sair").addEventListener("click", async ()=>{ await sb.auth.signOut(); });
+
+  sb.auth.onAuthStateChange(async (ev, session)=>{
+    if(ev==="PASSWORD_RECOVERY"){
+      const nova = await pedirNovaSenha(); if(nova){ const {error}=await sb.auth.updateUser({password:nova}); showNotice(error?"Não foi possível trocar a senha.":"Senha alterada."); }
+    }
+    const u = session ? session.user : null;
+    if((u&&u.id)===(S.user&&S.user.id)) return;
+    S.user=u;
+    if(u){ $("#auth").hidden=true; $("#app").hidden=false; $("#btn-sair").hidden=false; $("#btn-refresh").hidden=false; iniciar(); }
+    else { $("#auth").hidden=false; $("#app").hidden=true; $("#btn-sair").hidden=true; $("#btn-refresh").hidden=true; parar(); setAuthMode(false); }
+  });
+  function pedirNovaSenha(){
+    return new Promise((res)=>{
+      setAuthMode(false); $("#auth").hidden=false; $("#app").hidden=true;
+      $("#auth-title").textContent="Nova senha"; $("#auth-sub").textContent="Digite a nova senha da sua conta.";
+      $("#a-email").closest("label").hidden=true; $("#a-toggle").hidden=true; $("#a-reset").hidden=true; $("#a-go").textContent="Salvar senha";
+      const f=$("#auth-form"); const h=(e)=>{ e.preventDefault(); f.removeEventListener("submit",h,true); $("#a-email").closest("label").hidden=false; $("#a-toggle").hidden=false; res($("#a-senha").value); };
+      f.addEventListener("submit",h,true);
+    });
+  }
+
+  /* ---------- Dados ---------- */
+  let canal=null;
+  async function iniciar(){
+    await Promise.all([carregarCarteira(), carregarCotacoes(), carregarAnalises(), carregarPainel()]);
+    renderAll();
+    if(canal) sb.removeChannel(canal);
+    let tCot=null;
+    canal = sb.channel("radar")
+      .on("postgres_changes",{event:"*",schema:"public",table:"cotacoes"},()=>{ clearTimeout(tCot); tCot=setTimeout(async()=>{ await carregarCotacoes(); renderCarteira(); renderTodas(); renderDiv(); renderRecs(); renderStatus(); },1500); })
+      .on("postgres_changes",{event:"*",schema:"public",table:"analises"},async()=>{ await carregarAnalises(); renderCarteira(); renderNews(); })
+      .on("postgres_changes",{event:"*",schema:"public",table:"painel"},async()=>{ await carregarPainel(); renderMercado(); renderRecs(); renderDiv(); })
+      .on("postgres_changes",{event:"*",schema:"public",table:"carteira"},async()=>{ await carregarCarteira(); renderAll(); })
+      .subscribe();
+  }
+  function parar(){ if(canal){ sb.removeChannel(canal); canal=null; } S.carteira=[]; }
+  async function carregarCarteira(){
+    const {data,error}=await sb.from("carteira").select("id,ticker,qtd,pm").order("criado_em");
+    if(error){ showNotice("Não foi possível carregar sua carteira. Recarregue a página."); return; }
+    S.carteira=data||[];
+  }
+  async function carregarCotacoes(){
+    const {data,error}=await sb.from("cotacoes").select("ticker,nome,preco,var_dia,volume,setor,setor_macro,valor_mercado_mi,atualizado_em").order("volume",{ascending:false}).limit(1000);
+    if(error||!data) return;
+    S.cot=data; const mp={}; let ts=null; data.forEach(r=>{ mp[r.ticker]=r; if(!ts||r.atualizado_em>ts) ts=r.atualizado_em; }); S.cotMap=mp; S.cotTs=ts;
+  }
+  async function carregarAnalises(){
+    const {data}=await sb.from("analises").select("*"); const o={}; (data||[]).forEach(a=>{o[a.ticker]=a;}); S.analises=o;
+  }
+  async function carregarPainel(){
+    const {data}=await sb.from("painel").select("id,dados,atualizado_em"); const o={}; (data||[]).forEach(p=>{o[p.id]={...p.dados,_ts:p.atualizado_em};}); S.painel=o;
+  }
+  setInterval(()=>{ if(S.user && document.visibilityState==="visible"){ renderStatus(); renderMercado(); } },60000);
+  document.addEventListener("visibilitychange",async()=>{ if(S.user && document.visibilityState==="visible"){ await carregarCotacoes(); renderAll(); } });
+
+  /* Atualizar cotações agora */
+  $("#btn-refresh").addEventListener("click", async ()=>{
+    const b=$("#btn-refresh"); b.disabled=true; b.textContent="Atualizando…";
+    try{
+      const {data,error}=await sb.functions.invoke("cotacoes",{body:{}});
+      if(error||!data||!data.ok) throw error||new Error(data&&data.erro);
+      await carregarCotacoes(); renderAll();
+      showNotice(data.pulado ? "As cotações já foram atualizadas no último minuto." : "Cotações de "+data.acoes+" ações atualizadas.");
+    }catch(e){ showNotice("Não foi possível atualizar agora. As cotações seguem se atualizando sozinhas a cada 2 minutos no pregão."); }
+    finally{ b.disabled=false; b.textContent="Atualizar cotações"; }
+  });
+
+  function renderAll(){ renderStatus(); renderMercado(); renderCarteira(); renderDiv(); renderRecs(); renderNews(); renderTodas(); }
+  function renderStatus(){ $("#last-upd").textContent = S.cotTs ? "Cotações "+ago(S.cotTs) : ""; }
+
+  /* ---------- Termômetro ---------- */
+  const ZONES=[[0,25,"var(--down)"],[25,45,"var(--warn)"],[45,60,"var(--muted)"],[60,80,"var(--up)"],[80,100,"var(--up)"]];
+  function polar(r,deg){const a=deg*Math.PI/180;return [110+r*Math.cos(a),110-r*Math.sin(a)];}
+  (function(){ let h=""; ZONES.forEach(([a,b,c],i)=>{ const [x1,y1]=polar(88,180-a*1.8),[x2,y2]=polar(88,180-b*1.8+(b<100?1.2:0)); h+=`<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A88 88 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}" stroke="${c}" stroke-width="${i===4?16:14}" fill="none" opacity="${i===2?.55:i===3?.7:1}"/>`; }); $("#arcs").innerHTML=h; })();
+  function rotulo(n){ return n<25?"Risco de queda":n<45?"Cautela":n<60?"Neutro":n<80?"Favorável":"Muito favorável"; }
+  function renderMercado(){
+    const m=S.painel.mercado; if(!m) return;
+    const t=m.termometro||{}; const nota=Math.max(0,Math.min(100,Number(t.nota)||50));
+    $("#needle").style.transform=`rotate(${(nota-50)*1.8}deg)`;
+    $("#thermo-rot").textContent=t.rotulo||rotulo(nota); $("#thermo-rot").className="rot "+(nota<45?"negativo":nota>=60?"positivo":"");
+    $("#thermo-score").textContent="nota "+Math.round(nota)+" de 100";
+    $("#thermo-resumo").textContent=t.resumo||"";
+    $("#fatores").innerHTML=(t.fatores||[]).map(f=>{ const e=["positivo","negativo"].includes(f.efeito)?f.efeito:"neutro"; return `<li><span class="mark ${e}">${e==="positivo"?"+":e==="negativo"?"−":"·"}</span><span>${esc(f.texto)}</span></li>`; }).join("");
+    $("#thermo-when").textContent=(m.atualizadoEm||m._ts)?"Atualizado "+ago(m.atualizadoEm||m._ts):"";
+    if(m.ibov){ $("#m-ibov").textContent=num(m.ibov.pontos,0); $("#m-ibov-v").textContent=pct(m.ibov.varDia); $("#m-ibov-v").className=cls(m.ibov.varDia); }
+    if(m.dolar){ $("#m-dolar").textContent="R$ "+num(m.dolar.valor,3); $("#m-dolar-v").textContent=pct(m.dolar.varDia); $("#m-dolar-v").className=cls(-m.dolar.varDia); }
+    if(m.selic){ $("#m-selic").textContent=num(m.selic.taxa,2)+"%"; $("#m-copom").textContent=m.selic.proximoCopom?"Copom "+m.selic.proximoCopom:""; }
+    $("#news-mkt").innerHTML=newsItems((m.manchetes||[]).map(n=>({...n,ticker:null})),"Sem manchetes ainda.");
+  }
+  function newsItems(list,emptyText){
+    if(!list.length) return `<li class="skel" style="display:block">${esc(emptyText)}</li>`;
+    return list.map(n=>{ const u=safeUrl(n.url), tom=["positivo","negativo"].includes(n.tom)?n.tom:"neutro";
+      const title=u?`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(n.titulo)}</a>`:`<span>${esc(n.titulo)}</span>`;
+      return `<li>${n.ticker?`<span class="tag">${esc(n.ticker)}</span>`:`<span class="tom ${tom}" style="margin-top:8px"></span>`}<div style="min-width:0">${title}</div><div class="src">${n.ticker?`<span class="tom ${tom}"></span>`:""}<span>${esc(n.fonte||"")}</span><span>${esc(n.quando||"")}</span></div></li>`; }).join("");
+  }
+
+  /* ---------- Carteira ---------- */
+  const SINAL={reforcar:"Considerar reforçar",manter:"Manter",atencao:"Atenção",reduzir:"Considerar reduzir"};
+  function cotacao(t){
+    const c=S.cotMap[t], a=S.analises[t];
+    if(c) return {preco:Number(c.preco), varDia:Number(c.var_dia), nome:(a&&a.nome)||bonito(c.nome), setor:c.setor_macro};
+    if(a&&a.preco!=null) return {preco:Number(a.preco), varDia:a.var_dia!=null?Number(a.var_dia):null, nome:a.nome, setor:null};
+    return null;
+  }
+  function linhas(){
+    let patr=0;
+    const rows=S.carteira.map(p=>{ const q=cotacao(p.ticker); const preco=q?q.preco:null, vd=q?q.varDia:null; const valor=preco!=null?preco*p.qtd:null; if(valor) patr+=valor;
+      const res=(preco!=null&&p.pm)?(preco/p.pm-1)*100:null; return {p,a:S.analises[p.ticker]||null,preco,vd,valor,res,nome:q?q.nome:"",setor:(q&&q.setor)||"Outros"}; });
+    rows.forEach(r=>{ r.peso = (r.valor&&patr) ? r.valor/patr : 0; });
+    rows.sort((x,y)=>(y.valor||0)-(x.valor||0));
+    return {rows,patr};
+  }
+  function renderCarteira(){
+    const box=$("#pos-list"), list=S.carteira;
+    $("#dl-tickers").innerHTML = S.cot.length && !$("#dl-tickers").children.length ? S.cot.map(r=>`<option value="${esc(r.ticker)}">${esc(bonito(r.nome))}</option>`).join("") : $("#dl-tickers").innerHTML;
+    if(!list.length){
+      box.innerHTML=`<div class="empty"><strong>Sua carteira está vazia</strong>Adicione abaixo o código de cada ação e quantas você tem, ou toque em "+ Adicionar" na lista de todas as ações.</div>`;
+      ["#t-patr","#t-dia","#t-res"].forEach(s=>{$(s).textContent="—";$(s).className="";}); $("#alerts").hidden=true; $("#cart-when").textContent="";
+      return;
+    }
+    const {rows,patr}=linhas(); let dia=0,custo=0,base=0,temPreco=false;
+    rows.forEach(r=>{ if(r.valor!=null){ temPreco=true; if(r.vd!=null) dia+=r.valor-r.valor/(1+r.vd/100); if(r.p.pm){ custo+=r.p.pm*r.p.qtd; base+=r.valor; } } });
+    $("#t-patr").textContent=temPreco?brl(patr):"—";
+    $("#t-dia").textContent=temPreco?(dia>=0?"+":"")+brl(dia):"—"; $("#t-dia").className=cls(dia);
+    if(custo){ const res=base-custo; $("#t-res").textContent=(res>=0?"+":"")+brl(res)+" ("+pct((base/custo-1)*100)+")"; $("#t-res").className=cls(res); }
+    else { $("#t-res").innerHTML=`<span class="hint">Informe o preço médio para ver seu lucro</span>`; $("#t-res").className=""; }
+    $("#cart-when").textContent=list.length+(list.length===1?" ação":" ações");
+
+    const al=[];
+    rows.forEach(r=>{ const s=r.a&&r.a.sinal;
+      if(s==="reduzir") al.push({t:r.p.ticker,k:"neg",txt:"Sinal: considerar reduzir. "+(r.a.motivo||"").split(". ")[0]+"."});
+      else if(s==="atencao") al.push({t:r.p.ticker,k:"",txt:(r.a.motivo||"Pede atenção.").split(". ")[0]+"."});
+      if(r.vd!=null&&Math.abs(r.vd)>=3) al.push({t:r.p.ticker,k:r.vd<0?"neg":"pos",txt:(r.vd<0?"Cai ":"Sobe ")+pct(Math.abs(r.vd)).replace("+","")+" hoje."});
+      else if(r.res!=null&&r.res<=-15) al.push({t:r.p.ticker,k:"neg",txt:"Está "+num(-r.res,1)+"% abaixo do seu preço médio."});
+    });
+    $("#alerts").hidden=!al.length;
+    $("#alerts").innerHTML=al.slice(0,5).map(a=>`<button type="button" class="alert ${a.k}" data-open="${esc(a.t)}"><span class="tk" style="font-size:15px">${esc(a.t)}</span><span>${esc(a.txt)}</span></button>`).join("");
+
+    box.innerHTML=rows.map(r=>{
+      const {p,a,preco,vd,valor,res,nome}=r; const sinal=a&&SINAL[a.sinal]?a.sinal:"pendente"; const open=S.open===p.ticker;
+      const detail=!open?"":`<div class="pos-detail">
+        ${a?`<p>${esc(a.motivo||"")}</p>`:`<p class="neutro">A análise de ${esc(p.ticker)} chega na próxima revisão de hora em hora.</p>`}
+        <div class="meta"><span>Quantidade <b>${num(p.qtd,0)}</b></span><span>Preço médio <b>${p.pm?brl(p.pm):"—"}</b></span><span>Cotação <b>${brl(preco)}</b></span><span>Peso <b>${num(r.peso*100,1)}%</b></span><span>Setor <b>${esc(r.setor)}</b></span>${a&&a.atualizado_em?`<span>Análise ${esc(ago(a.atualizado_em))}</span>`:""}</div>
+        ${a&&Array.isArray(a.noticias)&&a.noticias.length?`<ul class="news">${newsItems(a.noticias.slice(0,4).map(n=>({...n,ticker:null})),"")}</ul>`:""}
+        <div class="acts"><button type="button" class="btn" data-edit="${esc(p.ticker)}">Editar</button>
+        ${S.confirmDel===p.ticker?`<button type="button" class="btn danger" data-del-ok="${esc(p.ticker)}">Confirmar remoção</button><button type="button" class="btn ghost" data-del-no="1">Cancelar</button>`:`<button type="button" class="btn ghost" data-del="${esc(p.ticker)}">Remover</button>`}</div></div>`;
+      return `<div class="pos"><button type="button" class="pos-row" data-open="${esc(p.ticker)}" aria-expanded="${open}">
+        <span style="min-width:0"><span class="tk">${esc(p.ticker)}</span><span class="nm">${esc(nome)}</span></span>
+        <span class="cell c-preco"><b>${brl(preco)}</b><small class="${vd!=null?cls(vd):""}">${vd!=null?pct(vd):""}</small></span>
+        <span class="cell"><b>${brl(valor)}</b><small class="${res!=null?cls(res):""}">${res!=null?pct(res):num(p.qtd,0)+" ações"}</small></span>
+        <span class="pill s-${sinal}">${sinal==="pendente"?"Aguardando":SINAL[sinal]}</span></button>${detail}</div>`;
+    }).join("");
+  }
+  function renderNews(){
+    const own=[]; S.carteira.forEach(p=>{ const a=S.analises[p.ticker]; if(a&&Array.isArray(a.noticias)) a.noticias.slice(0,3).forEach(n=>own.push({...n,ticker:p.ticker})); });
+    $("#news-own").innerHTML=newsItems(own.slice(0,15), S.carteira.length?"As notícias das suas ações aparecem aqui na próxima revisão.":"As notícias aparecem aqui depois que você cadastrar suas ações.");
+  }
+  $("#alerts").addEventListener("click",(e)=>{ const b=e.target.closest("[data-open]"); if(!b) return; S.open=b.dataset.open; S.confirmDel=null; renderCarteira(); const row=document.querySelector(`.pos-row[data-open="${CSS.escape(b.dataset.open)}"]`); if(row) row.scrollIntoView({behavior:"smooth",block:"center"}); });
+  $("#pos-list").addEventListener("click", async (e)=>{
+    const b=e.target.closest("button"); if(!b) return;
+    if(b.dataset.open){ S.open=S.open===b.dataset.open?null:b.dataset.open; S.confirmDel=null; renderCarteira(); return; }
+    if(b.dataset.edit){ const p=S.carteira.find(x=>x.ticker===b.dataset.edit); if(p){ $("#f-ticker").value=p.ticker; $("#f-qtd").value=p.qtd; $("#f-pm").value=p.pm||""; $("#f-submit").textContent="Salvar"; $("#f-qtd").focus(); } return; }
+    if(b.dataset.del){ S.confirmDel=b.dataset.del; renderCarteira(); return; }
+    if(b.dataset.delNo){ S.confirmDel=null; renderCarteira(); return; }
+    if(b.dataset.delOk){ const t=b.dataset.delOk; S.confirmDel=null; S.open=null;
+      const {error}=await sb.from("carteira").delete().eq("ticker",t);
+      msg(error?"Não foi possível remover agora.":t+" removida da carteira.", !error);
+      await carregarCarteira(); renderAll(); }
+  });
+  function msg(t,ok){ const o=$("#form-msg"); o.textContent=t; o.className="form-msg "+(ok?"up":ok===false?"down":""); }
+  $("#f-ticker").addEventListener("input",()=>{ const t=$("#f-ticker").value.trim().toUpperCase(); $("#f-submit").textContent=S.carteira.some(x=>x.ticker===t)?"Salvar":"Adicionar"; });
+  $("#form-add").addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    const t=$("#f-ticker").value.trim().toUpperCase(), q=Math.round(Number($("#f-qtd").value)), pmRaw=$("#f-pm").value.trim(), pm=pmRaw?Number(pmRaw.replace(",",".")):null;
+    if(!TICKER_RE.test(t)) return msg("Use o código da B3, como PETR4, B3SA3 ou TAEE11.",false);
+    if(S.cot.length && !S.cotMap[t]) return msg("Não encontrei "+t+" entre as ações da B3. Confira o código na lista de todas as ações.",false);
+    if(!(q>0)) return msg("Informe uma quantidade maior que zero.",false);
+    if(pm!=null&&!(pm>0)) return msg("O preço médio precisa ser um valor em reais, como 38,50.",false);
+    const existe=S.carteira.some(x=>x.ticker===t);
+    $("#f-submit").disabled=true;
+    const {error}=await sb.from("carteira").upsert({ticker:t,qtd:q,pm:pm,user_id:S.user.id},{onConflict:"user_id,ticker"});
+    $("#f-submit").disabled=false;
+    if(error) return msg("Não foi possível salvar agora. Tente de novo em instantes.",false);
+    $("#form-add").reset(); $("#f-submit").textContent="Adicionar";
+    msg(existe?t+" atualizada.":t+" adicionada. A análise e as notícias dela chegam na próxima revisão de hora em hora.",true);
+    await carregarCarteira(); renderAll();
+  });
+  function escolher(t){
+    $("#f-ticker").value=t; $("#f-submit").textContent=S.carteira.some(x=>x.ticker===t)?"Salvar":"Adicionar";
+    msg("Informe quantas ações de "+t+" você tem.");
+    const f=$("#form-add"); f.scrollIntoView({behavior:"smooth",block:"center"}); f.classList.remove("flash"); void f.offsetWidth; f.classList.add("flash");
+    setTimeout(()=>$("#f-qtd").focus({preventScroll:true}),350);
+  }
+  document.addEventListener("click",(e)=>{ const b=e.target.closest("[data-pick]"); if(b) escolher(b.dataset.pick); });
+
+  /* ---------- Diversificação ---------- */
+  const SETORES=["Bancos e Financeiro","Seguros","Energia Elétrica","Saneamento e Gás","Petróleo e Gás","Mineração e Siderurgia","Papel, Química e Materiais","Agro e Alimentos","Saúde","Indústria","Tecnologia e Telecom","Varejo e Consumo","Imóveis e Construção","Transporte e Logística","Educação e Serviços"];
+  const DOLAR=new Set(["Petróleo e Gás","Mineração e Siderurgia","Papel, Química e Materiais","Agro e Alimentos"]);
+  const DOLAR_TK=new Set(["EMBJ3","WEGE3","SUZB3","KLBN11","GGBR4","VALE3","PETR4","PETR3","PRIO3","JBSS3","MBRF3"]);
+  const DEFENSIVOS=new Set(["Energia Elétrica","Saneamento e Gás","Seguros","Bancos e Financeiro"]);
+  const PRIORIDADE=["Petróleo e Gás","Mineração e Siderurgia","Saúde","Indústria","Bancos e Financeiro","Energia Elétrica","Saneamento e Gás","Agro e Alimentos","Imóveis e Construção","Transporte e Logística","Tecnologia e Telecom","Varejo e Consumo","Seguros","Papel, Química e Materiais","Educação e Serviços"];
+  function candidatos(setor, mine){
+    const cons=(S.painel.consenso&&S.painel.consenso.itens)||[]; const sug=S.painel.sugestoes_setor||{};
+    const out=[]; const seen=new Set();
+    const add=(t,tese,casas,orig)=>{ if(!t||seen.has(t)||mine.has(t)) return; seen.add(t); out.push({t,tese,casas,orig}); };
+    cons.filter(c=>c.setor===setor).sort((a,b)=>(b.casas||0)-(a.casas||0)).forEach(c=>add(c.ticker,c.tese,c.casas,"consenso"));
+    ((sug.setores||{})[setor]||[]).forEach(t=>{ const c=cons.find(x=>x.ticker===t); add(t,(c&&c.tese)||(sug.teses||{})[t]||"",c&&c.casas,"carteiras"); });
+    if(out.length<2) S.cot.filter(r=>r.setor_macro===setor).slice(0,4).forEach(r=>add(r.ticker,"Uma das ações mais negociadas do setor hoje. Pesquise os fundamentos antes de investir.",null,"liquidez"));
+    return out.slice(0,3);
+  }
+  function renderDiv(){
+    const box=$("#div-body");
+    if(!S.carteira.length){ box.innerHTML=`<p class="skel">Cadastre suas ações para ver como a carteira está distribuída entre os setores e quais áreas estão faltando.</p>`; return; }
+    const {rows,patr}=linhas(); if(!patr){ box.innerHTML=`<p class="skel">Aguardando cotações para calcular a distribuição.</p>`; return; }
+    const porSetor={}; rows.forEach(r=>{ porSetor[r.setor]=(porSetor[r.setor]||0)+r.peso; });
+    const setoresOrd=Object.entries(porSetor).sort((a,b)=>b[1]-a[1]);
+    const n=setoresOrd.length, w1=rows[0]?rows[0].peso:0, s1=setoresOrd[0]?setoresOrd[0][1]:0;
+    const dol=rows.reduce((s,r)=>s+((DOLAR.has(r.setor)||DOLAR_TK.has(r.p.ticker))?r.peso:0),0);
+    const def=rows.reduce((s,r)=>s+(DEFENSIVOS.has(r.setor)?r.peso:0),0);
+    const clamp=(x)=>Math.max(0,Math.min(1,x));
+    const score=Math.round(40*Math.min(n,8)/8 + 25*(1-clamp((w1-0.15)/0.35)) + 20*(1-clamp((s1-0.25)/0.45)) + 15*clamp(dol/0.15));
+    const sc = score>=70?"var(--up)":score>=45?"var(--warn)":"var(--down)";
+    const lbl = score>=70?"Bem diversificada":score>=45?"Pode melhorar":"Pouco diversificada";
+    const obs=[];
+    obs.push({e:n>=6?"positivo":"negativo",t:`Sua carteira está em ${n} ${n===1?"setor":"setores"} de ${SETORES.length}. ${n<6?"Espalhar por pelo menos 6 setores reduz o impacto de uma notícia ruim em um só segmento.":"Boa variedade de setores."}`});
+    if(w1>0.25) obs.push({e:"negativo",t:`${rows[0].p.ticker} pesa ${num(w1*100,0)}% da carteira. Acima de 25% numa única ação, uma queda dela pesa muito no total.`});
+    if(s1>0.4) obs.push({e:"negativo",t:`${setoresOrd[0][0]} concentra ${num(s1*100,0)}% do patrimônio.`});
+    obs.push(dol<0.1?{e:"negativo",t:"Quase nada da carteira ganha em dólar. Exportadoras (petróleo, mineração, celulose, Embraer) protegem quando o real se desvaloriza."}:{e:"positivo",t:`${num(dol*100,0)}% da carteira está em empresas que ganham em dólar, o que protege contra alta do câmbio.`});
+    obs.push(def>0.7?{e:"neutro",t:`${num(def*100,0)}% está em setores defensivos (bancos, seguros, energia, saneamento): boa renda em dividendos, mas pouca exposição a crescimento.`}:{e:"neutro",t:`${num(def*100,0)}% está em setores defensivos, que costumam pagar bons dividendos e oscilar menos.`});
+    const mine=new Set(S.carteira.map(p=>p.ticker));
+    const faltando=PRIORIDADE.filter(s=>!porSetor[s]).map(s=>({s,c:candidatos(s,mine)})).filter(x=>x.c.length);
+    faltando.sort((a,b)=>((b.c[0]&&b.c[0].casas)||0)-((a.c[0]&&a.c[0].casas)||0));
+    const motivo={"Petróleo e Gás":"Gera caixa em dólar e paga dividendos altos.","Mineração e Siderurgia":"Receita em dólar, protege contra alta do câmbio.","Saúde":"Demanda estável, pouco ligada ao ciclo da economia.","Indústria":"Exportadoras e empresas de bens de capital diversificam o risco Brasil.","Agro e Alimentos":"Setor forte do Brasil, muitas vezes com receita externa.","Tecnologia e Telecom":"Receita recorrente e potencial de crescimento.","Imóveis e Construção":"Ganha muito quando os juros caem.","Transporte e Logística":"Concessões com contratos corrigidos pela inflação.","Varejo e Consumo":"Sobe quando a renda e o crédito melhoram.","Energia Elétrica":"Receita previsível e bons dividendos.","Saneamento e Gás":"Monopólio regulado com crescimento contratado.","Bancos e Financeiro":"Lucros altos e dividendos constantes.","Seguros":"Muito caixa e dividendos altos.","Papel, Química e Materiais":"Celulose é exportada e ganha com dólar alto.","Educação e Serviços":"Ganha com juros menores e economia aquecida."};
+    box.innerHTML=`
+      <div class="div-top">
+        <div class="dscore" style="--p:${score};--sc:${sc}"><span><b>${score}</b><small>de 100</small></span></div>
+        <div style="min-width:0"><div class="h3" style="margin-bottom:6px;color:${sc}">${lbl}</div><ul class="obs">${obs.map(o=>`<li><span class="mark ${o.e}">${o.e==="positivo"?"+":o.e==="negativo"?"−":"·"}</span><span>${esc(o.t)}</span></li>`).join("")}</ul></div>
+      </div>
+      <div class="h3">Onde está seu dinheiro</div>
+      <div class="bars">${setoresOrd.map(([s,w])=>`<div class="bar"><span class="nm2">${esc(s)}</span><span class="track"><i class="${w>0.4?"hot":""}" style="width:${(w*100).toFixed(1)}%"></i></span><span class="pc">${num(w*100,0)}%</span></div>`).join("")}</div>
+      ${faltando.length?`<div class="h3">Setores que faltam na sua carteira</div><p class="sub" style="margin:0 0 12px">Ações desses setores que aparecem nas carteiras recomendadas das corretoras. Pesquise antes de comprar.</p>
+      <div class="gaps">${faltando.slice(0,6).map(x=>`<div class="gap"><div class="gap-h"><strong>${esc(x.s)}</strong></div><span class="why">${esc(motivo[x.s]||"")}</span>
+        ${x.c.map(c=>{ const q=S.cotMap[c.t]; return `<div class="cand"><span><span class="tk" style="font-size:16px">${esc(c.t)}</span> <span class="price">${q?brl(q.preco):""}</span>${c.casas?` <span class="hint">· em ${c.casas} ${c.casas===1?"carteira":"carteiras"}</span>`:""}</span><button type="button" class="add-btn" data-pick="${esc(c.t)}">+ Adicionar</button>${c.tese?`<p>${esc(c.tese)}</p>`:""}</div>`; }).join("")}
+      </div>`).join("")}</div>`:`<p class="skel">Sua carteira já cobre os principais setores da bolsa.</p>`}`;
+  }
+
+  /* ---------- Recomendações ---------- */
+  function renderRecs(){
+    const c=S.painel.consenso; const mine=new Set(S.carteira.map(p=>p.ticker));
+    if(c){
+      const max=Math.max(7,...(c.itens||[]).map(i=>i.casas||0));
+      $("#recs").innerHTML=(c.itens||[]).map(i=>{ const q=S.cotMap[i.ticker]; const k=i.casas||0;
+        return `<div class="rec"><div class="rec-h"><span class="tk">${esc(i.ticker)}</span><span class="nm" style="display:inline">${esc(i.nome)} · ${esc(i.setor||"")}</span></div>
+          <div style="text-align:right">${mine.has(i.ticker)?'<span class="have">Na carteira</span>':`<button type="button" class="add-btn" data-pick="${esc(i.ticker)}">+ Adicionar</button>`}</div>
+          <p><span class="casas" title="Em ${k} carteiras recomendadas">${Array.from({length:max},(_,j)=>`<i class="${j<k?"on":""}"></i>`).join("")} <span>${k} ${k===1?"carteira":"carteiras"}</span></span></p>
+          <p>${esc(i.tese||"")} ${q?`<span class="price ${cls(q.var_dia)}">${brl(q.preco)} (${pct(q.var_dia)})</span>`:""}</p>
+          ${i.risco?`<p class="risco">Risco: ${esc(i.risco)}</p>`:""}</div>`; }).join("");
+      $("#recs-fonte").textContent=c.fonte||""; $("#recs-when").textContent=c._ts?"Revisado "+ago(c._ts):"";
+    }
+    const h=S.painel.em_alta;
+    if(h) $("#hot").innerHTML=(h.itens||[]).map(i=>{ const q=S.cotMap[i.ticker]; const tom=["positivo","negativo"].includes(i.tom)?i.tom:"neutro";
+      return `<div class="hot"><span class="tk" style="font-size:16px">${esc(i.ticker)}</span><span style="min-width:0"><span class="tom ${tom}"></span> ${esc(i.motivo)}</span><span class="price ${q?cls(q.var_dia):""}">${q?pct(q.var_dia):""}</span></div>`; }).join("") + (h.fonte?`<p class="when" style="margin:6px 0 0">${esc(h.fonte)}</p>`:"");
+  }
+
+  /* ---------- Todas as ações ---------- */
+  let setoresFeitos=false;
+  function renderTodas(){
+    if(!S.cot.length) return;
+    $("#all-when").textContent=S.cotTs?"Cotações de "+new Date(S.cotTs).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
+    if(!setoresFeitos){ const st=[...new Set(S.cot.map(r=>r.setor_macro).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR")); $("#q-setor").insertAdjacentHTML("beforeend",st.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("")); setoresFeitos=true; }
+    const q=$("#q-busca").value.trim().toLowerCase(), setor=$("#q-setor").value, ordem=$("#q-ordem").value;
+    let rows=S.cot.filter(r=>(!setor||r.setor_macro===setor)&&(!q||r.ticker.toLowerCase().includes(q)||String(r.nome).toLowerCase().includes(q)));
+    const so={volume:(a,b)=>b.volume-a.volume,alta:(a,b)=>b.var_dia-a.var_dia,baixa:(a,b)=>a.var_dia-b.var_dia,mc:(a,b)=>(b.valor_mercado_mi||0)-(a.valor_mercado_mi||0),az:(a,b)=>a.ticker.localeCompare(b.ticker)};
+    rows=rows.slice().sort(so[ordem]||so.volume); if(ordem==="alta"||ordem==="baixa") rows=rows.filter(r=>r.volume>0);
+    const mine=new Set(S.carteira.map(p=>p.ticker)); const shown=rows.slice(0,S.lim);
+    $("#all-body").innerHTML=shown.length?shown.map(r=>`<tr><td><span class="tk">${esc(r.ticker)}</span><span class="nm">${esc(bonito(r.nome))}</span></td><td class="r">${brl(r.preco)}</td><td class="r ${cls(r.var_dia)}">${pct(r.var_dia)}</td><td class="r hide-sm">${compacto(r.volume)}</td><td class="r hide-sm">${r.valor_mercado_mi?"R$ "+compacto(r.valor_mercado_mi*1e6):"—"}</td><td class="r">${mine.has(r.ticker)?'<span class="have">Na carteira</span>':`<button type="button" class="add-btn" data-pick="${esc(r.ticker)}">+ Adicionar</button>`}</td></tr>`).join(""):`<tr><td colspan="6" class="skel">Nenhuma ação encontrada${q?" para “"+esc(q)+"”":""}.</td></tr>`;
+    $("#all-count").textContent=rows.length?`Mostrando ${shown.length} de ${rows.length} ações`:""; $("#all-more").hidden=shown.length>=rows.length;
+  }
+  let tB; $("#q-busca").addEventListener("input",()=>{ clearTimeout(tB); tB=setTimeout(()=>{S.lim=50;renderTodas();},150); });
+  $("#q-ordem").addEventListener("change",()=>{S.lim=50;renderTodas();});
+  $("#q-setor").addEventListener("change",()=>{S.lim=50;renderTodas();});
+  $("#all-more").addEventListener("click",()=>{S.lim+=50;renderTodas();});
+
+  /* Início */
+  sb.auth.getSession().then(({data})=>{ if(!data.session){ $("#auth").hidden=false; setAuthMode(false); } });
+})();
+</script>
+</body>
+</html>
