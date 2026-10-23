@@ -1,13 +1,7 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+// Cotações de todas as ações da B3 (brapi.dev), gravadas na tabela cotacoes.
+import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-const norm = (s: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const norm = (s: string) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 // Agrupa os subsetores da B3 em setores amplos, usados na analise de diversificacao
 const REGRAS: [RegExp, string][] = [
@@ -59,44 +53,36 @@ function macro(sub: string | null, en: string | null, nome: string): string {
   return EN[norm(en || "")] || "Outros";
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  let forcar = false;
-  try { forcar = !!(await req.json()).forcar; } catch (_) { /* corpo vazio */ }
-  try {
-    // Evita buscar de novo se a ultima atualizacao tem menos de 60 segundos
-    const { data: ult } = await sb.from("cotacoes").select("atualizado_em").order("atualizado_em", { ascending: false }).limit(1);
-    if (!forcar && ult && ult[0] && Date.now() - Date.parse(ult[0].atualizado_em) < 60_000) {
-      return new Response(JSON.stringify({ ok: true, pulado: true, atualizadoEm: ult[0].atualizado_em }), { headers: { ...cors, "Content-Type": "application/json" } });
-    }
-    const r = await fetch("https://brapi.dev/api/quote/list?type=stock&limit=3000");
-    if (!r.ok) throw new Error("brapi respondeu " + r.status);
-    const d = await r.json();
-    const lista = (d.stocks || []).filter((x: any) => /^[A-Z][A-Z0-9]{2}[A-Z]\d{1,2}$/.test(x.stock || "") && x.close != null);
-    // Outras classes da mesma empresa (SAPR3, SAPR4, SAPR11) herdam o subsetor quando ele vem vazio
-    const subPorRaiz: Record<string, string> = {};
-    for (const x of lista) if (x.subsector) subPorRaiz[x.stock.slice(0, 4)] = x.subsector;
-    const agora = new Date().toISOString();
-    const rows = lista.map((x: any) => {
-      const sub = x.subsector || subPorRaiz[x.stock.slice(0, 4)] || null;
-      return {
-        ticker: x.stock,
-        nome: String(x.name || x.stock).slice(0, 60),
-        preco: Math.round(x.close * 100) / 100,
-        var_dia: Math.round((x.change || 0) * 100) / 100,
-        volume: Math.round(x.volume || 0),
-        setor: sub,
-        setor_macro: macro(sub, x.sector, x.name || ""),
-        valor_mercado_mi: x.market_cap ? Math.round(x.market_cap / 1e6) : null,
-        atualizado_em: agora,
-      };
-    });
-    if (rows.length < 100) throw new Error("lista incompleta: " + rows.length);
-    const { error } = await sb.from("cotacoes").upsert(rows, { onConflict: "ticker" });
-    if (error) throw error;
-    return new Response(JSON.stringify({ ok: true, acoes: rows.length, atualizadoEm: agora }), { headers: { ...cors, "Content-Type": "application/json" } });
-  } catch (e) {
-    return new Response(JSON.stringify({ ok: false, erro: String((e as Error).message || e) }), { status: 502, headers: { ...cors, "Content-Type": "application/json" } });
+export async function atualizarCotacoes(sb: SupabaseClient, forcar: boolean) {
+  // Evita buscar de novo se a ultima atualizacao tem menos de 60 segundos
+  const { data: ult } = await sb.from("cotacoes").select("atualizado_em").order("atualizado_em", { ascending: false }).limit(1);
+  if (!forcar && ult && ult[0] && Date.now() - Date.parse(ult[0].atualizado_em) < 60_000) {
+    return { ok: true, pulado: true, atualizadoEm: ult[0].atualizado_em };
   }
-});
+  const r = await fetch("https://brapi.dev/api/quote/list?type=stock&limit=3000");
+  if (!r.ok) throw new Error("brapi respondeu " + r.status);
+  const d = await r.json();
+  const lista = (d.stocks || []).filter((x: any) => /^[A-Z][A-Z0-9]{2}[A-Z]\d{1,2}$/.test(x.stock || "") && x.close != null);
+  // Outras classes da mesma empresa (SAPR3, SAPR4, SAPR11) herdam o subsetor quando ele vem vazio
+  const subPorRaiz: Record<string, string> = {};
+  for (const x of lista) if (x.subsector) subPorRaiz[x.stock.slice(0, 4)] = x.subsector;
+  const agora = new Date().toISOString();
+  const rows = lista.map((x: any) => {
+    const sub = x.subsector || subPorRaiz[x.stock.slice(0, 4)] || null;
+    return {
+      ticker: x.stock,
+      nome: String(x.name || x.stock).slice(0, 60),
+      preco: Math.round(x.close * 100) / 100,
+      var_dia: Math.round((x.change || 0) * 100) / 100,
+      volume: Math.round(x.volume || 0),
+      setor: sub,
+      setor_macro: macro(sub, x.sector, x.name || ""),
+      valor_mercado_mi: x.market_cap ? Math.round(x.market_cap / 1e6) : null,
+      atualizado_em: agora,
+    };
+  });
+  if (rows.length < 100) throw new Error("lista incompleta: " + rows.length);
+  const { error } = await sb.from("cotacoes").upsert(rows, { onConflict: "ticker" });
+  if (error) throw error;
+  return { ok: true, acoes: rows.length, atualizadoEm: agora };
+}
