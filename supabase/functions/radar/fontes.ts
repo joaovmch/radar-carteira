@@ -120,12 +120,11 @@ export function indicadores(h: Historico) {
   };
 }
 
-// Série reduzida (uma cotação por semana) para o gráfico do perfil
+// Cotação de fechamento de cada dia do último ano, para o gráfico interativo do perfil
 export function serieSemanal(h: Historico) {
   const out: [number, number][] = [];
-  for (let i = 0; i < h.ts.length; i++) {
-    if (i % 5 === 0 || i === h.ts.length - 1) out.push([h.ts[i], r2(h.close[i])!]);
-  }
+  for (let i = 0; i < h.ts.length; i++) out.push([h.ts[i], r2(h.close[i])!]);
+  if (out.length && h.preco != null) out[out.length - 1][1] = r2(h.preco)!;
   return out;
 }
 

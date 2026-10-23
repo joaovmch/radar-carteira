@@ -356,7 +356,17 @@ form.add input{border:1px solid var(--line);background:var(--bg);border-radius:9
 .fatos span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .fatos b{display:block;font-weight:500;font-size:14px;overflow-wrap:anywhere}
 .fatos a{color:var(--accent);font-weight:500}
-.chart{width:100%;height:auto;display:block}
+.chart{width:100%;height:auto;display:block;user-select:none;-webkit-user-select:none}
+.chart-wrap{position:relative}
+.g-per{display:inline-flex;background:var(--sunk);border-radius:9px;padding:3px;gap:2px;margin-bottom:8px}
+.g-per button{border:0;background:none;border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.g-per button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.g-res{margin:0 0 6px;font-size:13.5px}
+.g-res b{font-family:var(--mono)}
+.g-tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:6px 10px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:1px;white-space:nowrap;z-index:2}
+.g-tip span{font-size:11.5px;color:var(--muted)}
+.g-tip b{font-family:var(--mono);font-size:15px;font-weight:600}
+.g-tip small{font-family:var(--mono);font-size:11.5px}
 .rets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
 @media (max-width:520px){.rets{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .rets div{background:var(--sunk);border-radius:9px;padding:8px 11px}

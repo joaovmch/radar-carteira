@@ -479,23 +479,78 @@
     ["liqCorrente", "Liquidez corrente", (v) => num(v, 2), "Bens de curto prazo para cada R$ 1 de dívidas de curto prazo.", (v) => v >= 1.5 ? "bom" : v < 1 ? "ruim" : ""],
     ["evEbitda", "EV/EBITDA", (v) => num(v, 1), "Valor da empresa (com dívida) sobre a geração de caixa. Mais baixo = mais barata.", (v) => v > 0 && v < 6 ? "bom" : v > 15 ? "ruim" : ""],
   ];
+  // Gráfico interativo: passe o mouse (ou o dedo) para ver a cotação de cada dia
+  const PERIODOS = [["1M", 23], ["3M", 66], ["6M", 130], ["1A", 9999]];
+  let grafSerie = [], grafPeriodo = "1A";
   function grafico(serie) {
     if (!serie || serie.length < 3) return "";
-    const W = 640, H = 180, P = 6;
+    grafSerie = serie;
+    return `<div class="g-per" role="group" aria-label="Período">${PERIODOS.map(([p]) => `<button type="button" data-per="${p}" aria-pressed="${p === grafPeriodo}">${p}</button>`).join("")}</div>
+      <div class="chart-wrap" id="chart-wrap">${desenharGrafico()}<div class="g-tip" id="g-tip" hidden></div></div>`;
+  }
+  function recorte() {
+    const n = (PERIODOS.find((p) => p[0] === grafPeriodo) || PERIODOS[3])[1];
+    return grafSerie.slice(-Math.min(n, grafSerie.length));
+  }
+  const G = { W: 640, H: 180, P: 6 };
+  function desenharGrafico() {
+    const serie = recorte(); const { W, H, P } = G;
+    if (serie.length < 2) return "";
     const ys = serie.map((p) => p[1]), min = Math.min(...ys), max = Math.max(...ys), rng = max - min || 1;
     const x = (i) => P + i * (W - 2 * P) / (serie.length - 1), y = (v) => H - P - (v - min) / rng * (H - 2 * P);
     const d = serie.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
     const sobe = ys[ys.length - 1] >= ys[0]; const cor = sobe ? "var(--up)" : "var(--down)";
-    const f = (ts) => new Date(ts * 1000).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
-    return `<svg class="chart" viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="Cotação no último ano, de ${brl(ys[0])} para ${brl(ys[ys.length - 1])}">
+    const longo = (serie[serie.length - 1][0] - serie[0][0]) > 100 * 86400;
+    const f = (ts) => new Date(ts * 1000).toLocaleDateString("pt-BR", longo ? { month: "short", year: "2-digit" } : { day: "2-digit", month: "short" });
+    const varP = (ys[ys.length - 1] / ys[0] - 1) * 100;
+    return `<p class="g-res">No período: <b class="${cls(varP)}">${pct(varP)}</b> <span class="hint">(${esc(brl(ys[0]))} → ${esc(brl(ys[ys.length - 1]))})</span></p>
+    <svg class="chart" id="chart-svg" viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="Cotação no período, de ${brl(ys[0])} para ${brl(ys[ys.length - 1])}">
       <path d="${d} L${x(serie.length - 1).toFixed(1)} ${H - P} L${P} ${H - P} Z" fill="${cor}" opacity=".08"/>
-      <path d="${d}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="${d}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
       <text x="${P}" y="${H + 14}" font-size="11" fill="var(--muted)">${esc(f(serie[0][0]))}</text>
       <text x="${W - P}" y="${H + 14}" font-size="11" fill="var(--muted)" text-anchor="end">${esc(f(serie[serie.length - 1][0]))}</text>
       <text x="${W - P}" y="${y(max) + 12}" font-size="11" fill="var(--muted)" text-anchor="end">máx. ${esc(brl(max))}</text>
       <text x="${W - P}" y="${y(min) - 4}" font-size="11" fill="var(--muted)" text-anchor="end">mín. ${esc(brl(min))}</text>
+      <g id="g-mira" visibility="hidden"><line id="g-linha" y1="${P}" y2="${H - P}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/><circle id="g-ponto" r="4.5" fill="${cor}" stroke="var(--surface)" stroke-width="2"/></g>
+      <rect id="g-area" x="0" y="0" width="${W}" height="${H}" fill="transparent" style="cursor:crosshair;touch-action:pan-y"/>
     </svg>`;
   }
+  function ligarGrafico() {
+    const svg = $("#chart-svg"), wrap = $("#chart-wrap"); if (!svg || !wrap) return;
+    const serie = recorte(); const { W, H, P } = G;
+    const ys = serie.map((p) => p[1]), min = Math.min(...ys), max = Math.max(...ys), rng = max - min || 1;
+    const tip = $("#g-tip"), mira = $("#g-mira"), linha = $("#g-linha"), ponto = $("#g-ponto");
+    const mover = (ev) => {
+      const r = svg.getBoundingClientRect(); if (!r.width) return;
+      const px = (ev.clientX - r.left) / r.width * W;
+      const i = Math.max(0, Math.min(serie.length - 1, Math.round((px - P) / (W - 2 * P) * (serie.length - 1))));
+      const [ts, v] = serie[i];
+      const cx = P + i * (W - 2 * P) / (serie.length - 1), cy = H - P - (v - min) / rng * (H - 2 * P);
+      linha.setAttribute("x1", cx); linha.setAttribute("x2", cx); ponto.setAttribute("cx", cx); ponto.setAttribute("cy", cy);
+      mira.setAttribute("visibility", "visible");
+      const desde = (v / ys[0] - 1) * 100;
+      tip.innerHTML = `<span>${esc(new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }))}</span><b>${esc(brl(v))}</b><small class="${cls(desde)}">${esc(pct(desde))} no período</small>`;
+      tip.hidden = false;
+      const escala = r.width / W, xTela = cx * escala, larg = tip.offsetWidth;
+      tip.style.left = Math.max(0, Math.min(r.width - larg, xTela - larg / 2)) + "px";
+      const yTela = cy * (r.height / (H + 18)), alt = tip.offsetHeight;
+      const topo = r.top - wrap.getBoundingClientRect().top;
+      tip.style.top = (topo + (yTela - alt - 12 >= 0 ? yTela - alt - 12 : yTela + 14)) + "px";
+    };
+    const sair = () => { mira.setAttribute("visibility", "hidden"); tip.hidden = true; };
+    const area = $("#g-area");
+    area.addEventListener("pointermove", mover);
+    area.addEventListener("pointerdown", mover);
+    area.addEventListener("pointerleave", sair);
+    area.addEventListener("pointercancel", sair);
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-per]"); if (!b) return;
+    grafPeriodo = b.dataset.per;
+    document.querySelectorAll("[data-per]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.per === grafPeriodo)));
+    const w = $("#chart-wrap"); if (!w) return;
+    w.innerHTML = desenharGrafico() + `<div class="g-tip" id="g-tip" hidden></div>`; ligarGrafico();
+  });
   function fato(rot, val, link) {
     if (val == null || val === "") return "";
     const u = link ? safeUrl(val) : null;
@@ -542,7 +597,7 @@
         <h3 id="emp-desemp">Desempenho na bolsa</h3>
         ${grafico(e.serie)}
         <div class="rets">${[["1 mês", ds.ret1m], ["3 meses", ds.ret3m], ["6 meses", ds.ret6m], ["12 meses", ds.ret12m]].map(([l, v]) => `<div><span>${l}</span><b class="${cls(v)}">${pct(v)}</b></div>`).join("")}</div>
-        <p class="hint" style="margin:10px 0 0">${ds.min52 != null ? `No último ano variou de ${esc(brl(ds.min52))} a ${esc(brl(ds.max52))}. ` : ""}${ds.volAnual != null ? `Oscilação anual de ${esc(num(ds.volAnual, 0))}% (${ds.volAnual > 45 ? "bem arriscada" : ds.volAnual > 28 ? "risco médio" : "mais estável"}).` : ""}</p>
+        <p class="hint" style="margin:10px 0 0">Passe o mouse ou o dedo sobre o gráfico para ver a cotação de cada dia. ${ds.min52 != null ? `No último ano variou de ${esc(brl(ds.min52))} a ${esc(brl(ds.max52))}. ` : ""}${ds.volAnual != null ? `Oscilação anual de ${esc(num(ds.volAnual, 0))}% (${ds.volAnual > 45 ? "bem arriscada" : ds.volAnual > 28 ? "risco médio" : "mais estável"}).` : ""}</p>
       </section>
 
       ${a ? `<section class="panel" aria-labelledby="emp-sinal"><h3 id="emp-sinal">Sinal do Radar ${sinal ? `<span class="pill s-${sinal}" style="vertical-align:middle;margin-left:6px">${SINAL[sinal]}</span>` : ""}</h3>
@@ -578,6 +633,7 @@
       <section class="panel" aria-labelledby="emp-news"><h3 id="emp-news">Notícias do último mês</h3><ul class="news">${newsItems(e.noticias || [], "Sem notícias recentes.")}</ul></section>
 
       <p class="fontes-emp">Fontes: Wikipedia e Wikidata (texto, fotos e fatos), StatusInvest (indicadores e proventos), Yahoo Finance (cotações históricas), Google Notícias. Perfil atualizado ${esc(ago(e.atualizadoEm))}.${(e.fontesComErro || []).length ? " Não foi possível consultar agora: " + esc(e.fontesComErro.join(", ")) + "." : ""} Nada aqui é recomendação de investimento.</p>`;
+    ligarGrafico();
     void q;
   }
 
