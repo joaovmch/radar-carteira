@@ -25,14 +25,15 @@ alter table public.uso_api enable row level security;
 
 create or replace function public.uso_registrar(uid uuid, acao text, limite integer)
 returns integer language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare v integer;
 begin
-  insert into public.uso_api(user_id, dia, acao, n)
-  values (uid, (now() at time zone 'America/Sao_Paulo')::date, acao, 1)
-  on conflict (user_id, dia, acao) do update set n = public.uso_api.n + 1
-  returning n into v;
-  if v > limite then return -1; end if;
-  return limite - v;
+  insert into public.uso_api as u (user_id, dia, acao, n)
+  values (uso_registrar.uid, (now() at time zone 'America/Sao_Paulo')::date, uso_registrar.acao, 1)
+  on conflict (user_id, dia, acao) do update set n = u.n + 1
+  returning u.n into v;
+  if v > uso_registrar.limite then return -1; end if;
+  return uso_registrar.limite - v;
 end $$;
 revoke all on function public.uso_registrar(uuid, text, integer) from public, anon, authenticated;
 grant execute on function public.uso_registrar(uuid, text, integer) to service_role;
