@@ -3,7 +3,7 @@
 // Um usuário logado também pode pedir a análise imediata de uma ação da própria carteira.
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
-  analistas, ATIVO_RE, atualizarDinamico, buscarTV, dentroDoLimite, EXTERIOR, historico, indicadores, noticias, nomeCurto, perfilEmpresa, proximoCopom, selic, simboloYahoo, sinalAcao,
+  analistas, ATIVO_RE, atualizarDinamico, buscaNoticias, buscarTV, cdi, dentroDoLimite, EXTERIOR, historico, indicadores, noticias, nomeCurto, perfilEmpresa, proximoCopom, selic, simboloYahoo, sinalAcao,
 } from "./fontes.ts";
 
 const cl = (x: number) => Math.max(-1, Math.min(1, x));
@@ -23,10 +23,10 @@ async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
   const notEm = ant?.indicadores?.noticiasEm;
   const reusar = notEm && Date.now() - Date.parse(notEm) < 15 * 60000 && Array.isArray(ant?.noticias);
   const classe = cot?.classe || "acao";
-  const nm = nome.replace(/\s*\(.*\)$/, "");
+  const bn = buscaNoticias(t, nome, classe);
   const [h, nots] = await Promise.all([
     historico(simboloYahoo(t, classe)).catch(() => null),
-    reusar ? Promise.resolve(ant!.noticias) : noticias(t.length <= 2 ? `"${nm}"` : `"${t}" OR "${nm}"`, 8, 7).catch(() => ant?.noticias || []),
+    reusar ? Promise.resolve(ant!.noticias) : noticias(bn.consulta, 8, 7, bn).catch(() => ant?.noticias || []),
   ]);
   const ind = h ? indicadores(h) : null;
   const varDia = cot?.var_dia != null ? Number(cot.var_dia) : null;
@@ -131,6 +131,13 @@ async function mercado(sb: SupabaseClient) {
     atualizadoEm: new Date().toISOString(),
   };
   await sb.from("painel").upsert({ id: "mercado", dados, atualizado_em: dados.atualizadoEm });
+
+  // CDI diário do Banco Central para a renda fixa: renovado a cada 6 horas
+  const { data: cdiAnt } = await sb.from("painel").select("atualizado_em").eq("id", "cdi").maybeSingle();
+  if (!cdiAnt || Date.now() - Date.parse(cdiAnt.atualizado_em) > 6 * 36e5) {
+    const c = await cdi().catch(() => null);
+    if (c) await sb.from("painel").upsert({ id: "cdi", dados: c, atualizado_em: c.atualizadoEm });
+  }
 
   // Destaques do dia: maiores variações entre as mais negociadas, com a notícia mais recente de cada uma
   const mov = lista.slice().sort((a: any, b: any) => Math.abs(b.var_dia) - Math.abs(a.var_dia)).slice(0, 6);

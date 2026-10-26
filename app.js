@@ -222,7 +222,7 @@
   let canal = null;
   async function iniciar() {
     prepararEntrada(); prepararAbas();
-    await Promise.all([carregarCarteira().then(carregarEmpresas), carregarCotacoes(), carregarAnalises(), carregarPainel()]);
+    await Promise.all([carregarCarteira().then(carregarEmpresas), carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarRF()]);
     renderAll();
     if (canal) sb.removeChannel(canal);
     let tCot = null, tAn = null, tEmp = null;
@@ -230,12 +230,13 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes" }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoes(); renderAll(); if (S.emp) cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); }, 2500); })
       .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
       .on("postgres_changes", { event: "*", schema: "public", table: "empresas" }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderEmpresas(); }, 4000); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "carteira" }, async () => { await carregarCarteira(); await carregarEmpresas(); renderAll(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "renda_fixa" }, async () => { await carregarRF(); renderRF(); renderHero(); })
       .subscribe();
     abrirPeloEndereco();
   }
-  function parar() { if (canal) { sb.removeChannel(canal); canal = null; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.anim.clear(); }
+  function parar() { if (canal) { sb.removeChannel(canal); canal = null; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
   async function carregarCarteira() {
     const { data, error } = await sb.from("carteira").select("id,ticker,qtd,pm").order("criado_em");
     if (error) { toast("Não foi possível carregar sua carteira. Recarregue a página."); return; }
@@ -276,7 +277,7 @@
     await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarEmpresas()]);
     renderAll(); atualizarGaveta();
   }, 120000);
-  document.addEventListener("visibilitychange", async () => { if (S.user && document.visibilityState === "visible") { await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarEmpresas()]); renderAll(); atualizarGaveta(); } });
+  document.addEventListener("visibilitychange", async () => { if (S.user && document.visibilityState === "visible") { await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarEmpresas(), carregarRF()]); renderAll(); atualizarGaveta(); } });
 
   /* Atualizar cotações agora */
   $("#btn-refresh").addEventListener("click", async () => {
@@ -290,7 +291,7 @@
     finally { b.disabled = false; b.classList.remove("spin"); }
   });
 
-  function renderAll() { renderStatus(); renderMercado(); renderHero(); renderCarteira(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); }
+  function renderAll() { renderStatus(); renderMercado(); renderHero(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); }
   function renderStatus() { $("#last-upd").textContent = S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
 
   /* ---------- Logos ---------- */
@@ -437,13 +438,15 @@
     return { serie: serie.length > 5 ? serie : null, fora };
   }
   function renderHero() {
-    if (!S.carteira.length) {
+    const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
+    if (!S.carteira.length && !rfV) {
       $("#t-patr").innerHTML = brl(0); $("#t-patr")._v = 0; ["#t-dia", "#t-res", "#t-prov"].forEach((s) => { $(s).innerHTML = "—"; });
       $("#alloc").innerHTML = `<p class="hint" style="margin:0">Adicione seus ativos na carteira para ver o patrimônio, a divisão por classe e a evolução.</p>`;
       $("#hero-chart").innerHTML = ""; $("#hero-fx").textContent = ""; return;
     }
     const { rows, patr } = linhas(); const T = totais(rows);
-    contar($("#t-patr"), T.temPreco ? patr : null, brl);
+    const patrTot = patr + rfV;
+    contar($("#t-patr"), T.temPreco || rfV ? patrTot : null, brl);
     contar($("#t-dia"), T.temPreco ? T.dia : null, (v) => esc(sinal(v, brl)) + (patr ? ` <small>${esc(pct(v / (patr - v) * 100))}</small>` : ""));
     $("#t-dia").className = cls(T.dia);
     if (T.custo) { const res = T.base - T.custo; contar($("#t-res"), res, (v) => esc(sinal(v, brl)) + ` <small>${esc(pct((T.base / T.custo - 1) * 100))}</small>`); $("#t-res").className = cls(res); }
@@ -451,11 +454,13 @@
     if (T.temProv) contar($("#t-prov"), T.prov, (v) => esc(brl(v)) + (patr ? ` <small>${esc(num(T.prov / patr * 100, 1))}% a.a.</small>` : ""));
     else { $("#t-prov").innerHTML = `<span class="hint">Aguardando dados</span>`; $("#t-prov")._v = null; }
     // Divisão por classe
-    const porCls = {}; rows.forEach((r) => { porCls[r.classe] = (porCls[r.classe] || 0) + r.peso; });
-    const cl = ORDEM_CLS.filter((c) => porCls[c] > 0);
+    const porCls = {}; rows.forEach((r) => { porCls[r.classe] = (porCls[r.classe] || 0) + (patrTot ? (r.valor || 0) / patrTot : 0); });
+    if (rfV && patrTot) porCls.rf = rfV / patrTot;
+    const cl = ORDEM_CLS.concat("rf").filter((c) => porCls[c] > 0);
+    const nomeCl = (c) => c === "rf" ? "Renda fixa" : CLS[c].nome;
     const anim = primeira("alloc");
-    $("#alloc").innerHTML = `<div class="alloc-bar${anim ? " anim" : ""}" role="img" aria-label="Divisão por classe: ${esc(cl.map((c) => CLS[c].nome + " " + num(porCls[c] * 100, 0) + "%").join(", "))}">${cl.map((c) => `<i style="width:${(porCls[c] * 100).toFixed(2)}%;background:var(--c-${c})"></i>`).join("")}</div>
-      <div class="alloc-leg">${cl.map((c) => `<span><i style="background:var(--c-${c})"></i>${CLS[c].nome} <b>${num(porCls[c] * 100, 0)}%</b></span>`).join("")}</div>`;
+    $("#alloc").innerHTML = `<div class="alloc-bar${anim ? " anim" : ""}" role="img" aria-label="Divisão por classe: ${esc(cl.map((c) => nomeCl(c) + " " + num(porCls[c] * 100, 0) + "%").join(", "))}">${cl.map((c) => `<i style="width:${(porCls[c] * 100).toFixed(2)}%;background:var(--c-${c})"></i>`).join("")}</div>
+      <div class="alloc-leg">${cl.map((c) => `<span><i style="background:var(--c-${c})"></i>${nomeCl(c)} <b>${num(porCls[c] * 100, 0)}%</b></span>`).join("")}</div>`;
     const temUsd = rows.some((r) => r.moeda === "USD");
     $("#hero-fx").textContent = temUsd && fx() ? "Dólar R$ " + num(fx(), 3) : "";
     const { serie, fora } = serieCarteira();
@@ -1109,6 +1114,273 @@
   $("#q-ordem").addEventListener("change", () => { S.lim = 50; renderTodas(); });
   $("#q-setor").addEventListener("change", () => { S.lim = 50; renderTodas(); });
   $("#all-more").addEventListener("click", () => { S.lim += 50; renderTodas(); });
+
+  /* ---------- Renda fixa ---------- */
+  // Taxas e regras pesquisadas em out/2026 (sites e comunicados dos bancos, portais de finanças).
+  // reqMes: entradas mínimas na conta por ciclo para manter a taxa; renova: meses até a renovação.
+  const RF_MOD = [
+    { id: "nubank_turbo", banco: "Nubank", nome: "Caixinha Turbo", taxa: 115, limite: 5000, tipo: "RDB", req: "Entradas de R$ 900 a cada 31 dias", reqMes: 900, ciclo: 31, renova: 12,
+      regras: "<b>115% do CDI até R$ 5 mil</b>, resgate na hora (RDB com FGC). Para manter a taxa, as entradas na conta (Pix, TED, depósito, salário) precisam somar <b>R$ 900 a cada ciclo de 31 dias</b>; o dinheiro pode sair em seguida. Se não bater a meta, o saldo vai para um RDB de 100% do CDI e o IR e o IOF são cobrados nessa hora. A Caixinha Turbo é renovada a cada 12 meses (resgate e reaplicação)." },
+    { id: "nubank_turbo_plus", banco: "Nubank", nome: "Caixinha Turbo (Nubank+ / Ultravioleta)", taxa: 120, limite: 10000, tipo: "RDB", req: "Assinatura Nubank+ ou Ultravioleta", renova: 12,
+      regras: "<b>120% do CDI até R$ 10 mil</b> para clientes Nubank+ e Ultravioleta, sem exigência de movimentação. Resgate na hora, RDB com FGC. Clientes NuCel podem ter as duas Turbo ao mesmo tempo." },
+    { id: "nubank_caixinha", banco: "Nubank", nome: "Caixinha", taxa: 100, tipo: "RDB", req: "Nenhum",
+      regras: "<b>100% do CDI</b>, resgate na hora, sem limite. RDB do Nubank com FGC até R$ 250 mil." },
+    { id: "nubank_conta", banco: "Nubank", nome: "Saldo da conta", taxa: 100, tipo: "RDB", req: "Nenhum",
+      regras: "<b>100% do CDI</b> para o dinheiro que fica na conta. O rendimento dos primeiros 30 dias entra no 31º dia; se sair antes, não rende." },
+    { id: "mp_cofrinho_meli", banco: "Mercado Pago", nome: "Cofrinho (Meli+)", taxa: 120, limite: 10000, exc: 100, tipo: "CDB", req: "Assinatura Meli+",
+      regras: "<b>120% do CDI até R$ 10 mil</b> para assinantes Meli+; o que passar disso rende 100% do CDI. Rende em dias úteis, resgate na hora." },
+    { id: "mp_conta_105", banco: "Mercado Pago", nome: "Conta (com R$ 1.000/mês de entradas)", taxa: 105, tipo: "CDB", req: "Entradas de R$ 1.000 no mês", reqMes: 1000,
+      regras: "<b>105% do CDI</b> quando as entradas do mês (Pix, transferências, depósitos, salário) somam pelo menos R$ 1.000. Sem isso, rende 100%." },
+    { id: "mp_conta", banco: "Mercado Pago", nome: "Conta / Cofrinho", taxa: 100, tipo: "CDB", req: "Nenhum",
+      regras: "<b>100% do CDI</b> no saldo da conta e nos cofrinhos comuns, rendendo todo dia útil." },
+    { id: "picpay_turbinado", banco: "PicPay", nome: "Cofrinho Turbinado", taxa: 121, tipo: "CDB", req: "PicPay Mais ou R$ 999/mês + chave Pix CPF", reqMes: 999,
+      regras: "<b>Até 121% do CDI</b> para assinantes PicPay Mais ou para quem movimenta R$ 999 por mês e tem chave Pix com o CPF. Resgate na hora. Confira o limite no app (a campanha pode mudar)." },
+    { id: "picpay_cofrinho", banco: "PicPay", nome: "Cofrinho", taxa: 102, tipo: "CDB", req: "Nenhum",
+      regras: "<b>102% do CDI</b> todo dia útil, sem carência, resgate na hora." },
+    { id: "pagbank_cdb130", banco: "PagBank", nome: "CDB 130% (1ª aplicação)", taxa: 130, tipo: "CDB", req: "Nunca investiu no PagBank (ou há 6+ meses)",
+      regras: "<b>130% do CDI</b> só na primeira aplicação de quem nunca investiu no PagBank ou não investe há mais de 6 meses, de R$ 500 a R$ 2 milhões, com liquidez diária depois da carência." },
+    { id: "pagbank_cdb", banco: "PagBank", nome: "CDB liquidez diária", taxa: 103, tipo: "CDB", req: "Nenhum",
+      regras: "<b>Cerca de 103% do CDI</b> no CDB de liquidez diária. O CDB do PagBank também pode virar limite no cartão." },
+    { id: "inter_objetivo", banco: "Inter", nome: "Meu Porquinho por Objetivo", taxa: 100, tipo: "CDB", req: "Nenhum",
+      regras: "<b>100% do CDI</b> nos porquinhos criados por você (Reserva, Viagem...). Resgate na hora." },
+    { id: "inter_diadia", banco: "Inter", nome: "Porquinho Dia a Dia", taxa: 80, tipo: "CDB", req: "Nenhum",
+      regras: "<b>80% do CDI</b> para aportes feitos desde 01/09/2025 (o saldo anterior segue a 100%). Vale mais criar um Porquinho por Objetivo, que rende 100%." },
+    { id: "inter_limite", banco: "Inter", nome: "Porquinho Mais Limite", taxa: 82, tipo: "CDB", req: "Nenhum",
+      regras: "<b>82% do CDI</b>; cada real guardado vira limite no cartão." },
+    { id: "c6_cdb", banco: "C6 Bank", nome: "CDB liquidez diária", taxa: 101.5, tipo: "CDB", req: "Nenhum",
+      regras: "<b>101,5% do CDI</b> (taxa padrão informada pelo C6). O CDB Cartão rende 102% e vira limite no cartão, com resgate em até 2 dias úteis." },
+    { id: "sofisa_cdb", banco: "Sofisa", nome: "CDB liquidez diária", taxa: 105, tipo: "CDB", req: "Nenhum", regras: "<b>Cerca de 105% do CDI</b>, a partir de R$ 1, sem limite." },
+    { id: "daycoval_cdb", banco: "Daycoval", nome: "CDB liquidez diária", taxa: 104, tipo: "CDB", req: "Mínimo de R$ 1 mil", regras: "<b>Cerca de 104% do CDI</b>, a partir de R$ 1 mil." },
+    { id: "itau_cdb", banco: "Itaú", nome: "CDB liquidez diária", taxa: 100, tipo: "CDB", req: "Nenhum", regras: "<b>Cerca de 100% do CDI</b> no CDB de liquidez diária. Grandes bancos variam a taxa por perfil: confira no app." },
+    { id: "bradesco_cdb", banco: "Bradesco", nome: "CDB liquidez diária", taxa: 100, tipo: "CDB", req: "Mínimo de R$ 100", regras: "<b>Cerca de 100% do CDI</b>, a partir de R$ 100. A taxa varia por perfil: confira no app." },
+    { id: "santander_cdb", banco: "Santander", nome: "CDB liquidez diária", taxa: 100, tipo: "CDB", req: "Nenhum", regras: "<b>Cerca de 100% do CDI</b>. A taxa varia por perfil: confira no app." },
+    { id: "bb_cdb", banco: "Banco do Brasil", nome: "CDB liquidez diária", taxa: 97, tipo: "CDB", req: "Mínimo de R$ 500", regras: "<b>Cerca de 97% do CDI</b>, a partir de R$ 500. A taxa varia por perfil: confira no app." },
+    { id: "btg_cdb", banco: "BTG Pactual", nome: "CDB liquidez diária", taxa: 100, tipo: "CDB", req: "Mínimo de R$ 50", regras: "<b>Cerca de 100% do CDI</b>, a partir de R$ 50." },
+    { id: "lci_lca", banco: "Outro banco", nome: "LCI / LCA", taxa: 90, tipo: "LCI/LCA", isento: true, req: "Prazo mínimo (carência)", comparar: false,
+      regras: "LCI e LCA são <b>isentas de IR</b> para pessoa física e têm FGC, mas costumam ter carência. Informe a taxa do seu título." },
+    { id: "cdb_pre", banco: "Outro banco", nome: "CDB prefixado", taxa: 13, indexador: "pre", tipo: "CDB", req: "Até o vencimento", comparar: false,
+      regras: "Taxa fixa ao ano, definida na compra. Informe a taxa e o vencimento do seu título." },
+    { id: "outro", banco: "", nome: "Outra aplicação", taxa: 100, tipo: "CDB", req: "", comparar: false, regras: "Preencha o banco, o nome e a taxa da sua aplicação em “Mais opções”." },
+  ];
+  const RF_MAP = Object.fromEntries(RF_MOD.map((m) => [m.id, m]));
+  const BK_COR = { "Nubank": "#820AD1", "Mercado Pago": "#009EE3", "PicPay": "#11A85F", "PagBank": "#C99700", "Inter": "#FF7A00", "C6 Bank": "#2B2B2B", "Itaú": "#EC7000", "Bradesco": "#CC092F", "Santander": "#E50000", "Banco do Brasil": "#3C59A8", "BTG Pactual": "#0B2D5B", "Sofisa": "#00897B", "Daycoval": "#1F4E9A" };
+  const bkCor = (b) => BK_COR[b] || "var(--c-rf)";
+  const bkSigla = (b) => { const p = String(b || "?").replace(/^Banco (do |da )?/i, "").split(/\s+/).filter(Boolean); return (p.length > 1 ? p[0][0] + p[1][0] : (p[0] || "?").slice(0, 2)).toUpperCase(); };
+  const bkHtml = (b) => `<span class="rf-bk" style="--bk:${bkCor(b)}" aria-hidden="true">${esc(bkSigla(b))}</span>`;
+  const IOF = [96, 93, 90, 86, 83, 80, 76, 73, 70, 66, 63, 60, 56, 53, 50, 46, 43, 40, 36, 33, 30, 26, 23, 20, 16, 13, 10, 6, 3];
+  const aliqIR = (dias) => dias <= 180 ? 22.5 : dias <= 360 ? 20 : dias <= 720 ? 17.5 : 15;
+  const hojeISO = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const dataBR = (iso) => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "—";
+  const somaDias = (iso, n) => { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const diasEntre = (a, b) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
+  const ehUtil = (iso) => { const w = new Date(iso + "T12:00:00Z").getUTCDay(); return w !== 0 && w !== 6 && !FERIADOS.has(iso); };
+  const taxaTxt = (a) => a.indexador === "pre" ? num(a.taxa, 2).replace(/,00$/, "") + "% a.a." : num(a.taxa, 2).replace(/,00$/, "").replace(/(,\d)0$/, "$1") + "% do CDI";
+
+  S.rf = []; S.rfOk = true; S.rfEdit = null; S.rfDel = null;
+  // CDI: série diária do Banco Central (painel.cdi); sem ela, estima pela Selic
+  function cdiInfo() {
+    const c = S.painel.cdi;
+    if (c && Array.isArray(c.serie) && c.serie.length) return { anual: Number(c.anual), diario: Number(c.diario), serie: c.serie, data: c.serie[c.serie.length - 1][0], ok: true };
+    const sel = S.painel.mercado && S.painel.mercado.selic && Number(S.painel.mercado.selic.taxa);
+    const anual = sel ? sel - 0.1 : 13.65;
+    return { anual, diario: (Math.pow(1 + anual / 100, 1 / 252) - 1) * 100, serie: [], data: null, ok: false };
+  }
+  // Fator acumulado de uma taxa (% do CDI ou prefixada) entre duas datas (início incluso, fim excluso)
+  function fatorRF(ini, fim, indexador, taxa, C) {
+    let f = 1, du = 0;
+    if (indexador === "pre") {
+      for (let d = ini; d < fim; d = somaDias(d, 1)) if (ehUtil(d)) du++;
+      return { f: Math.pow(1 + taxa / 100, du / 252), du };
+    }
+    let ultima = null;
+    for (const [d, v] of C.serie) { if (d < ini) continue; if (d >= fim) break; f *= 1 + (v / 100) * (taxa / 100); du++; ultima = d; }
+    // Dias úteis ainda sem CDI publicado: usa o CDI do último dia
+    let d = ultima ? somaDias(ultima, 1) : (C.data && C.data >= ini ? somaDias(C.data, 1) : ini);
+    for (; d < fim; d = somaDias(d, 1)) if (ehUtil(d)) { f *= 1 + (C.diario / 100) * (taxa / 100); du++; }
+    return { f, du };
+  }
+  function rfCalc(a, C) {
+    C = C || cdiInfo();
+    const hoje = hojeISO(), ini = a.data_aplicacao, valor = Number(a.valor);
+    const lim = a.limite ? Number(a.limite) : null;
+    const exc = a.taxa_excedente != null ? Number(a.taxa_excedente) : 100;
+    const p1 = lim ? Math.min(valor, lim) : valor, p2 = valor - p1;
+    const futuro = ini > hoje;
+    const A = futuro ? { f: 1, du: 0 } : fatorRF(ini, hoje, a.indexador, Number(a.taxa), C);
+    const B = p2 > 0 && !futuro ? fatorRF(ini, hoje, a.indexador, exc, C) : { f: 1 };
+    const bruto = p1 * A.f + p2 * B.f, rend = bruto - valor;
+    const dias = Math.max(0, diasEntre(ini, hoje));
+    const iofPct = dias >= 30 || dias < 1 ? 0 : IOF[dias - 1];
+    const iof = rend > 0 ? rend * iofPct / 100 : 0;
+    const irPct = a.isento_ir ? 0 : aliqIR(dias);
+    const ir = rend > 0 ? (rend - iof) * irPct / 100 : 0;
+    const liq = bruto - iof - ir;
+    // Quanto rende por mês agora (21 dias úteis), bruto, com o CDI de hoje
+    const dDia = (t) => a.indexador === "pre" ? Math.pow(1 + t / 100, 1 / 252) - 1 : (C.diario / 100) * (t / 100);
+    const s1 = p1 * A.f, s2 = p2 * B.f;
+    const mes = s1 * (Math.pow(1 + dDia(Number(a.taxa)), 21) - 1) + s2 * (Math.pow(1 + dDia(exc), 21) - 1);
+    // Em 12 meses, se o CDI ficar como hoje: valor líquido
+    const b12 = s1 * Math.pow(1 + dDia(Number(a.taxa)), 252) + s2 * Math.pow(1 + dDia(exc), 252);
+    const r12 = b12 - valor, liq12 = b12 - (a.isento_ir ? 0 : r12 * aliqIR(dias + 365) / 100);
+    return { valor, bruto, rend, rendPct: valor ? rend / valor * 100 : 0, iof, iofPct, ir, irPct, liq, mes, liq12, dias, du: A.du, lim, exc, p2, futuro };
+  }
+  function rfAvisos(a, k) {
+    const out = [], m = RF_MAP[a.produto] || {};
+    if (k.futuro) out.push(["warn", `Aplicação com data futura (${dataBR(a.data_aplicacao)}): começa a render nesse dia.`]);
+    if (k.lim && k.p2 > 0) out.push(["neg", a.taxa_excedente != null
+      ? `R$ ${num(k.p2)} passam do limite de ${brl(k.lim)} e rendem só ${num(k.exc, 0)}% do CDI.`
+      : `R$ ${num(k.p2)} passam do limite de ${brl(k.lim)} do produto e não ganham os ${num(a.taxa, 0)}% (contamos esse valor a 100% do CDI). Vale mover o excedente para onde renda mais.`]);
+    if (k.iofPct > 0) out.push(["warn", `Se resgatar hoje, paga IOF de ${k.iofPct}% sobre o rendimento. O IOF zera em ${dataBR(somaDias(a.data_aplicacao, 30))}.`]);
+    if (m.reqMes && m.ciclo && !k.futuro) {
+      const n = Math.floor(k.dias / m.ciclo), fim = somaDias(a.data_aplicacao, (n + 1) * m.ciclo);
+      out.push(["", `Para manter ${num(a.taxa, 0)}% do CDI: entradas de ${brl(m.reqMes)} na conta a cada ${m.ciclo} dias. O ciclo atual vai até cerca de ${dataBR(fim)} (conta a partir de quando a meta foi batida).`]);
+    } else if (m.reqMes) out.push(["", `Para manter ${num(a.taxa, 0)}% do CDI: entradas de ${brl(m.reqMes)} na conta todo mês.`]);
+    if (m.renova && !k.futuro) out.push(["", `A Caixinha Turbo é renovada a cada ${m.renova} meses: por volta de ${dataBR(somaDias(a.data_aplicacao, Math.round(m.renova * 30.44) * Math.max(1, Math.ceil((k.dias + 1) / (m.renova * 30.44)))))} ela é resgatada e reaplicada, e o IR é cobrado nessa hora.`]);
+    if (a.produto === "inter_diadia") out.push(["warn", "O Porquinho Dia a Dia rende 80% do CDI. Um Porquinho por Objetivo no mesmo app rende 100%."]);
+    if (a.vencimento) { const f = diasEntre(hojeISO(), a.vencimento); if (f >= 0 && f <= 30) out.push(["warn", `Vence em ${dataBR(a.vencimento)} (${f === 0 ? "hoje" : f === 1 ? "amanhã" : "em " + f + " dias"}).`]); else if (f < 0) out.push(["", `Venceu em ${dataBR(a.vencimento)}.`]); }
+    if (!k.iofPct && !k.futuro && !a.isento_ir) out.push(["", `IR de ${num(k.irPct, 1).replace(",0", "")}% sobre o rendimento (${k.dias} dias aplicados${k.dias <= 720 ? `; cai para ${num(aliqIR(k.dias <= 180 ? 181 : k.dias <= 360 ? 361 : 721), 1).replace(",0", "")}% depois de ${k.dias <= 180 ? "180" : k.dias <= 360 ? "360" : "720"} dias` : ""}).`]);
+    return out;
+  }
+  async function carregarRF() {
+    const { data, error } = await sb.from("renda_fixa").select("id,produto,banco,nome,indexador,taxa,limite,taxa_excedente,valor,data_aplicacao,vencimento,isento_ir,obs").order("data_aplicacao");
+    if (error) { S.rfOk = false; S.rf = []; return; }
+    S.rfOk = true; S.rf = data || [];
+  }
+  function rfTotais() {
+    const C = cdiInfo(); let apl = 0, bruto = 0, liq = 0, mes = 0, liq12 = 0;
+    const itens = S.rf.map((a) => { const k = rfCalc(a, C); apl += k.valor; bruto += k.bruto; liq += k.liq; mes += k.mes; liq12 += k.liq12; return { a, k }; });
+    return { C, itens, apl, bruto, liq, mes, liq12 };
+  }
+  function renderRF() {
+    const T = rfTotais(), C = T.C;
+    $("#rf-cdi").textContent = `CDI ${num(C.anual, 2)}% a.a.` + (C.data ? ` · Banco Central, ${dataBR(C.data)}` : " · estimado pela Selic");
+    if (!S.rfOk) {
+      $("#rf-kpis").hidden = true; $("#rf-alerts").hidden = true;
+      $("#rf-list").innerHTML = `<div class="empty"><strong>Renda fixa ainda não ativada</strong>Falta criar a tabela no banco de dados (arquivo supabase/migrations/20261026_renda_fixa.sql). Depois disso, recarregue a página.</div>`;
+      return;
+    }
+    if (!S.rf.length) {
+      $("#rf-kpis").hidden = true; $("#rf-alerts").hidden = true;
+      $("#rf-list").innerHTML = `<div class="empty"><strong>Nenhuma aplicação ainda</strong>Adicione seu CDB, caixinha ou cofrinho abaixo para ver quanto já rendeu e quanto sobra depois do imposto.</div>`;
+    } else {
+      $("#rf-kpis").hidden = false;
+      const r = T.bruto - T.apl;
+      $("#rf-kpis").innerHTML = [
+        ["Aplicado", brl(T.apl)],
+        ["Valor hoje", brl(T.bruto)],
+        ["Rendeu", `<span class="${cls(r)}">${esc(sinal(r, brl))}</span> <small class="${cls(r)}">${esc(pct(T.apl ? r / T.apl * 100 : 0))}</small>`],
+        ["Se resgatar tudo hoje", brl(T.liq) + ` <small class="hint">líquido</small>`],
+        ["Rende por mês agora", "+" + brl(T.mes) + ` <small class="hint">bruto</small>`],
+      ].map(([l, v]) => `<div class="kpi"><span class="label">${l}</span><b>${v}</b></div>`).join("");
+      // Avisos gerais
+      const al = [];
+      const lento = T.itens.filter(({ a }) => a.indexador === "cdi" && Number(a.taxa) < 100 && !a.isento_ir);
+      if (lento.length) al.push(`<span class="alert neg"><span>${lento.length === 1 ? "1 aplicação rende" : lento.length + " aplicações rendem"} menos que 100% do CDI. Veja em “Comparar bancos” onde renderia mais.</span></span>`);
+      const fora = T.itens.filter(({ k }) => k.lim && k.p2 > 0);
+      if (fora.length) al.push(`<span class="alert neg"><span>R$ ${num(fora.reduce((s, x) => s + x.k.p2, 0))} acima do limite da taxa turbinada.</span></span>`);
+      $("#rf-alerts").innerHTML = al.join(""); $("#rf-alerts").hidden = !al.length;
+      $("#rf-list").innerHTML = T.itens.slice().sort((x, y) => y.k.bruto - x.k.bruto).map(({ a, k }) => {
+        const av = rfAvisos(a, k);
+        return `<article class="rf-card" data-rf="${a.id}">
+          <div class="rf-top">${bkHtml(a.banco)}<div class="rf-tt"><b>${esc(a.nome)}</b><span>${esc(a.banco)} · desde ${dataBR(a.data_aplicacao)}${k.dias ? ` (${num(k.dias, 0)} ${k.dias === 1 ? "dia" : "dias"})` : ""}${a.isento_ir ? " · isento de IR" : ""}${a.vencimento ? ` · vence ${dataBR(a.vencimento)}` : ""}</span></div><span class="rf-tx">${esc(taxaTxt(a))}${k.lim ? " até " + esc(brl(k.lim)) : ""}</span></div>
+          <div class="rf-nums">
+            <div><span class="label">Aplicado</span><b>${brl(k.valor)}</b></div>
+            <div><span class="label">Valor hoje</span><b>${brl(k.bruto)}</b></div>
+            <div><span class="label">Rendeu</span><b class="${cls(k.rend)}">${esc(sinal(k.rend, brl))}</b><small class="${cls(k.rend)}">${esc(pct(k.rendPct))}</small></div>
+            <div><span class="label">Se resgatar hoje</span><b>${brl(k.liq)}</b>${k.iof + k.ir > 0.004 ? `<small class="hint" title="IR ${num(k.irPct, 1)}%${k.iofPct ? " e IOF " + k.iofPct + "%" : ""}">−${esc(brl(k.iof + k.ir))}</small>` : ""}</div>
+            <div><span class="label">Rende por mês</span><b class="up">+${brl(k.mes)}</b></div>
+          </div>
+          <p class="hint" style="margin:8px 0 0">Em 12 meses, se o CDI ficar em ${num(C.anual, 2)}%: cerca de <b>${brl(k.liq12)}</b> líquido.</p>
+          ${av.length ? `<div class="rf-avisos">${av.map(([c, t]) => `<div class="rf-av ${c}">${esc(t)}</div>`).join("")}</div>` : ""}
+          <div class="rf-acts">${S.rfDel === a.id ? `<button type="button" class="btn sm danger" data-rf-del-ok="${a.id}">Confirmar remoção</button><button type="button" class="btn ghost sm" data-rf-del-no="1">Cancelar</button>` : `<button type="button" class="btn ghost sm" data-rf-edit="${a.id}">Editar</button><button type="button" class="btn ghost sm" data-rf-del="${a.id}">Remover</button>`}</div>
+        </article>`;
+      }).join("");
+    }
+    const cv = $("#rf-comp-valor"); if (!cv.value && document.activeElement !== cv) cv.placeholder = String(Math.round(T.apl || 5000));
+    renderRFComp();
+  }
+  function renderRFComp() {
+    const C = cdiInfo(); const v = Number($("#rf-comp-valor").value) || Math.round(rfTotais().apl) || 5000;
+    const meus = new Set(S.rf.map((a) => a.produto));
+    const hoje = hojeISO();
+    const lista = RF_MOD.filter((m) => m.comparar !== false).map((m) => {
+      const k = rfCalc({ produto: m.id, indexador: "cdi", taxa: m.taxa, limite: m.limite || null, taxa_excedente: m.exc != null ? m.exc : null, valor: v, data_aplicacao: hoje, isento_ir: false }, C);
+      return { m, ganho: k.liq12 - v, mes: k.mes };
+    }).sort((a, b) => b.ganho - a.ganho);
+    const max = Math.max(...lista.map((x) => x.ganho), 1);
+    $("#rf-comp-hint").textContent = `Quanto ${brl(v)} renderiam em 12 meses em cada opção, já descontado o IR (17,5% para 1 ano), com o CDI de hoje (${num(C.anual, 2)}% a.a.). Acima do limite de cada produto, consideramos 100% do CDI.`;
+    $("#rf-comp-body").innerHTML = `<div class="rf-rank">${lista.map((x, i) => `<div class="rf-rk${meus.has(x.m.id) ? " meu" : ""}"><span class="n">${i + 1}</span>${bkHtml(x.m.banco)}<div class="t"><b>${esc(x.m.banco)} · ${esc(x.m.nome)}</b><span>${esc(num(x.m.taxa, 1).replace(",0", ""))}% do CDI${x.m.limite ? " até " + esc(brl(x.m.limite)) : ""} · ${esc(x.m.req || "")}${meus.has(x.m.id) ? " · você usa" : ""}</span><div class="rf-bar"><i style="width:${Math.max(4, x.ganho / max * 100).toFixed(1)}%"></i></div></div><div class="v">+${esc(brl(x.ganho))}<small>~${esc(brl(x.mes))}/mês</small></div></div>`).join("")}</div>`;
+  }
+  // Formulário
+  (function montarSelect() {
+    const grupos = {}; RF_MOD.forEach((m) => { const g = m.id === "outro" || m.banco === "Outro banco" ? "Outros" : m.banco; (grupos[g] = grupos[g] || []).push(m); });
+    $("#rf-modelo").innerHTML = Object.entries(grupos).map(([g, ms]) => `<optgroup label="${esc(g)}">${ms.map((m) => `<option value="${m.id}">${esc(m.id === "outro" || m.banco === "Outro banco" ? m.nome : m.banco + " · " + m.nome)} — ${esc(m.indexador === "pre" ? "prefixado" : num(m.taxa, 1).replace(",0", "") + "% CDI")}</option>`).join("")}</optgroup>`).join("");
+    $("#rf-modelo").value = "nubank_turbo";
+  })();
+  function rfMsg(t, ok) { const o = $("#rf-msg"); o.textContent = t; o.className = "form-msg " + (ok ? "up" : ok === false ? "down" : ""); }
+  function rfAplicarModelo(manterValores) {
+    const m = RF_MAP[$("#rf-modelo").value] || RF_MAP.outro;
+    $("#rf-regras").innerHTML = m.regras || "";
+    if (manterValores) return;
+    $("#rf-taxa").value = m.taxa; $("#rf-banco").value = m.banco === "Outro banco" ? "" : m.banco; $("#rf-nome").value = m.id === "outro" ? "" : m.nome;
+    $("#rf-idx").value = m.indexador || "cdi"; $("#rf-limite").value = m.limite || ""; $("#rf-exc").value = m.exc != null ? m.exc : "";
+    $("#rf-isento").checked = !!m.isento; rfLbl();
+    if (m.id === "outro" || m.banco === "Outro banco") $(".rf-mais").open = true;
+  }
+  function rfLbl() { $("#rf-taxa-lbl").textContent = $("#rf-idx").value === "pre" ? "Taxa (% ao ano)" : "Rende (% do CDI)"; }
+  function rfLimparForm() {
+    S.rfEdit = null; $("#rf-form").reset(); $("#rf-modelo").value = "nubank_turbo"; $("#rf-data").value = hojeISO(); rfAplicarModelo(false);
+    $("#rf-submit").textContent = "Adicionar"; $("#rf-cancel").hidden = true; $("#rf-sum-txt").textContent = "Adicionar aplicação";
+  }
+  $("#rf-modelo").addEventListener("change", () => rfAplicarModelo(false));
+  $("#rf-idx").addEventListener("change", rfLbl);
+  $("#rf-cancel").addEventListener("click", () => { rfLimparForm(); rfMsg(""); });
+  $("#rf-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!S.rfOk) { rfMsg("A renda fixa ainda não foi ativada no banco de dados.", false); return; }
+    const m = RF_MAP[$("#rf-modelo").value] || RF_MAP.outro;
+    const valor = Number($("#rf-valor").value), taxa = Number($("#rf-taxa").value), data = $("#rf-data").value;
+    const banco = $("#rf-banco").value.trim(), nome = $("#rf-nome").value.trim();
+    const limite = $("#rf-limite").value ? Number($("#rf-limite").value) : null, exc = $("#rf-exc").value !== "" ? Number($("#rf-exc").value) : null;
+    const venc = $("#rf-venc").value || null;
+    if (!(valor > 0)) return rfMsg("Informe o valor aplicado.", false);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || data < "2000-01-01") return rfMsg("Informe a data da aplicação.", false);
+    if (!(taxa > 0 && taxa <= 300)) return rfMsg("Informe a taxa (por exemplo, 115 para 115% do CDI).", false);
+    if (!banco || !nome) { $(".rf-mais").open = true; return rfMsg("Informe o banco e o nome da aplicação em “Mais opções”.", false); }
+    if (limite != null && !(limite > 0)) return rfMsg("O limite precisa ser maior que zero (ou deixe em branco).", false);
+    if (venc && venc < data) return rfMsg("O vencimento não pode ser antes da data da aplicação.", false);
+    const row = { produto: m.id, banco: banco.slice(0, 60), nome: nome.slice(0, 80), indexador: $("#rf-idx").value === "pre" ? "pre" : "cdi", taxa, limite, taxa_excedente: exc, valor: Math.round(valor * 100) / 100, data_aplicacao: data, vencimento: venc, isento_ir: $("#rf-isento").checked };
+    const b = $("#rf-submit"); b.disabled = true;
+    try {
+      const { error } = S.rfEdit ? await sb.from("renda_fixa").update(row).eq("id", S.rfEdit) : await sb.from("renda_fixa").insert(row);
+      if (error) throw error;
+      const editou = !!S.rfEdit; rfLimparForm(); rfMsg(editou ? "Aplicação atualizada." : "Aplicação adicionada.", true);
+      await carregarRF(); renderRF(); renderHero();
+    } catch (err) { rfMsg("Não foi possível salvar agora. Tente de novo.", false); }
+    finally { b.disabled = false; }
+  });
+  $("#rf-list").addEventListener("click", async (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.rfEdit) {
+      const a = S.rf.find((x) => String(x.id) === b.dataset.rfEdit); if (!a) return;
+      S.rfEdit = a.id; $("#rf-modelo").value = RF_MAP[a.produto] ? a.produto : "outro"; rfAplicarModelo(true);
+      $("#rf-valor").value = a.valor; $("#rf-data").value = a.data_aplicacao; $("#rf-taxa").value = a.taxa; $("#rf-banco").value = a.banco; $("#rf-nome").value = a.nome;
+      $("#rf-idx").value = a.indexador; $("#rf-limite").value = a.limite || ""; $("#rf-exc").value = a.taxa_excedente != null ? a.taxa_excedente : ""; $("#rf-venc").value = a.vencimento || ""; $("#rf-isento").checked = !!a.isento_ir; rfLbl();
+      $("#rf-submit").textContent = "Salvar alterações"; $("#rf-cancel").hidden = false; $("#rf-sum-txt").textContent = "Editar: " + a.nome; rfMsg("");
+      $("#rf-addbox").open = true; $("#rf-addbox").scrollIntoView({ behavior: reduz ? "auto" : "smooth", block: "start" }); return;
+    }
+    if (b.dataset.rfDel) { S.rfDel = Number(b.dataset.rfDel); renderRF(); return; }
+    if (b.dataset.rfDelNo) { S.rfDel = null; renderRF(); return; }
+    if (b.dataset.rfDelOk) {
+      const id = Number(b.dataset.rfDelOk); S.rfDel = null;
+      const { error } = await sb.from("renda_fixa").delete().eq("id", id);
+      if (error) { toast("Não foi possível remover agora."); return; }
+      if (S.rfEdit === id) rfLimparForm();
+      await carregarRF(); renderRF(); renderHero(); toast("Aplicação removida.");
+    }
+  });
+  let tRfc; $("#rf-comp-valor").addEventListener("input", () => { clearTimeout(tRfc); tRfc = setTimeout(renderRFComp, 150); });
+  rfLimparForm();
 
   /* Início */
   sb.auth.getSession().then(({ data }) => { if (!data.session && !modoNovaSenha) { $("#auth").hidden = false; setAuthMode(false); } });

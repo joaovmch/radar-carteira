@@ -172,17 +172,62 @@ function lerRss(xml: string, bing: boolean, dias: number): Noticia[] {
   }
   return out;
 }
-// Google Notícias; se falhar ou vier vazio, Bing Notícias.
-export async function noticias(consulta: string, max = 10, dias = 7): Promise<Noticia[]> {
+// Páginas de cotação/indicadores que o Google indexa como "notícia" e não trazem fato novo
+const LIXO_NOTICIA = /Cota[çc][aã]o hoje\s*[—–-]|^A[çc][aã]o [A-Z0-9.]+:\s*Cota|Resultados, Dividendos, Cota[çc][aã]o e Indicadores|^[A-Z]{3,5}\d{1,2}\s*[-–]\s*[^-–]+\s*[-–]\s*Cota/i;
+const NOME_RUIDO = /\b(inc|corp|corporation|co|ltd|plc|holdings?|group|company|class [a-c]|common stock|ordinary shares|shares|trust|etf|fund|index|sa|s\.a)\b\.?/gi;
+const INDICES_ETF: [RegExp, string][] = [
+  [/s&p ?500|sp ?500/i, "S&P 500"], [/nasdaq[- ]?100|qqq/i, "Nasdaq-100"], [/russell ?2000/i, "Russell 2000"],
+  [/dow jones/i, "Dow Jones"], [/total stock market/i, "Total Stock Market"], [/total world/i, "Total World"],
+];
+const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Monta a busca de notícias de um ativo e o filtro que descarta manchetes sem relação.
+// Ativos dos EUA têm códigos que são palavras comuns (VOO = "voo" de avião, ON, ALL, COST...),
+// então nunca buscamos o código sozinho: usamos o nome do fundo/empresa e exigimos que o
+// título cite o nome, o índice ou o código EM MAIÚSCULAS.
+export function buscaNoticias(ticker: string, nome: string, classe?: string | null) {
+  const nm = String(nome || ticker).replace(/\s*\(.*\)$/, "").trim();
+  if (!EXTERIOR(classe)) {
+    return { consulta: ticker.length <= 2 ? `"${nm}"` : `"${ticker}" OR "${nm}"`, relevante: (_t: string) => true, exterior: false };
+  }
+  const nucleo = nm.replace(NOME_RUIDO, " ").replace(/[,.]+/g, " ").replace(/\s+/g, " ").trim() || nm;
+  const idx = classe === "etf_ext" ? INDICES_ETF.find(([re]) => re.test(nm))?.[1] || null : null;
+  const termos = [`"${nucleo}"`];
+  if (classe === "etf_ext") termos.push(`"ETF ${ticker}"`, `"${ticker} ETF"`);
+  if (idx) termos.push(`"${idx}"`);
+  // Palavra que identifica o emissor/empresa ("Vanguard", "Apple"); a 1ª com 4+ letras
+  const chave = (nucleo.split(" ").find((w) => w.replace(/[^\p{L}]/gu, "").length >= 4) || nucleo).toLowerCase();
+  const reTicker = new RegExp(`(^|[^A-Za-z])${escRe(ticker)}([^A-Za-z]|$)`); // diferencia maiúsculas: "VOO" ≠ "voo"
+  const relevante = (titulo: string) => {
+    const t = titulo.toLowerCase();
+    return reTicker.test(titulo) || t.includes(nucleo.toLowerCase()) || t.includes(chave) || (!!idx && t.includes(idx.toLowerCase()));
+  };
+  return { consulta: [...new Set(termos)].join(" OR "), relevante, exterior: true };
+}
+
+async function buscarRss(consulta: string, dias: number, ingles = false): Promise<Noticia[]> {
   let lista: Noticia[] = [];
+  const reg = ingles ? "hl=en-US&gl=US&ceid=US:en" : "hl=pt-BR&gl=BR&ceid=BR:pt-419";
   try {
-    const xml = await texto(`https://news.google.com/rss/search?q=${encodeURIComponent(consulta + ` when:${dias}d`)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`, 10000);
+    const xml = await texto(`https://news.google.com/rss/search?q=${encodeURIComponent(consulta + ` when:${dias}d`)}&${reg}`, 10000);
     lista = lerRss(xml, false, dias);
   } catch (_) { /* tenta o Bing */ }
-  if (!lista.length) {
+  if (!lista.length && !ingles) {
     const simples = consulta.replace(/"/g, "").replace(/\s+OR\s+/g, " ").trim();
     const xml = await texto(`https://www.bing.com/news/search?q=${encodeURIComponent(simples)}&format=rss&setlang=pt-BR&cc=BR`, 10000);
     lista = lerRss(xml, true, dias);
+  }
+  return lista;
+}
+
+// Google Notícias; se falhar ou vier vazio, Bing Notícias. Com "filtro", descarta manchetes
+// sem relação com o ativo; para ativos dos EUA, completa com notícias em inglês se faltar.
+export async function noticias(consulta: string, max = 10, dias = 7, filtro?: { relevante: (t: string) => boolean; exterior?: boolean }): Promise<Noticia[]> {
+  const ok = (n: Noticia) => !LIXO_NOTICIA.test(n.titulo) && (!filtro || filtro.relevante(n.titulo));
+  let lista = (await buscarRss(consulta, dias)).filter(ok);
+  if (filtro?.exterior && lista.length < Math.min(max, 5)) {
+    const en = await buscarRss(consulta, dias, true).catch(() => [] as Noticia[]);
+    lista = lista.concat(en.filter(ok));
   }
   const vistos = new Set<string>();
   lista = lista.filter((n) => { const k = n.titulo.toLowerCase().slice(0, 60); if (vistos.has(k)) return false; vistos.add(k); return true; });
@@ -492,8 +537,8 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
   // BDR: P/L, P/VP e valor de mercado do TradingView vêm distorcidos pela proporção do recibo
   if (f2 && classe === "bdr") { f2.ind.pl = null; f2.ind.pvp = null; f2.ind.valorMercado = null; }
   const nome = (classe === "acao" || classe === "bdr" || classe === "acao_ext") && w?.titulo ? w.titulo : classe === "acao" ? nomeCurto(nomeB3) : nomeFundo(nomeB3);
-  const busca = ticker.length <= 2 ? `"${nome.replace(/\s*\(.*\)$/, "")}"` : `"${ticker}" OR "${nome.replace(/\s*\(.*\)$/, "")}"`;
-  const not = await noticias(busca, 12, 30).catch(() => ant.noticias || []);
+  const bn = buscaNoticias(ticker, nome, classe);
+  const not = await noticias(bn.consulta, 12, 30, bn).catch(() => ant.noticias || []);
   const h = hist.status === "fulfilled" ? hist.value : null;
 
   // Fundamentos no mesmo formato para todos os tipos (ind = indicadores)
@@ -553,11 +598,11 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
 export async function atualizarDinamico(sb: SupabaseClient, ticker: string, dados: any, pronto: { h?: Historico | null; sent?: any } = {}) {
   const d = { ...dados };
   const precisaNoticias = !d.noticiasEm || Date.now() - Date.parse(d.noticiasEm) > 60 * 60000;
-  const nm = String(d.nome || ticker).replace(/\s*\(.*\)$/, "");
+  const bn = buscaNoticias(ticker, String(d.nome || ticker), d.classe);
   const [hist, tv, not] = await Promise.allSettled([
     pronto.h ? Promise.resolve(pronto.h) : historico(simboloYahoo(ticker, d.classe)),
     pronto.sent !== undefined ? Promise.resolve({ [ticker]: pronto.sent }) : analistas([ticker], { [ticker]: d.bolsa || "B3" }),
-    precisaNoticias ? noticias(ticker.length <= 2 ? `"${nm}"` : `"${ticker}" OR "${nm}"`, 12, 30) : Promise.resolve(null),
+    precisaNoticias ? noticias(bn.consulta, 12, 30, bn) : Promise.resolve(null),
   ]);
   if (hist.status === "fulfilled" && hist.value) { d.desempenho = indicadores(hist.value) || d.desempenho; d.serie = serieSemanal(hist.value); }
   if (tv.status === "fulfilled" && tv.value[ticker]) d.analistas = tv.value[ticker];
@@ -800,6 +845,25 @@ export function proximoCopom() {
   const meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   return `${dia - 1}–${dia} ${meses[m - 1]}${a !== new Date().getUTCFullYear() ? " " + a : ""}`;
 }
+// CDI diário (% ao dia, série 12 do Banco Central) desde ~3 anos atrás e a taxa anual de hoje (série 4389).
+// Usado no navegador para calcular quanto rende cada aplicação de renda fixa desde a data em que foi feita.
+export async function cdi() {
+  const ini = new Date(Date.now() - 3 * 366 * 864e5);
+  const dd = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+  const [dia, ano] = await Promise.all([
+    obj(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json&dataInicial=${dd(ini)}&dataFinal=${dd(new Date())}`, 20000),
+    obj("https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json").catch(() => null),
+  ]);
+  const n = (v: any) => Number(String(v).replace(",", "."));
+  const serie: [string, number][] = (Array.isArray(dia) ? dia : [])
+    .map((x: any) => { const [d, m, a] = String(x.data).split("/"); return [`${a}-${m}-${d}`, n(x.valor)] as [string, number]; })
+    .filter(([d, v]) => /^\d{4}-\d{2}-\d{2}$/.test(d) && isFinite(v) && v >= 0 && v < 1);
+  if (serie.length < 50) throw new Error("CDI incompleto");
+  const ult = serie[serie.length - 1][1];
+  const anual = ano?.[0] ? n(ano[0].valor) : Math.round((Math.pow(1 + ult / 100, 252) - 1) * 10000) / 100;
+  return { anual, diario: ult, serie, fonte: "Banco Central (SGS 12 e 4389)", atualizadoEm: new Date().toISOString() };
+}
+
 export async function selic() {
   const d = await obj("https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json");
   return d?.[0] ? Number(String(d[0].valor).replace(",", ".")) : null;

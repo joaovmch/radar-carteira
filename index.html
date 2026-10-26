@@ -18,7 +18,7 @@
   --fg:#111827; --muted:#5B6478; --faint:#8D95A8;
   --accent:#2457F5; --accent-ink:#FFFFFF; --accent-bg:#E7EDFF;
   --up:#0B8F5F; --up-bg:#DFF5EA; --down:#D93A3F; --down-bg:#FCE6E6; --warn:#A16800; --warn-bg:#FBF0D9;
-  --c-acao:#2F6BFF; --c-fii:#F59E0B; --c-etf:#8B5CF6; --c-bdr:#D946EF; --c-acao_ext:#06B6D4; --c-etf_ext:#65A30D;
+  --c-acao:#2F6BFF; --c-fii:#F59E0B; --c-etf:#8B5CF6; --c-bdr:#D946EF; --c-acao_ext:#06B6D4; --c-etf_ext:#65A30D; --c-rf:#0F9D8A;
   --hero-a:#1E40E6; --hero-b:#6D28D9;
   --display:"Archivo","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -35,7 +35,7 @@
   --fg:#E8EDF7; --muted:#9AA6BF; --faint:#6B7792;
   --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1B2650;
   --up:#3DDC97; --up-bg:#0F2F24; --down:#FF7A7A; --down-bg:#3A1A1D; --warn:#F5C25B; --warn-bg:#33270F;
-  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635;
+  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF;
   --hero-a:#1B37C9; --hero-b:#5B21B6;
   --shadow:none; --shadow-h:0 10px 30px rgba(0,0,0,.35); --shadow-lg:0 18px 50px rgba(0,0,0,.55);
   color-scheme:dark}}
@@ -44,7 +44,7 @@
   --fg:#E8EDF7; --muted:#9AA6BF; --faint:#6B7792;
   --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1B2650;
   --up:#3DDC97; --up-bg:#0F2F24; --down:#FF7A7A; --down-bg:#3A1A1D; --warn:#F5C25B; --warn-bg:#33270F;
-  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635;
+  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF;
   --hero-a:#1B37C9; --hero-b:#5B21B6;
   --shadow:none; --shadow-h:0 10px 30px rgba(0,0,0,.35); --shadow-lg:0 18px 50px rgba(0,0,0,.55);
   color-scheme:dark}
@@ -314,6 +314,65 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .form-msg{grid-column:1 / -1;font-size:13px;min-height:1em;margin:0}
 .f-hint{grid-column:1 / -1;font-size:12px;color:var(--muted);margin:-2px 0 0}
 
+/* Renda fixa */
+.rf-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media (max-width:900px){.rf-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:560px){.rf-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.rf-list{display:flex;flex-direction:column;gap:10px}
+.rf-card{border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--surface);transition:box-shadow .25s,transform .25s var(--ease)}
+.rf-card:hover{box-shadow:var(--shadow-h)}
+.rf-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rf-bk{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:13px;color:#fff;background:var(--bk,var(--accent));flex:none}
+.rf-tt{min-width:0;flex:1}
+.rf-tt b{display:block;font-size:15px}
+.rf-tt span{font-size:12.5px;color:var(--muted)}
+.rf-tx{font-family:var(--mono);font-size:12px;font-weight:600;background:var(--up-bg);color:var(--up);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.rf-nums{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px 14px;margin-top:12px}
+@media (max-width:700px){.rf-nums{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.rf-nums div{min-width:0}
+.rf-nums .label{display:block;font-size:11.5px}
+.rf-nums b{font-family:var(--mono);font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rf-nums small{font-family:var(--mono);font-size:11.5px;margin-left:4px}
+.rf-avisos{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.rf-av{font-size:12.5px;border-radius:9px;padding:6px 10px;background:var(--sunk);color:var(--fg)}
+.rf-av.warn{background:var(--warn-bg)} .rf-av.neg{background:var(--down-bg)} .rf-av.pos{background:var(--up-bg)}
+.rf-acts{display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap}
+.rf-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:end;margin-top:12px}
+@media (max-width:560px){.rf-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.rf-form>label:nth-of-type(4){grid-column:1 / -1}}
+.rf-wide{grid-column:1 / -1}
+.rf-form label,.rf-grid label,.rf-comp-top label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
+.rf-form input,.rf-form select,.rf-comp-top input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px;font-size:16px;width:100%;min-width:0;color:var(--fg);transition:border-color .2s,box-shadow .2s}
+.rf-form input:focus,.rf-form select:focus,.rf-comp-top input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-bg);outline:none}
+.rf-form label.rf-chk{flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--fg);align-self:center}
+.rf-form label.rf-chk input{width:18px;height:18px;padding:0}
+.rf-regras{font-size:13px;line-height:1.5;background:var(--accent-bg);border-radius:10px;padding:10px 12px;color:var(--fg)}
+.rf-regras:empty{display:none}
+.rf-regras b{font-weight:600}
+.rf-mais>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+.rf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+@media (max-width:560px){.rf-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.rf-btns{display:flex;gap:8px;flex-wrap:wrap}
+.rf-comp-top{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:12px;align-items:end;margin:12px 0}
+@media (max-width:560px){.rf-comp-top{grid-template-columns:1fr}}
+.rf-comp-top .hint{margin:0}
+.rf-rank{display:flex;flex-direction:column;gap:6px}
+.rf-rk{display:grid;grid-template-columns:22px 30px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line-2);border-radius:12px;padding:9px 12px}
+.rf-rk.meu{border-color:var(--accent);background:var(--accent-bg)}
+.rf-rk .n{font-family:var(--mono);font-size:12px;color:var(--faint);text-align:right}
+.rf-rk .rf-bk{width:30px;height:30px;font-size:11.5px;border-radius:9px}
+.rf-rk .t b{font-size:14px} .rf-rk .t span{display:block;font-size:12px;color:var(--muted)}
+.rf-rk .v{text-align:right;font-family:var(--mono);font-size:13.5px;font-weight:600;white-space:nowrap}
+.rf-rk .v small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+@media (max-width:560px){
+  .rf-tt{flex-basis:calc(100% - 46px)}
+  .rf-tx{margin-left:44px}
+  .rf-nums small{display:block;margin-left:0}
+  .rf-kpis .kpi small{display:none}
+  .rf-kpis .kpi:last-child{grid-column:1 / -1}
+}
+.rf-bar{height:4px;border-radius:4px;background:var(--sunk);margin-top:5px;overflow:hidden}
+.rf-bar i{display:block;height:100%;background:var(--up);border-radius:4px;transition:width .8s var(--ease)}
+
 /* Notícias */
 .news-panel{display:flex;flex-direction:column}
 @media (min-width:1000px){.news-panel{position:sticky;top:150px;max-height:calc(100vh - 170px)}}
@@ -576,6 +635,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <a href="#sec-resumo">Resumo</a>
       <a href="#sec-mercado">Mercado</a>
       <a href="#sec-carteira">Carteira</a>
+      <a href="#sec-rf">Renda fixa</a>
       <a href="#sec-noticias">Notícias</a>
       <a href="#sec-empresas">Ativos</a>
       <a href="#sec-analistas">Analistas</a>
@@ -690,6 +750,45 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
         </div>
       </aside>
     </div>
+
+    <!-- 2b. Renda fixa -->
+    <section class="band panel" aria-labelledby="h-rf" id="sec-rf">
+      <div class="panel-head"><h2 id="h-rf">Renda fixa</h2><span class="when" id="rf-cdi"></span></div>
+      <p class="sub">CDBs, caixinhas, cofrinhos, LCIs e LCAs. O rendimento é calculado com o CDI de cada dia útil desde a data da aplicação, e o valor líquido já desconta o IR e o IOF que seriam cobrados se você resgatasse hoje.</p>
+      <div class="rf-kpis" id="rf-kpis" hidden></div>
+      <div class="alerts" id="rf-alerts" hidden></div>
+      <div class="rf-list" id="rf-list"><div class="carregando" style="padding:10px"><i></i><i style="width:80%"></i></div></div>
+      <details class="addbox" id="rf-addbox">
+        <summary><span class="plus" aria-hidden="true">+</span><span id="rf-sum-txt">Adicionar aplicação</span></summary>
+        <form class="rf-form" id="rf-form" autocomplete="off" novalidate>
+          <label class="rf-wide">Banco e produto<select id="rf-modelo"></select></label>
+          <div class="rf-regras rf-wide" id="rf-regras" aria-live="polite"></div>
+          <label>Valor aplicado (R$)<input id="rf-valor" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="5000" required></label>
+          <label>Data da aplicação<input id="rf-data" type="date" required></label>
+          <label><span id="rf-taxa-lbl">Rende (% do CDI)</span><input id="rf-taxa" type="number" min="0.01" max="300" step="0.01" inputmode="decimal" required></label>
+          <details class="rf-mais rf-wide">
+            <summary>Mais opções (nome, limite, vencimento, isenção de IR)</summary>
+            <div class="rf-grid">
+              <label>Banco<input id="rf-banco" maxlength="60" required></label>
+              <label>Nome da aplicação<input id="rf-nome" maxlength="80" required></label>
+              <label>Tipo de taxa<select id="rf-idx"><option value="cdi">Pós-fixado (% do CDI)</option><option value="pre">Prefixado (% ao ano)</option></select></label>
+              <label>Limite da taxa (R$)<input id="rf-limite" type="number" min="0" step="0.01" inputmode="decimal" placeholder="sem limite"></label>
+              <label>Acima do limite rende (% do CDI)<input id="rf-exc" type="number" min="0" max="300" step="0.01" inputmode="decimal" placeholder="100"></label>
+              <label>Vencimento<input id="rf-venc" type="date"></label>
+              <label class="rf-chk"><input id="rf-isento" type="checkbox"> Isento de IR (LCI, LCA)</label>
+            </div>
+          </details>
+          <div class="rf-btns rf-wide"><button class="btn primary" id="rf-submit" type="submit">Adicionar</button><button class="btn ghost" id="rf-cancel" type="button" hidden>Cancelar edição</button></div>
+          <p class="form-msg" id="rf-msg" role="status"></p>
+        </form>
+      </details>
+      <details class="addbox rf-comp" id="rf-comp">
+        <summary><span class="plus" aria-hidden="true">%</span>Comparar bancos: onde esse dinheiro renderia mais</summary>
+        <div class="rf-comp-top"><label>Quanto você quer guardar (R$)<input id="rf-comp-valor" type="number" min="1" step="1" inputmode="decimal"></label><p class="hint" id="rf-comp-hint"></p></div>
+        <div id="rf-comp-body"></div>
+      </details>
+      <p class="rec-src" id="rf-fonte">Taxas e regras pesquisadas em out/2026 nos sites, blogs e comunicados dos bancos e em portais de finanças. Os bancos mudam essas condições com frequência: confira no app antes de aplicar.</p>
+    </section>
 
     <!-- 3. Ativos -->
     <section class="band panel" aria-labelledby="h-emp" id="sec-empresas">

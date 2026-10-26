@@ -6,6 +6,7 @@ Painel para acompanhar uma carteira de ações, FIIs, ETFs e BDRs da B3 e de aç
 
 - **Resumo**: patrimônio total em reais (ativos em dólar convertidos pelo câmbio do momento), ganho ou perda do dia, resultado sobre o preço médio, proventos estimados em 12 meses, divisão por classe e gráfico da evolução da carteira no último ano.
 - **Classes de ativos**: ações, FIIs, ETFs e BDRs da B3, e ações e ETFs dos EUA (as 150 maiores e os 70 maiores ETFs, mais qualquer outro código digitado na carteira). Ativos dos EUA aceitam frações (ex.: 0,42 de VOO) e preço médio em dólar.
+- **Renda fixa**: CDBs, caixinhas, cofrinhos, LCIs e LCAs, com modelos prontos de cada banco (Caixinha Turbo do Nubank, Cofrinho Meli+ do Mercado Pago, Cofrinho Turbinado do PicPay, CDB 130% do PagBank, Porquinhos do Inter, CDBs de liquidez diária de C6, Itaú, Bradesco, Santander, BB, BTG, Sofisa e Daycoval) e suas regras (limite, movimentação mínima, renovação). O rendimento é calculado com o CDI diário do Banco Central desde a data da aplicação; mostra o valor hoje, o líquido se resgatar (IR regressivo e IOF), quanto rende por mês, avisos (limite estourado, IOF, ciclo da Turbo) e um comparativo de onde o mesmo valor renderia mais. Entra no patrimônio total e na divisão por classe.
 - **Carteira**: filtro por classe, alertas do que pede atenção e detalhes de cada posição.
 - **Fita de cotações**: Ibovespa, IFIX, S&P 500, Nasdaq, dólar e seus ativos rolando no topo.
 - **Cotações** de ações, FIIs, ETFs e BDRs da B3 (brapi.dev, com atraso de até ~30 min no plano gratuito) e dos EUA (TradingView), atualizadas a cada 2 minutos durante o pregão.
@@ -28,7 +29,7 @@ Nada aqui é recomendação individual de investimento.
 | Função `radar` (`supabase/functions/radar`) | Edge Function com três ações: `cotacoes`, `analisar` (mercado, destaques, sinais e analistas) e `empresa` (perfil completo; gráfico, desempenho e analistas renovados a cada 15 min, texto e balanço a cada 12 h) |
 | Agendamento | `pg_cron` no banco: cotações a cada 2 min no pregão; mercado, sinais e analistas de todas as ações das carteiras a cada 5 min das 9h às 19h nos dias úteis e a cada 3 h no resto do tempo |
 
-Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e logos dos EUA, nomes de fundos e BDRs), Yahoo Finance (histórico de preços, Ibovespa e dólar), TradingView (consenso de analistas, preço-alvo e leitura técnica), Banco Central (Selic), Google Notícias e Bing Notícias (manchetes), StatusInvest (indicadores, governança e proventos), Wikipedia e Wikidata (descrição, fotos e fatos das empresas).
+Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e logos dos EUA, nomes de fundos e BDRs), Yahoo Finance (histórico de preços, Ibovespa e dólar), TradingView (consenso de analistas, preço-alvo e leitura técnica), Banco Central (Selic e CDI diário), Google Notícias e Bing Notícias (manchetes), StatusInvest (indicadores, governança e proventos), Wikipedia e Wikidata (descrição, fotos e fatos das empresas).
 
 ## Segurança
 
@@ -42,7 +43,8 @@ Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e log
 1. **Authentication → Sign In / Providers → Email**: se o site é só para você, desligue *Allow new users to sign up*.
 2. **Authentication → Passwords** (ou *Policies*): ligue *Leaked password protection* e use senha mínima de 8 caracteres com letras e números.
 3. **Edge Functions**: apague as funções antigas `chat`, `cotacoes` e `sonda` (estão desativadas) e, em *Secrets*, apague `GEMINI_API_KEY` e `ANTHROPIC_API_KEY`.
-4. **SQL Editor**: rode o bloco PENDENTE no fim de `supabase/migrations/20261022_sem_ia_empresas_seguranca.sql`.
+4. **SQL Editor**: rode `supabase/migrations/20261026_renda_fixa.sql` (cria a tabela da renda fixa).
+5. **SQL Editor**: rode o bloco PENDENTE no fim de `supabase/migrations/20261022_sem_ia_empresas_seguranca.sql`.
 
 ## Publicar
 
