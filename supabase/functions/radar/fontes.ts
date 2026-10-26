@@ -364,7 +364,7 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
   const { data: cot } = await sb.from("cotacoes").select("nome,setor,setor_macro,preco,var_dia,valor_mercado_mi").eq("ticker", ticker).maybeSingle();
   const nomeB3 = cot?.nome || ticker;
   const ant = (cache?.dados || {}) as any;
-  const [si, wiki, hist] = await Promise.allSettled([statusInvest(ticker), wikiPerfil(ticker, nomeB3), historico(ticker + ".SA")]);
+  const [si, wiki, hist, tv] = await Promise.allSettled([statusInvest(ticker), wikiPerfil(ticker, nomeB3), historico(ticker + ".SA"), analistas([ticker])]);
   const w = wiki.status === "fulfilled" ? wiki.value : ant.wiki || null;
   const nome = w?.titulo || nomeCurto(nomeB3);
   const not = await noticias(`"${ticker}" OR "${nome.replace(/\s*\(.*\)$/, "")}"`, 12, 30).catch(() => ant.noticias || []);
@@ -377,12 +377,35 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
     desempenho: h ? indicadores(h) : ant.desempenho || null,
     serie: h ? serieSemanal(h) : ant.serie || [],
     noticias: not,
+    analistas: tv.status === "fulfilled" ? tv.value[ticker] || null : ant.analistas || null,
     fontesComErro: [si, wiki, hist].map((x, i) => (x.status === "rejected" ? ["StatusInvest", "Wikipedia", "Yahoo"][i] : null)).filter(Boolean),
     atualizadoEm: new Date().toISOString(),
   };
+  dados.dinamicoEm = dados.atualizadoEm;
+  dados.noticiasEm = dados.atualizadoEm;
   dados.reputacao = reputacao(dados);
   await sb.from("empresas").upsert({ ticker, dados, atualizado_em: dados.atualizadoEm });
   return dados;
+}
+
+// Atualiza só o que muda ao longo do dia (cotações do gráfico, desempenho, analistas e,
+// a cada hora, as notícias), sem refazer Wikipedia e StatusInvest. Não mexe em atualizado_em,
+// que controla a atualização completa a cada 12 horas.
+export async function atualizarDinamico(sb: SupabaseClient, ticker: string, dados: any, pronto: { h?: Historico | null; sent?: any } = {}) {
+  const d = { ...dados };
+  const precisaNoticias = !d.noticiasEm || Date.now() - Date.parse(d.noticiasEm) > 60 * 60000;
+  const [hist, tv, not] = await Promise.allSettled([
+    pronto.h ? Promise.resolve(pronto.h) : historico(ticker + ".SA"),
+    pronto.sent !== undefined ? Promise.resolve({ [ticker]: pronto.sent }) : analistas([ticker]),
+    precisaNoticias ? noticias(`"${ticker}" OR "${String(d.nome || ticker).replace(/\s*\(.*\)$/, "")}"`, 12, 30) : Promise.resolve(null),
+  ]);
+  if (hist.status === "fulfilled" && hist.value) { d.desempenho = indicadores(hist.value) || d.desempenho; d.serie = serieSemanal(hist.value); }
+  if (tv.status === "fulfilled" && tv.value[ticker]) d.analistas = tv.value[ticker];
+  if (not.status === "fulfilled" && not.value && not.value.length) { d.noticias = not.value; d.noticiasEm = new Date().toISOString(); }
+  d.dinamicoEm = new Date().toISOString();
+  d.reputacao = reputacao(d);
+  await sb.from("empresas").update({ dados: d }).eq("ticker", ticker);
+  return d;
 }
 
 /* ---------------- Reputação (0 a 100) a partir de dados públicos ---------------- */
@@ -427,7 +450,7 @@ export function reputacao(d: any) {
 }
 
 /* ---------------- Sinal por ação ---------------- */
-export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number | null) {
+export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number | null, extra: { ibovVar?: number | null; sent?: any } = {}) {
   let pts = 0;
   const motivos: { peso: number; t: string }[] = [];
   const add = (p: number, t: string) => { pts += p; motivos.push({ peso: p, t }); };
@@ -461,13 +484,97 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
   if (grave) add(-3, `Notícia que pede cuidado: "${grave.titulo}".`);
   else if (pos - neg >= 2) add(1, `Noticiário da semana positivo (${pl(pos, "boa", "boas")}, ${pl(neg, "ruim", "ruins")}).`);
   else if (neg - pos >= 2) add(-1, `Noticiário da semana negativo (${pl(neg, "ruim", "ruins")}, ${pl(pos, "boa", "boas")}).`);
-  if (varDia != null && varDia <= -5) add(-1, `Cai ${br(-varDia)}% hoje.`);
+  // O que está acontecendo hoje: a própria ação e o mercado inteiro
+  const ib = extra.ibovVar;
+  if (varDia != null && varDia <= -7) add(-2, `Queda forte hoje: ${br(-varDia)}%.`);
+  else if (varDia != null && varDia <= -3) add(-1, `Cai ${br(-varDia)}% hoje.`);
+  if (ib != null && ib <= -2) add(-1, `O mercado todo está em queda hoje (Ibovespa ${br(ib, 2)}%).`);
+  else if (ib != null && ib >= 2) add(0, `O mercado todo sobe hoje (Ibovespa +${br(ib, 2)}%).`);
+
+  // Termômetro técnico de curto prazo (médias e osciladores do dia) e consenso dos analistas
+  const s = extra.sent;
+  const tec = s?.tecnico?.valor;
+  if (tec != null && tec <= -0.5) add(-1, "Indicadores técnicos de curto prazo apontam venda forte.");
+  else if (tec != null && tec >= 0.5) add(1, "Indicadores técnicos de curto prazo apontam compra forte.");
+  const an = s?.analistas;
+  if (an && an.total >= 3) {
+    const alvo = an.alvoMedio != null ? ` Preço-alvo médio de R$ ${br(an.alvoMedio, 2)}${an.potencial != null ? ` (${an.potencial >= 0 ? "+" : ""}${br(an.potencial)}%)` : ""}.` : "";
+    const txt = `${an.compra} de ${an.total} analistas recomendam compra e ${an.venda} venda.${alvo}`;
+    if (s.nota >= 70 && (an.potencial ?? 0) >= 15) add(1, txt);
+    else if (s.nota < 40) add(-1, txt);
+    else add(0, txt);
+  }
 
   const sinal = grave && pts < 0 ? "reduzir" : pts >= 4 ? "reforcar" : pts >= 0 ? "manter" : pts >= -3 ? "atencao" : "reduzir";
   motivos.sort((a, b) => Math.abs(b.peso) - Math.abs(a.peso));
   const intro = { reforcar: "Os sinais estão favoráveis.", manter: "Sem motivo forte para mexer.", atencao: "Alguns sinais pedem atenção.", reduzir: "Vários sinais negativos ao mesmo tempo." }[sinal];
-  const motivo = [intro, ...motivos.slice(0, 4).map((m) => m.t)].join(" ");
+  // Frase do dia logo no começo, para o resumo nunca falar só do passado
+  let hoje = "";
+  if (varDia != null && Math.abs(varDia) >= 0.5) {
+    hoje = `Hoje ${varDia < 0 ? "cai" : "sobe"} ${br(Math.abs(varDia))}%`;
+    if (ib != null && Math.abs(ib) >= 0.5) hoje += `, com o Ibovespa ${ib < 0 ? "em queda de" : "em alta de"} ${br(Math.abs(ib))}%`;
+    hoje += ".";
+  } else if (ib != null && Math.abs(ib) >= 1) hoje = `Hoje a ação está estável, enquanto o Ibovespa ${ib < 0 ? "cai" : "sobe"} ${br(Math.abs(ib))}%.`;
+  const resto = motivos.filter((m) => !/hoje|Ibovespa/.test(m.t)).slice(0, 4).map((m) => m.t);
+  const motivo = [intro, hoje, ...resto].filter(Boolean).join(" ");
   return { sinal, pontos: pts, motivo, fatores: motivos };
+}
+
+/* ---------------- Analistas e técnico (TradingView, consulta pública) ---------------- */
+// Uma chamada traz, para várias ações de uma vez: consenso dos analistas (compra/neutro/venda),
+// preço-alvo médio, máximo e mínimo, e a leitura técnica de curto prazo.
+const TV_COLS = ["close", "change", "Recommend.All", "recommendation_mark", "recommendation_buy", "recommendation_over", "recommendation_hold", "recommendation_under", "recommendation_sell", "recommendation_total", "price_target_average", "price_target_high", "price_target_low"];
+export async function analistas(tickers: string[]): Promise<Record<string, any>> {
+  const out: Record<string, any> = {};
+  const lista = [...new Set(tickers.filter((t) => TICKER_RE.test(t)))];
+  for (let i = 0; i < lista.length; i += 100) {
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), 12000);
+    try {
+      const r = await fetch("https://scanner.tradingview.com/brazil/scan", {
+        method: "POST", signal: ac.signal,
+        headers: { ...UA, "Content-Type": "application/json", Origin: "https://br.tradingview.com", Referer: "https://br.tradingview.com/" },
+        body: JSON.stringify({ symbols: { tickers: lista.slice(i, i + 100).map((t) => "BMFBOVESPA:" + t) }, columns: TV_COLS }),
+      });
+      if (!r.ok) throw new Error("tradingview respondeu " + r.status);
+      const d = await r.json();
+      for (const row of d?.data || []) {
+        const t = String(row.s || "").split(":")[1];
+        const v: Record<string, number | null> = {};
+        TV_COLS.forEach((c, k) => { const x = row.d?.[k]; v[c] = typeof x === "number" && isFinite(x) ? x : null; });
+        if (t) out[t] = montarSentimento(t, v);
+      }
+    } finally { clearTimeout(to); }
+  }
+  return out;
+}
+function montarSentimento(t: string, v: Record<string, number | null>) {
+  const compra = (v.recommendation_buy || 0) + (v.recommendation_over || 0);
+  const neutro = v.recommendation_hold || 0;
+  const venda = (v.recommendation_under || 0) + (v.recommendation_sell || 0);
+  const total = v.recommendation_total || compra + neutro + venda;
+  // Média ponderada do TradingView: compra = 1, sobreponderar = 1,5, manter = 2, subponderar = 2,5, venda = 3
+  const mark = v.recommendation_mark;
+  const preco = v.close;
+  const alvo = v.price_target_average;
+  const tec = v["Recommend.All"]; // -1 = venda forte … +1 = compra forte
+  const temAn = total > 0 && mark != null;
+  const nota = temAn ? Math.round(Math.max(0, Math.min(100, (3 - mark!) / 2 * 100))) : null;
+  const rotulo = !temAn ? "" : mark! <= 1.3 ? "Compra forte" : mark! <= 1.7 ? "Compra" : mark! <= 2.3 ? "Neutro" : mark! <= 2.7 ? "Venda" : "Venda forte";
+  const rotTec = tec == null ? null : tec > 0.5 ? "Compra forte" : tec > 0.1 ? "Compra" : tec >= -0.1 ? "Neutro" : tec >= -0.5 ? "Venda" : "Venda forte";
+  return {
+    nota, rotulo,
+    analistas: temAn ? {
+      compra, neutro, venda, total,
+      alvoMedio: r2(alvo), alvoMax: r2(v.price_target_high), alvoMin: r2(v.price_target_low),
+      potencial: alvo && preco ? r2((alvo / preco - 1) * 100, 1) : null,
+      fonte: `Consenso de ${total} ${total === 1 ? "analista" : "analistas"} de corretoras e bancos`,
+    } : null,
+    tecnico: tec != null ? { valor: r2(tec, 2), rotulo: rotTec } : null,
+    preco: r2(preco), varDia: r2(v.change),
+    fontes: [{ nome: "TradingView", url: `https://br.tradingview.com/symbols/BMFBOVESPA-${t}/forecast/` }],
+    atualizadoEm: new Date().toISOString(),
+  };
 }
 
 /* ---------------- Mercado ---------------- */

@@ -160,7 +160,7 @@ details.fat[open] summary::after{transform:rotate(-135deg) translateY(-1px)}
 .alert span:last-child{min-width:0}
 .alert .tk{font-size:13.5px}
 .alert.neg{background:var(--down-bg)} .alert.pos{background:var(--up-bg)}
-.pos-head,.pos-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.1fr) 92px 128px;gap:12px;align-items:center}
+.pos-head,.pos-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.1fr) 132px 128px;gap:12px;align-items:center}
 .pos-head{padding:0 10px 8px;border-bottom:1px solid var(--line)}
 .pos-head span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .pos-head .r,.pos-row .cell{text-align:right}
@@ -231,6 +231,21 @@ form.add input{border:1px solid var(--line);background:var(--bg);border-radius:9
 .hot:last-child{border-bottom:0}
 .price{font-family:var(--mono);font-size:13px;white-space:nowrap}
 
+/* Analistas: visão geral da carteira */
+.an-list{display:flex;flex-direction:column}
+.an-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.6fr) minmax(0,.9fr) minmax(0,.8fr) 120px;gap:14px;align-items:center;padding:11px 10px;border:0;border-top:1px solid var(--line);background:none;text-align:left;width:100%;color:inherit;font:inherit;cursor:pointer;border-radius:0}
+.an-row:first-child{border-top:0}
+.an-row:hover{background:var(--sunk)}
+.an-tk,.an-bar,.an-alvo,.an-tec{display:flex;flex-direction:column;gap:4px;min-width:0}
+.an-tk .nm{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.an-bar small,.an-alvo small,.an-tec small{font-size:12px;color:var(--muted)}
+.an-alvo,.an-tec{text-align:right}
+.an-alvo b,.an-tec b{font-family:var(--mono);font-weight:500;font-size:14px}
+.an-tec b{font-family:var(--body);font-weight:600;font-size:13px}
+.an-alvo small.up{color:var(--up)} .an-alvo small.down{color:var(--down)}
+.an-chip{text-align:right}
+@media (max-width:760px){.an-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}.an-bar{grid-column:1 / -1;order:3}.an-tec{display:none}.an-alvo{order:2}.an-chip{display:none}}
+
 /* Faixa 3: o que os analistas recomendam */
 .recs{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:var(--gap)}
 .rec{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0;box-shadow:var(--shadow)}
@@ -259,6 +274,7 @@ form.add input{border:1px solid var(--line);background:var(--bg);border-radius:9
 .sbar .c{background:var(--up)} .sbar .n{background:var(--faint);opacity:.6} .sbar .v{background:var(--down)}
 .sleg{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
 .sleg b{font-family:var(--mono);color:var(--fg);font-weight:500}
+.sleg b.up{color:var(--up);font-family:var(--body);font-weight:600} .sleg b.down{color:var(--down);font-family:var(--body);font-weight:600}
 .sent p{margin:0;font-size:13.5px}
 .sent .src{font-size:12px;color:var(--muted)}
 .sent .src a{color:var(--muted)}
@@ -418,7 +434,7 @@ form.add input{border:1px solid var(--line);background:var(--bg);border-radius:9
       <a href="#sec-mercado">Mercado</a>
       <a href="#sec-carteira">Carteira</a>
       <a href="#sec-noticias">Notícias</a>
-      <a href="#sec-recs">Analistas</a>
+      <a href="#sec-analistas">Analistas</a>
       <a href="#sec-div">Diversificação</a>
       <a href="#sec-empresas">Empresas</a>
       <a href="#todas">Todas as ações</a>
@@ -488,7 +504,7 @@ form.add input{border:1px solid var(--line);background:var(--bg);border-radius:9
           <div><span class="label">Resultado</span><b id="t-res">—</b></div>
         </div>
         <div class="alerts" id="alerts" hidden></div>
-        <div class="pos-head" id="pos-head" hidden><span>Ação</span><span class="r c-preco">Cotação</span><span class="r">Posição</span><span class="c c-sent">Reputação</span><span class="r">Sinal</span></div>
+        <div class="pos-head" id="pos-head" hidden><span>Ação</span><span class="r c-preco">Cotação</span><span class="r">Posição</span><span class="c c-sent">Analistas</span><span class="r">Sinal</span></div>
         <div class="pos-list" id="pos-list"><div class="empty skel">Carregando carteira…</div></div>
         <details class="addbox" id="addbox">
           <summary><span class="plus" aria-hidden="true">+</span>Adicionar ou editar ação</summary>
@@ -531,7 +547,13 @@ form.add input{border:1px solid var(--line);background:var(--bg);border-radius:9
       <div class="emp-grid" id="emp-grid"><p class="skel">Cadastre ações na carteira para vê-las aqui. Você também pode buscar qualquer ação da B3 acima.</p></div>
     </section>
 
-    <!-- 4. O que os analistas recomendam -->
+    <!-- 4. O que os analistas acham das suas ações + carteiras recomendadas -->
+    <section class="band panel" aria-labelledby="h-an" id="sec-analistas">
+      <div class="panel-head"><h2 id="h-an">O que os analistas acham das suas ações</h2><span class="when" id="an-when"></span></div>
+      <p class="sub">Consenso de corretoras e bancos para cada ação da carteira, preço-alvo médio e a leitura técnica de curto prazo. Atualizado a cada 5 minutos no pregão. Toque em uma ação para ver o perfil completo.</p>
+      <div class="an-list" id="an-list"><p class="skel">Carregando…</p></div>
+    </section>
+
     <section class="band" aria-labelledby="h-recs" id="sec-recs">
       <div class="band-head">
         <div><h2 id="h-recs">O que os analistas recomendam</h2><p>Ações mais citadas nas carteiras recomendadas das corretoras este mês. As barrinhas mostram em quantas carteiras cada uma aparece.</p></div>
@@ -570,7 +592,7 @@ form.add input{border:1px solid var(--line);background:var(--bg);border-radius:9
       <div class="more-row"><span id="all-count" class="when"></span><button class="btn" id="all-more" type="button" hidden>Mostrar mais 50</button></div>
     </section>
 
-    <p class="foot">Cotações de todas as ações da B3 pela brapi.dev, atualizadas a cada 2 minutos durante o pregão (com atraso de até cerca de 30 minutos da fonte gratuita). O termômetro, os destaques e o sinal de cada ação são recalculados automaticamente a cada 10 minutos no pregão e a cada 3 horas fora dele, com histórico de preços do Yahoo Finance, Selic do Banco Central, notícias do Google Notícias e indicadores do StatusInvest. O perfil das empresas vem da Wikipedia, Wikidata e StatusInvest. As recomendações das corretoras são da revisão mensal. Os sinais seguem regras fixas e transparentes, não são recomendação individual de investimento: confira antes de comprar ou vender.</p>
+    <p class="foot">Cotações de todas as ações da B3 pela brapi.dev, atualizadas a cada 2 minutos durante o pregão (com atraso de até cerca de 30 minutos da fonte gratuita). O termômetro, os destaques, o sinal de cada ação e a opinião dos analistas são recalculados automaticamente a cada 5 minutos no pregão e a cada 3 horas fora dele, com histórico de preços do Yahoo Finance, consenso de analistas e leitura técnica do TradingView, Selic do Banco Central, notícias do Google Notícias e indicadores do StatusInvest. O perfil das empresas vem da Wikipedia, Wikidata e StatusInvest. As recomendações das corretoras são da revisão mensal. Os sinais seguem regras fixas e transparentes, não são recomendação individual de investimento: confira antes de comprar ou vender.</p>
   </main>
 </div>
 

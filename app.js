@@ -141,10 +141,10 @@
     await Promise.all([carregarCarteira().then(carregarEmpresas), carregarCotacoes(), carregarAnalises(), carregarPainel()]);
     renderAll();
     if (canal) sb.removeChannel(canal);
-    let tCot = null;
+    let tCot = null, tAn = null;
     canal = sb.channel("radar")
-      .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes" }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoes(); renderCarteira(); renderTodas(); renderDiv(); renderRecs(); renderEmpresas(); renderStatus(); }, 1500); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, async () => { await carregarAnalises(); renderCarteira(); renderNews(); renderEmpresas(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes" }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoes(); renderCarteira(); renderAnalistas(); renderTodas(); renderDiv(); renderRecs(); renderEmpresas(); renderStatus(); if (S.emp) cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); }, 1500); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
       .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderRecs(); renderDiv(); renderNews(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "carteira" }, async () => { await carregarCarteira(); await carregarEmpresas(); renderAll(); })
       .subscribe();
@@ -173,7 +173,13 @@
     (data || []).forEach((e) => { S.empresas[e.ticker] = e.dados; });
   }
   setInterval(() => { if (S.user && document.visibilityState === "visible") { renderStatus(); renderMercado(); } }, 60000);
-  document.addEventListener("visibilitychange", async () => { if (S.user && document.visibilityState === "visible") { await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel()]); renderAll(); } });
+  // Reserva caso a conexão em tempo real caia: recarrega tudo a cada 2 minutos com a página aberta
+  setInterval(async () => {
+    if (!S.user || document.visibilityState !== "visible") return;
+    await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarEmpresas()]);
+    renderAll(); atualizarGaveta();
+  }, 120000);
+  document.addEventListener("visibilitychange", async () => { if (S.user && document.visibilityState === "visible") { await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarEmpresas()]); renderAll(); atualizarGaveta(); } });
 
   /* Atualizar cotações agora */
   $("#btn-refresh").addEventListener("click", async () => {
@@ -187,7 +193,7 @@
     finally { b.disabled = false; b.textContent = "Atualizar cotações"; }
   });
 
-  function renderAll() { renderStatus(); renderMercado(); renderCarteira(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); }
+  function renderAll() { renderStatus(); renderMercado(); renderCarteira(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); }
   function renderStatus() { $("#last-upd").textContent = S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
 
   /* ---------- Termômetro ---------- */
@@ -263,8 +269,8 @@
 
     const al = [];
     rows.forEach((r) => {
-      const s = r.a && r.a.sinal, frase = (txt) => (txt || "").replace(/^(Os sinais estão favoráveis|Sem motivo forte para mexer|Alguns sinais pedem atenção|Vários sinais negativos ao mesmo tempo)\.\s*/, "").split(". ")[0];
-      if (s === "reduzir") al.push({ t: r.p.ticker, k: "neg", txt: "Sinal: considerar reduzir. " + frase(r.a.motivo) + "." });
+      const s = r.a && r.a.sinal, frase = (txt) => (txt || "").replace(/^(Os sinais estão favoráveis|Sem motivo forte para mexer|Alguns sinais pedem atenção|Vários sinais negativos ao mesmo tempo)\.\s*/, "").replace(/^Hoje [^.]*\.\s*/, "").split(". ")[0].replace(/\.$/, "").trim();
+      if (s === "reduzir") al.push({ t: r.p.ticker, k: "neg", txt: "Sinal: considerar reduzir" + (frase(r.a.motivo) ? ". " + frase(r.a.motivo) : "") + "." });
       else if (s === "atencao") al.push({ t: r.p.ticker, k: "", txt: (frase(r.a.motivo) || "Pede atenção") + "." });
       if (r.vd != null && Math.abs(r.vd) >= 3) al.push({ t: r.p.ticker, k: r.vd < 0 ? "neg" : "pos", txt: (r.vd < 0 ? "Cai " : "Sobe ") + pct(Math.abs(r.vd)).replace("+", "") + " hoje." });
       if (r.res != null && r.res <= -15) al.push({ t: r.p.ticker, k: "neg", txt: "Está " + num(-r.res, 1) + "% abaixo do seu preço médio." });
@@ -274,7 +280,7 @@
 
     box.innerHTML = rows.map((r) => {
       const { p, a, preco, vd, valor, res, nome } = r; const sinal = a && SINAL[a.sinal] ? a.sinal : "pendente"; const open = S.open === p.ticker;
-      const temSent = !!(a && a.sentimento && fresco(a.sentimento.atualizadoEm || a.atualizado_em, 15));
+      const temSent = !!sentDe(p.ticker);
       const nNews = a && Array.isArray(a.noticias) ? a.noticias.length : 0;
       const ind = a && a.indicadores; const fat = (ind && ind.fatores) || [];
       const detail = !open ? "" : `<div class="pos-detail two">
@@ -288,14 +294,14 @@
         <div class="pd-col">
           ${fat.length ? `<div><div class="h3" style="font-size:14px;margin-bottom:6px">Por que esse sinal</div><ul class="fat-list">${fat.map((f) => `<li><span class="mark ${f.peso > 0 ? "positivo" : f.peso < 0 ? "negativo" : "neutro"}">${f.peso > 0 ? "+" : f.peso < 0 ? "−" : "·"}</span><span>${esc(f.t)}</span></li>`).join("")}</ul></div>` : ""}
           ${indHtml(ind)}
-          ${temSent ? sentHtml(a.sentimento, preco) : ""}
+          ${temSent ? sentHtml(sentDe(p.ticker), preco) : ""}
         </div>
       </div>`;
       return `<div class="pos${open ? " open" : ""}"><button type="button" class="pos-row" data-open="${esc(p.ticker)}" aria-expanded="${open}">
         <span style="min-width:0"><span class="tk">${esc(p.ticker)}</span><span class="chev" aria-hidden="true"></span><span class="nm">${esc(nome)}</span></span>
         <span class="cell c-preco"><b>${brl(preco)}</b><small class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) : ""}</small></span>
         <span class="cell"><b>${brl(valor)}</b><small class="${res != null ? cls(res) : ""}">${res != null ? pct(res) : num(p.qtd, 0) + " ações"}</small></span>
-        <span class="c-sent">${repChip(p.ticker)}</span>
+        <span class="c-sent">${anChip(p.ticker, preco)}</span>
         <span class="c-sig"><span class="pill s-${sinal}">${sinal === "pendente" ? "Aguardando" : SINAL[sinal]}</span></span></button>${detail}</div>`;
     }).join("");
   }
@@ -306,20 +312,61 @@
     return `<span class="chip-s ${c}" title="Reputação da empresa: ${Math.round(r.nota)} de 100">${esc(r.rotulo || "")} · ${Math.round(r.nota)}</span>`;
   }
 
-  /* ---------- Sentimento de analistas (revisão manual, só se recente) ---------- */
+  /* ---------- O que os analistas acham (consenso automático, renovado a cada 5 min no pregão) ---------- */
+  // Pega a versão mais recente entre a análise da carteira e o perfil da empresa
+  function sentDe(t) {
+    const a = S.analises[t], e = S.empresas[t];
+    const xs = [a && a.sentimento, e && e.analistas].filter((x) => x && fresco(x.atualizadoEm, 3));
+    xs.sort((x, y) => (y.atualizadoEm || "") > (x.atualizadoEm || "") ? 1 : -1);
+    return xs[0] || null;
+  }
   function sentClasse(n) { return n >= 60 ? "otim" : n < 45 ? "pess" : "div"; }
-  function sentChip(s) { const n = Number(s.nota); if (isNaN(n)) return ""; return `<span class="chip-s ${sentClasse(n)}" title="Sentimento de analistas e investidores: ${Math.round(n)} de 100">${esc(s.rotulo || "")}</span>`; }
+  function sentChip(s) { const n = Number(s && s.nota); if (s == null || s.nota == null || isNaN(n)) return ""; return `<span class="chip-s ${sentClasse(n)}" title="Consenso dos analistas: ${Math.round(n)} de 100">${esc(s.rotulo || "")}</span>`; }
+  function potencialDe(s, preco) { const an = (s && s.analistas) || {}; const alvo = an.alvoMedio != null ? Number(an.alvoMedio) : null; return (alvo && preco) ? (alvo / preco - 1) * 100 : (an.potencial != null ? Number(an.potencial) : null); }
+  function anChip(t, preco) {
+    const s = sentDe(t); if (!s || s.nota == null) return '<span class="hint">—</span>';
+    const pot = potencialDe(s, preco);
+    return `<span class="chip-s ${sentClasse(s.nota)}" title="Consenso de ${esc((s.analistas || {}).total || "")} analistas${pot != null ? "; preço-alvo médio " + esc(pct(pot)) + " do preço atual" : ""}">${esc(s.rotulo)}${pot != null ? " · " + esc(pct(pot).replace(/,\d+%/, "%")) : ""}</span>`;
+  }
+  function tecHtml(tec) {
+    if (!tec || !tec.rotulo) return "";
+    const c = /Compra/.test(tec.rotulo) ? "up" : /Venda/.test(tec.rotulo) ? "down" : "";
+    return `<span>Técnico de curto prazo <b class="${c}">${esc(tec.rotulo)}</b></span>`;
+  }
   function sentHtml(s, preco) {
     const an = s.analistas || {}; const c = +an.compra || 0, n = +an.neutro || 0, v = +an.venda || 0, t = c + n + v;
-    const alvo = an.alvoMedio != null ? Number(an.alvoMedio) : null; const pot = (alvo && preco) ? (alvo / preco - 1) * 100 : (an.potencial != null ? Number(an.potencial) : null);
+    const alvo = an.alvoMedio != null ? Number(an.alvoMedio) : null; const pot = potencialDe(s, preco);
     const fontes = (s.fontes || []).map((f) => { const u = safeUrl(f.url); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(f.nome || "fonte")}</a>` : ""; }).filter(Boolean).join(" · ");
     return `<div class="sent">
       <div class="sent-h"><strong>O que os analistas acham</strong><span>${sentChip(s)}</span></div>
       ${t ? `<div class="sbar" role="img" aria-label="${c} compra, ${n} neutro, ${v} venda"><i class="c" style="width:${c / t * 100}%"></i><i class="n" style="width:${n / t * 100}%"></i><i class="v" style="width:${v / t * 100}%"></i></div>
-      <div class="sleg"><span><b>${c}</b> compra</span><span><b>${n}</b> neutro</span><span><b>${v}</b> venda</span>${alvo ? `<span>Alvo médio <b>${brl(alvo)}</b>${pot != null ? ` <span class="${cls(pot)}">(${pct(pot)})</span>` : ""}</span>` : ""}</div>` : ""}
+      <div class="sleg"><span><b>${c}</b> compra</span><span><b>${n}</b> neutro</span><span><b>${v}</b> venda</span>${alvo ? `<span>Alvo médio <b>${brl(alvo)}</b>${pot != null ? ` <span class="${cls(pot)}">(${pct(pot)})</span>` : ""}</span>` : ""}${an.alvoMin != null && an.alvoMax != null ? `<span>Alvos de <b>${brl(an.alvoMin)}</b> a <b>${brl(an.alvoMax)}</b></span>` : ""}</div>` : `<p class="hint">Nenhum analista cobre esta ação.</p>`}
+      ${s.tecnico ? `<div class="sleg">${tecHtml(s.tecnico)}</div>` : ""}
       ${an.obs ? `<p class="hint" style="font-size:13px">${esc(an.obs)}</p>` : ""}
-      <span class="src">${an.fonte ? esc(an.fonte) + (fontes ? " · " : "") : ""}${fontes}</span>
+      <span class="src">${an.fonte ? esc(an.fonte) + (fontes ? " · " : "") : ""}${fontes}${s.atualizadoEm ? " · atualizado " + esc(ago(s.atualizadoEm)) : ""}</span>
     </div>`;
+  }
+  // Visão geral: todas as ações da carteira de uma vez
+  function renderAnalistas() {
+    const box = $("#an-list"); if (!box) return;
+    if (!S.carteira.length) { box.innerHTML = `<p class="skel">Cadastre suas ações para ver o que os analistas acham de cada uma.</p>`; $("#an-when").textContent = ""; return; }
+    const { rows } = linhas(); let ultimo = null;
+    const itens = rows.map((r) => {
+      const s = sentDe(r.p.ticker); if (s && (!ultimo || s.atualizadoEm > ultimo)) ultimo = s.atualizadoEm;
+      const an = (s && s.analistas) || null; const pot = s ? potencialDe(s, r.preco) : null;
+      const c = an ? +an.compra || 0 : 0, n = an ? +an.neutro || 0 : 0, v = an ? +an.venda || 0 : 0, t = c + n + v;
+      return { r, s, an, pot, c, n, v, t };
+    });
+    // Mais otimistas primeiro; sem cobertura no fim
+    itens.sort((x, y) => ((y.s && y.s.nota != null) ? y.s.nota : -1) - ((x.s && x.s.nota != null) ? x.s.nota : -1) || (y.pot || 0) - (x.pot || 0));
+    box.innerHTML = itens.map(({ r, s, an, pot, c, n, v, t }) => `<button type="button" class="an-row" data-emp="${esc(r.p.ticker)}">
+        <span class="an-tk"><span class="tk" style="font-size:15px">${esc(r.p.ticker)}</span><span class="nm">${esc(r.nome)}</span></span>
+        <span class="an-bar">${t ? `<span class="sbar" role="img" aria-label="${c} compra, ${n} neutro, ${v} venda"><i class="c" style="width:${c / t * 100}%"></i><i class="n" style="width:${n / t * 100}%"></i><i class="v" style="width:${v / t * 100}%"></i></span><small>${c} de ${t} recomendam compra${v ? ", " + v + " venda" : ""}</small>` : `<small class="hint">${s ? "Sem cobertura de analistas" : "Aguardando a próxima atualização"}</small>`}</span>
+        <span class="an-alvo">${an && an.alvoMedio != null ? `<b>${brl(an.alvoMedio)}</b><small class="${cls(pot)}">${pot != null ? pct(pot) + " até o alvo" : ""}</small>` : `<small class="hint">—</small>`}</span>
+        <span class="an-tec">${s && s.tecnico ? `<small class="hint">Técnico</small><b class="${/Compra/.test(s.tecnico.rotulo) ? "up" : /Venda/.test(s.tecnico.rotulo) ? "down" : ""}">${esc(s.tecnico.rotulo)}</b>` : ""}</span>
+        <span class="an-chip">${s ? sentChip(s) : ""}</span>
+      </button>`).join("");
+    $("#an-when").textContent = ultimo ? "Atualizado " + ago(ultimo) : "";
   }
 
   /* ---------- Notícias ---------- */
@@ -446,6 +493,13 @@
     }
     setTimeout(() => { const b = $("#emp-drawer [data-emp-close].btn"); if (b) b.focus({ preventScroll: true }); }, 50);
     void q;
+  }
+  function atualizarGaveta() {
+    const t = S.emp; if (!t || !S.empresas[t]) return;
+    const body = $("#emp-body"); if (body.querySelector(".carregando")) return;
+    const y = body.scrollTop;
+    cabecalhoEmpresa(t, S.empresas[t]); renderEmpresa(t, S.empresas[t], false);
+    body.scrollTop = y;
   }
   function fecharEmpresa() {
     const d = $("#emp-drawer"); if (d.hidden) return;
@@ -602,7 +656,9 @@
 
       ${a ? `<section class="panel" aria-labelledby="emp-sinal"><h3 id="emp-sinal">Sinal do Radar ${sinal ? `<span class="pill s-${sinal}" style="vertical-align:middle;margin-left:6px">${SINAL[sinal]}</span>` : ""}</h3>
         <p style="margin:0 0 8px">${esc(a.motivo || "")}</p>${a.indicadores && a.indicadores.fatores ? `<ul class="fat-list">${a.indicadores.fatores.map((x) => `<li><span class="mark ${x.peso > 0 ? "positivo" : x.peso < 0 ? "negativo" : "neutro"}">${x.peso > 0 ? "+" : x.peso < 0 ? "−" : "·"}</span><span>${esc(x.t)}</span></li>`).join("")}</ul>` : ""}
-        <p class="hint" style="margin:8px 0 0">Recalculado ${esc(ago(a.atualizado_em))} com tendência de preço, indicadores e notícias. Regras fixas, não é recomendação individual.</p></section>` : ""}
+        <p class="hint" style="margin:8px 0 0">Recalculado ${esc(ago(a.atualizado_em))} com o movimento de hoje, tendência de preço, analistas, indicadores e notícias. Regras fixas, não é recomendação individual.</p></section>` : ""}
+
+      ${(() => { const s = sentDe(t); return s ? `<section class="panel" aria-label="O que os analistas acham" style="padding:4px">${sentHtml(s, q ? Number(q.preco) : null)}</section>` : ""; })()}
 
       ${inds ? `<section class="panel" aria-labelledby="emp-ind"><h3 id="emp-ind">Saúde financeira e preço</h3><div class="ind-grid">${inds}</div><p class="hint" style="margin:10px 0 0">Verde costuma ser bom sinal e vermelho pede atenção, mas cada setor tem sua faixa normal.${financeira ? " Para bancos e seguradoras, dívida e liquidez não se medem do mesmo jeito, por isso esses indicadores ficam de fora." : ""}</p></section>` : ""}
 
@@ -632,7 +688,7 @@
 
       <section class="panel" aria-labelledby="emp-news"><h3 id="emp-news">Notícias do último mês</h3><ul class="news">${newsItems(e.noticias || [], "Sem notícias recentes.")}</ul></section>
 
-      <p class="fontes-emp">Fontes: Wikipedia e Wikidata (texto, fotos e fatos), StatusInvest (indicadores e proventos), Yahoo Finance (cotações históricas), Google Notícias. Perfil atualizado ${esc(ago(e.atualizadoEm))}.${(e.fontesComErro || []).length ? " Não foi possível consultar agora: " + esc(e.fontesComErro.join(", ")) + "." : ""} Nada aqui é recomendação de investimento.</p>`;
+      <p class="fontes-emp">Fontes: Wikipedia e Wikidata (texto, fotos e fatos), StatusInvest (indicadores e proventos), Yahoo Finance (cotações históricas), TradingView (analistas), Google Notícias. Gráfico e analistas atualizados ${esc(ago(e.dinamicoEm || e.atualizadoEm))}; texto e balanço ${esc(ago(e.atualizadoEm))}.${(e.fontesComErro || []).length ? " Não foi possível consultar agora: " + esc(e.fontesComErro.join(", ")) + "." : ""} Nada aqui é recomendação de investimento.</p>`;
     ligarGrafico();
     void q;
   }

@@ -1,36 +1,53 @@
 // Atualiza, sem IA, o termômetro do mercado, os destaques do dia e o sinal de cada ação das carteiras.
-// Rodado pelo agendamento a cada 10 minutos no pregão e a cada 3 horas fora dele.
+// Rodado pelo agendamento a cada 5 minutos no pregão e a cada 3 horas fora dele.
 // Um usuário logado também pode pedir a análise imediata de uma ação da própria carteira.
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
-  dentroDoLimite, historico, indicadores, noticias, nomeCurto, perfilEmpresa, proximoCopom, selic, sinalAcao, TICKER_RE,
+  analistas, atualizarDinamico, dentroDoLimite, historico, indicadores, noticias, nomeCurto, perfilEmpresa, proximoCopom, selic, sinalAcao, TICKER_RE,
 } from "./fontes.ts";
 
 const cl = (x: number) => Math.max(-1, Math.min(1, x));
 const br = (n: number, d = 1) => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-async function analisarTicker(sb: SupabaseClient, t: string) {
-  const { data: cot } = await sb.from("cotacoes").select("nome,preco,var_dia,setor_macro").eq("ticker", t).maybeSingle();
+type Contexto = { ibovVar: number | null; sent: any };
+
+async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
+  const [{ data: cot }, { data: ant }] = await Promise.all([
+    sb.from("cotacoes").select("nome,preco,var_dia,setor_macro").eq("ticker", t).maybeSingle(),
+    sb.from("analises").select("noticias,indicadores").eq("ticker", t).maybeSingle(),
+  ]);
   const perfil: any = await perfilEmpresa(sb, t, 24).catch(() => null);
   const nome = perfil?.nome || nomeCurto(cot?.nome || t);
+  // Notícias da semana: renovadas a cada 15 minutos (o resto do sinal é recalculado em toda rodada)
+  const notEm = ant?.indicadores?.noticiasEm;
+  const reusar = notEm && Date.now() - Date.parse(notEm) < 15 * 60000 && Array.isArray(ant?.noticias);
   const [h, nots] = await Promise.all([
     historico(t + ".SA").catch(() => null),
-    noticias(`"${t}" OR "${nome.replace(/\s*\(.*\)$/, "")}"`, 8, 7).catch(() => []),
+    reusar ? Promise.resolve(ant!.noticias) : noticias(`"${t}" OR "${nome.replace(/\s*\(.*\)$/, "")}"`, 8, 7).catch(() => ant?.noticias || []),
   ]);
   const ind = h ? indicadores(h) : null;
   const varDia = cot?.var_dia != null ? Number(cot.var_dia) : null;
-  const s = sinalAcao(ind, perfil?.fundamentos, nots, varDia);
-  const row = {
+  const s = sinalAcao(ind, perfil?.fundamentos, nots, varDia, ctx);
+  const row: any = {
     ticker: t, nome, setor: cot?.setor_macro || null,
     preco: cot?.preco ?? ind?.preco ?? null, var_dia: varDia,
     sinal: s.sinal, motivo: s.motivo,
-    noticias: nots.map(({ titulo, url, fonte, quando, tom, data }) => ({ titulo, url, fonte, quando, tom, data })),
-    indicadores: ind ? { ...ind, pontos: s.pontos, fatores: s.fatores } : { pontos: s.pontos, fatores: s.fatores },
+    noticias: nots.map(({ titulo, url, fonte, quando, tom, data }: any) => ({ titulo, url, fonte, quando, tom, data })),
+    indicadores: { ...(ind || {}), pontos: s.pontos, fatores: s.fatores, ibovVar: ctx.ibovVar, noticiasEm: reusar ? notEm : new Date().toISOString() },
     atualizado_em: new Date().toISOString(),
   };
+  if (ctx.sent) row.sentimento = ctx.sent;
   const { error } = await sb.from("analises").upsert(row, { onConflict: "ticker" });
   if (error) throw error;
+  // Mantém o gráfico, o desempenho e os analistas do perfil da empresa em dia, sem custo extra
+  if (perfil) await atualizarDinamico(sb, t, perfil, { h, sent: ctx.sent ?? null }).catch(() => null);
   return { ticker: t, sinal: s.sinal };
+}
+
+async function ibovHoje(sb: SupabaseClient): Promise<number | null> {
+  const { data } = await sb.from("painel").select("dados").eq("id", "mercado").maybeSingle();
+  const v = (data?.dados as any)?.ibov?.varDia;
+  return typeof v === "number" ? v : null;
 }
 
 async function mercado(sb: SupabaseClient) {
@@ -120,28 +137,30 @@ export async function rodarAnalise(sb: SupabaseClient, quem: { cron: boolean; us
   if (!quem.cron) {
     const t = String(body.ticker || "").toUpperCase();
     if (!TICKER_RE.test(t)) return [{ ok: false, erro: "ticker" }, 400];
-    const { data: tem } = await sb.from("carteira").select("id").eq("user_id", quem.userId).eq("ticker", t).maybeSingle();
-    if (!tem) return [{ ok: false, erro: "fora_da_carteira" }, 403];
+    const { data: tem } = await sb.from("carteira").select("id").eq("user_id", quem.userId).eq("ticker", t).limit(1);
+    if (!tem || !tem.length) return [{ ok: false, erro: "fora_da_carteira" }, 403];
     const { data: a } = await sb.from("analises").select("atualizado_em").eq("ticker", t).maybeSingle();
-    if (a && Date.now() - Date.parse(a.atualizado_em) < 10 * 60000) return [{ ok: true, pulado: true }, 200];
-    if (!(await dentroDoLimite(sb, quem.userId!, "analisar", 60))) return [{ ok: false, erro: "limite" }, 429];
-    return [{ ok: true, ...(await analisarTicker(sb, t)) }, 200];
+    if (a && Date.now() - Date.parse(a.atualizado_em) < 4 * 60000) return [{ ok: true, pulado: true }, 200];
+    if (!(await dentroDoLimite(sb, quem.userId!, "analisar", 120))) return [{ ok: false, erro: "limite" }, 429];
+    const [ibovVar, an] = await Promise.all([ibovHoje(sb), analistas([t]).catch(() => ({} as Record<string, any>))]);
+    return [{ ok: true, ...(await analisarTicker(sb, t, { ibovVar, sent: an[t] || null })) }, 200];
   }
 
-  // Agendamento: mercado + as ações mais desatualizadas das carteiras
+  // Agendamento: mercado + todas as ações das carteiras que estão há mais de 4 minutos sem análise
   const res: any = { ok: true };
   const { data: pm } = await sb.from("painel").select("atualizado_em").eq("id", "mercado").maybeSingle();
-  if (body.forcar || !pm || Date.now() - Date.parse(pm.atualizado_em) > 8 * 60000) res.mercado = await mercado(sb).catch((e) => ({ erro: String(e?.message || e) }));
+  if (body.forcar || !pm || Date.now() - Date.parse(pm.atualizado_em) > 4 * 60000) res.mercado = await mercado(sb).catch((e) => ({ erro: String(e?.message || e) }));
   const { data: cart } = await sb.from("carteira").select("ticker");
   const tickers: string[] = [...new Set<string>((cart || []).map((c: any) => String(c.ticker)))];
   const { data: ans } = await sb.from("analises").select("ticker,atualizado_em").in("ticker", tickers.length ? tickers : ["-"]);
   const idade = (t: string) => { const a = (ans || []).find((x: any) => x.ticker === t); return a ? Date.now() - Date.parse(a.atualizado_em) : Infinity; };
-  const velhas = tickers.filter((t) => body.forcar || idade(t) > 25 * 60000).sort((a, b) => idade(b) - idade(a));
-  // Até 6 por rodada, 3 em paralelo, para caber no tempo máximo da função
-  const fila = velhas.slice(0, Math.min(Number(body.lote) || 6, 12));
+  const velhas = tickers.filter((t) => body.forcar || idade(t) > 4 * 60000).sort((a, b) => idade(b) - idade(a));
+  // Até 20 por rodada, 5 em paralelo, para caber no tempo máximo da função
+  const fila = velhas.slice(0, Math.min(Number(body.lote) || 20, 30));
+  const [ibovVar, sentMap] = await Promise.all([ibovHoje(sb), analistas(fila).catch((e) => { res.analistasErro = String(e?.message || e); return {} as Record<string, any>; })]);
   res.acoes = [];
-  for (let i = 0; i < fila.length; i += 3) {
-    res.acoes.push(...await Promise.all(fila.slice(i, i + 3).map((t) => analisarTicker(sb, t).catch((e) => ({ ticker: t, erro: String(e?.message || e) })))));
+  for (let i = 0; i < fila.length; i += 5) {
+    res.acoes.push(...await Promise.all(fila.slice(i, i + 5).map((t) => analisarTicker(sb, t, { ibovVar, sent: sentMap[t] || null }).catch((e) => ({ ticker: t, erro: String(e?.message || e) })))));
   }
   res.restantes = velhas.length - fila.length;
   return [res, 200];
