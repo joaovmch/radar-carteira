@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://icons.brapi.dev https://s3-symbol-logo.tradingview.com https://upload.wikimedia.org https://commons.wikimedia.org; connect-src https://urdtzrquiypewetklwxm.supabase.co wss://urdtzrquiypewetklwxm.supabase.co; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://icons.brapi.dev https://s3-symbol-logo.tradingview.com https://upload.wikimedia.org https://commons.wikimedia.org https://coin-images.coingecko.com https://assets.coingecko.com; connect-src https://urdtzrquiypewetklwxm.supabase.co wss://urdtzrquiypewetklwxm.supabase.co; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex,nofollow">
 <title>Radar da Carteira</title>
-<meta name="description" content="Sua carteira de ações, FIIs, ETFs e ativos dos EUA com cotações, notícias, termômetro do mercado, perfil dos ativos, diversificação e recomendações.">
+<meta name="description" content="Sua carteira de ações, FIIs, ETFs, ativos dos EUA, criptomoedas e renda fixa com cotações, notícias, termômetro do mercado, perfil dos ativos, diversificação e recomendações.">
 <meta name="theme-color" content="#2457F5">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232457F5'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,7 +18,7 @@
   --fg:#111827; --muted:#5B6478; --faint:#8D95A8;
   --accent:#2457F5; --accent-ink:#FFFFFF; --accent-bg:#E7EDFF;
   --up:#0B8F5F; --up-bg:#DFF5EA; --down:#D93A3F; --down-bg:#FCE6E6; --warn:#A16800; --warn-bg:#FBF0D9;
-  --c-acao:#2F6BFF; --c-fii:#F59E0B; --c-etf:#8B5CF6; --c-bdr:#D946EF; --c-acao_ext:#06B6D4; --c-etf_ext:#65A30D; --c-rf:#0F9D8A;
+  --c-acao:#2F6BFF; --c-fii:#F59E0B; --c-etf:#8B5CF6; --c-bdr:#D946EF; --c-acao_ext:#06B6D4; --c-etf_ext:#65A30D; --c-rf:#0F9D8A; --c-cripto:#E11D48;
   --hero-a:#1E40E6; --hero-b:#6D28D9;
   --display:"Archivo","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -35,7 +35,7 @@
   --fg:#E8EDF7; --muted:#9AA6BF; --faint:#6B7792;
   --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1B2650;
   --up:#3DDC97; --up-bg:#0F2F24; --down:#FF7A7A; --down-bg:#3A1A1D; --warn:#F5C25B; --warn-bg:#33270F;
-  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF;
+  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF; --c-cripto:#FB7185;
   --hero-a:#1B37C9; --hero-b:#5B21B6;
   --shadow:none; --shadow-h:0 10px 30px rgba(0,0,0,.35); --shadow-lg:0 18px 50px rgba(0,0,0,.55);
   color-scheme:dark}}
@@ -44,7 +44,7 @@
   --fg:#E8EDF7; --muted:#9AA6BF; --faint:#6B7792;
   --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1B2650;
   --up:#3DDC97; --up-bg:#0F2F24; --down:#FF7A7A; --down-bg:#3A1A1D; --warn:#F5C25B; --warn-bg:#33270F;
-  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF;
+  --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF; --c-cripto:#FB7185;
   --hero-a:#1B37C9; --hero-b:#5B21B6;
   --shadow:none; --shadow-h:0 10px 30px rgba(0,0,0,.35); --shadow-lg:0 18px 50px rgba(0,0,0,.55);
   color-scheme:dark}
@@ -205,7 +205,7 @@ main{padding-block:22px 80px}
 /* Cores das classes */
 .cl{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.02em;border-radius:999px;padding:2px 8px 2px 7px;white-space:nowrap;background:color-mix(in srgb,var(--cc) 14%,transparent);color:color-mix(in srgb,var(--cc) 80%,var(--fg))}
 .cl::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--cc)}
-[data-cl="acao"]{--cc:var(--c-acao)}[data-cl="fii"]{--cc:var(--c-fii)}[data-cl="etf"]{--cc:var(--c-etf)}[data-cl="bdr"]{--cc:var(--c-bdr)}[data-cl="acao_ext"]{--cc:var(--c-acao_ext)}[data-cl="etf_ext"]{--cc:var(--c-etf_ext)}
+[data-cl="acao"]{--cc:var(--c-acao)}[data-cl="fii"]{--cc:var(--c-fii)}[data-cl="etf"]{--cc:var(--c-etf)}[data-cl="bdr"]{--cc:var(--c-bdr)}[data-cl="acao_ext"]{--cc:var(--c-acao_ext)}[data-cl="etf_ext"]{--cc:var(--c-etf_ext)}[data-cl="cripto"]{--cc:var(--c-cripto)}[data-cl="rf"]{--cc:var(--c-rf)}
 
 /* ---------- Mercado ---------- */
 .overview{display:grid;gap:var(--gap);grid-template-columns:minmax(0,1fr)}
@@ -313,6 +313,37 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 #f-ticker{text-transform:uppercase;font-family:var(--mono)}
 .form-msg{grid-column:1 / -1;font-size:13px;min-height:1em;margin:0}
 .f-hint{grid-column:1 / -1;font-size:12px;color:var(--muted);margin:-2px 0 0}
+
+/* Resumo do dia */
+.dia-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+.dia-tit{font-family:var(--display);font-stretch:85%;font-weight:700;font-size:clamp(22px,4vw,30px);line-height:1.15}
+.dia-tit b{font-family:var(--mono);font-weight:600}
+.dia-tit span{font-family:var(--mono);font-size:.62em;font-weight:500}
+.dia-ctx{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted)}
+.dia-ctx b{font-family:var(--mono);font-weight:600}
+.dia-sinais{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:14px}
+.dia-sinais a{margin-left:4px;text-decoration:none}
+.dia-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:800px){.dia-grid{grid-template-columns:1fr}}
+.dia-card{border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0;background:var(--surface)}
+.dia-card h3{font-family:var(--display);font-stretch:85%;font-size:17px;margin:0 0 10px}
+.dia-movs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.dia-mov{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:8px;align-items:center;border:1px solid var(--line-2);background:var(--bg);border-radius:10px;padding:7px 9px;text-align:left;transition:transform .2s,border-color .2s}
+.dia-mov:hover{transform:translateY(-1px);border-color:var(--accent)}
+.dia-mov .lg{grid-row:1 / span 2}
+.dia-mov .tk{font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.dia-mov b{font-family:var(--mono);font-size:13px;font-weight:600;text-align:right}
+.dia-mov small{grid-column:2 / span 2;font-family:var(--mono);font-size:11.5px}
+.dia-at,.dia-ag{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.dia-at li{display:flex;gap:8px;align-items:baseline;font-size:13px;border-radius:9px;padding:6px 9px;background:var(--sunk)}
+.dia-at li.neg{background:var(--down-bg)} .dia-at li.warn{background:var(--warn-bg)}
+.dia-at .tag{border:0;cursor:pointer;text-decoration:none;color:inherit;flex:none}
+.dia-ag li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line-2)}
+.dia-ag li:last-child{border-bottom:0}
+.dia-ag .dt{font-family:var(--mono);font-weight:600;color:var(--accent);font-size:12.5px}
+.dia-news .news{max-height:300px;overflow:auto;margin:0 0 6px}
+.dia-card .hint{text-decoration:none}
+.ok-msg{margin:0;font-size:13.5px;color:var(--up);background:var(--up-bg);border-radius:9px;padding:8px 10px}
 
 /* Renda fixa */
 .rf-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
@@ -633,6 +664,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
     <nav class="tabs" id="tabs" aria-label="Seções" hidden>
       <span class="tab-ind" id="tab-ind" aria-hidden="true"></span>
       <a href="#sec-resumo">Resumo</a>
+      <a href="#sec-dia">Hoje</a>
       <a href="#sec-mercado">Mercado</a>
       <a href="#sec-carteira">Carteira</a>
       <a href="#sec-rf">Renda fixa</a>
@@ -653,7 +685,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <div class="radar" aria-hidden="true"><i></i><i></i><i></i></div>
       <h2 id="auth-title">Entrar</h2>
       <p id="auth-sub">Acesse sua carteira de qualquer celular ou computador.</p>
-      <div class="chips-cls" aria-hidden="true"><span class="cl" data-cl="acao">Ações</span><span class="cl" data-cl="fii">FIIs</span><span class="cl" data-cl="etf">ETFs</span><span class="cl" data-cl="bdr">BDRs</span><span class="cl" data-cl="acao_ext">EUA</span></div>
+      <div class="chips-cls" aria-hidden="true"><span class="cl" data-cl="acao">Ações</span><span class="cl" data-cl="fii">FIIs</span><span class="cl" data-cl="etf">ETFs</span><span class="cl" data-cl="bdr">BDRs</span><span class="cl" data-cl="acao_ext">EUA</span><span class="cl" data-cl="cripto">Cripto</span><span class="cl" data-cl="rf">Renda fixa</span></div>
       <form id="auth-form" autocomplete="on" novalidate>
         <label class="field">E-mail<input id="a-email" type="email" autocomplete="email" required></label>
         <label class="field">Senha<input id="a-senha" type="password" autocomplete="current-password" minlength="6" maxlength="72" required></label>
@@ -686,6 +718,12 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
         <div class="hero-head"><span class="label">Evolução da carteira</span><span class="label" id="hero-fx"></span></div>
         <div id="hero-chart"><div class="carregando" style="margin-top:20px"><i style="width:90%;opacity:.4"></i><i style="width:70%;opacity:.4"></i></div></div>
       </div>
+    </section>
+
+    <!-- 0b. Resumo do dia -->
+    <section class="band panel" id="sec-dia" aria-labelledby="h-dia">
+      <div class="panel-head"><h2 id="h-dia">Resumo do dia</h2><span class="when" id="dia-data"></span></div>
+      <div id="dia-body"><div class="carregando"><i></i><i style="width:80%"></i><i style="width:60%"></i></div></div>
     </section>
 
     <!-- 1. Mercado hoje -->
@@ -723,11 +761,11 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
         <details class="addbox" id="addbox">
           <summary><span class="plus" aria-hidden="true">+</span>Adicionar ou editar ativo</summary>
           <form class="add" id="form-add" autocomplete="off">
-            <label class="f-tk">Código<input id="f-ticker" placeholder="PETR4, HGLG11, VOO" maxlength="10" list="dl-tickers" required><datalist id="dl-tickers"></datalist></label>
+            <label class="f-tk">Código<input id="f-ticker" placeholder="PETR4, HGLG11, VOO, BTC" maxlength="10" list="dl-tickers" required><datalist id="dl-tickers"></datalist></label>
             <label>Quantidade<input id="f-qtd" type="number" min="0" step="any" inputmode="decimal" placeholder="100" required></label>
             <label><span id="f-pm-lbl">Preço médio (R$)</span><input id="f-pm" type="number" min="0" step="any" inputmode="decimal" placeholder="opcional"></label>
             <div class="f-btn"><button class="btn primary" id="f-submit" type="submit" style="width:100%">Adicionar</button></div>
-            <p class="f-hint" id="f-hint">Aceita ações e FIIs da B3, ETFs (BOVA11, IVVB11), BDRs e ações ou ETFs dos EUA (VOO, AAPL). Para ativos dos EUA, use frações se tiver (ex.: 0,35) e o preço médio em dólar.</p>
+            <p class="f-hint" id="f-hint">Aceita ações e FIIs da B3, ETFs (BOVA11, IVVB11), BDRs, ações ou ETFs dos EUA (VOO, AAPL) e criptomoedas (BTC, ETH, SOL). Para ativos dos EUA, use frações se tiver (ex.: 0,35) e o preço médio em dólar; para cripto, a quantidade de moedas (ex.: 0,0025) e o preço médio em reais.</p>
             <p class="form-msg" id="form-msg" role="status"></p>
           </form>
         </details>
@@ -795,7 +833,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <div class="panel-head"><h2 id="h-emp">Conheça seus ativos</h2><span class="when">Toque em um ativo para ver o resumo completo</span></div>
       <p class="sub">O que cada empresa ou fundo faz, números, rendimentos, desempenho, reputação e notícias.</p>
       <form class="emp-busca" id="emp-form" autocomplete="off">
-        <input id="emp-q" placeholder="Código, ex.: WEGE3, HGLG11, VOO" maxlength="10" list="dl-tickers" aria-label="Código do ativo">
+        <input id="emp-q" placeholder="Código, ex.: WEGE3, HGLG11, VOO, BTC" maxlength="10" list="dl-tickers" aria-label="Código do ativo">
         <button class="btn primary" type="submit">Ver ativo</button>
       </form>
       <div class="emp-grid" id="emp-grid"><p class="skel">Cadastre ativos na carteira para vê-los aqui. Você também pode buscar qualquer ativo acima.</p></div>
@@ -847,7 +885,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <div class="more-row"><span id="all-count" class="when"></span><button class="btn" id="all-more" type="button" hidden>Mostrar mais 50</button></div>
     </section>
 
-    <p class="foot">Cotações de ações, FIIs, ETFs e BDRs da B3 pela brapi.dev, atualizadas a cada 2 minutos durante o pregão (com atraso de até cerca de 30 minutos da fonte gratuita). Ações e ETFs dos EUA pelo TradingView, convertidos para reais pelo dólar do momento. O termômetro, os destaques, o sinal de cada ativo e a opinião dos analistas são recalculados a cada 5 minutos no pregão e a cada 3 horas fora dele, com histórico de preços do Yahoo Finance, consenso de analistas e leitura técnica do TradingView, Selic do Banco Central, notícias do Google Notícias e indicadores do StatusInvest. O perfil das empresas vem da Wikipedia, Wikidata, StatusInvest e TradingView. Os sinais seguem regras fixas e transparentes, não são recomendação individual de investimento: confira antes de comprar ou vender.</p>
+    <p class="foot">Cotações de ações, FIIs, ETFs e BDRs da B3 pela brapi.dev, atualizadas a cada 2 minutos durante o pregão (com atraso de até cerca de 30 minutos da fonte gratuita). Ações e ETFs dos EUA pelo TradingView, convertidos para reais pelo dólar do momento. Criptomoedas pela CoinGecko, a cada 10 minutos, todos os dias (variação em 24 horas). Renda fixa calculada com o CDI diário do Banco Central. O termômetro, os destaques, o sinal de cada ativo e a opinião dos analistas são recalculados a cada 5 minutos no pregão e a cada 3 horas fora dele, com histórico de preços do Yahoo Finance, consenso de analistas e leitura técnica do TradingView, Selic do Banco Central, notícias do Google Notícias e indicadores do StatusInvest. O perfil das empresas vem da Wikipedia, Wikidata, StatusInvest e TradingView. Os sinais seguem regras fixas e transparentes, não são recomendação individual de investimento: confira antes de comprar ou vender.</p>
   </main>
 </div>
 

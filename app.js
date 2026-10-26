@@ -15,13 +15,15 @@
   const num = (n, d = 2) => (n == null || isNaN(n)) ? "—" : Number(n).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
   const brl = (n) => (n == null || isNaN(n)) ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const usd = (n) => (n == null || isNaN(n)) ? "—" : "US$ " + num(n, Math.abs(n) < 1 && n !== 0 ? 4 : 2);
-  const money = (n, m) => m === "USD" ? usd(n) : brl(n);
+  // Preço em reais com mais casas para valores abaixo de R$ 1 (criptos como SHIB ou PEPE)
+  const brlPx = (n) => (n == null || isNaN(n)) ? "—" : (n !== 0 && Math.abs(n) < 1) ? "R$ " + Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(n) < 0.01 ? 8 : 4 }) : brl(n);
+  const money = (n, m) => m === "USD" ? usd(n) : brlPx(n);
   const pct = (n) => (n == null || isNaN(n)) ? "—" : (n > 0 ? "+" : "") + num(n, 2) + "%";
   const sinal = (n, f) => (n > 0 ? "+" : n < 0 ? "−" : "") + f(Math.abs(n));
   const cls = (n) => n > 0 ? "up" : n < 0 ? "down" : "";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const safeUrl = (u) => /^https:\/\/[^\s"'<>]+$/i.test(u || "") ? u : (/^http:\/\/[^\s"'<>]+$/i.test(u || "") ? u.replace(/^http:/i, "https:") : null);
-  const IMG_OK = /^https:\/\/(icons\.brapi\.dev|s3-symbol-logo\.tradingview\.com|upload\.wikimedia\.org|commons\.wikimedia\.org)\//;
+  const IMG_OK = /^https:\/\/(icons\.brapi\.dev|s3-symbol-logo\.tradingview\.com|upload\.wikimedia\.org|commons\.wikimedia\.org|coin-images\.coingecko\.com|assets\.coingecko\.com)\//;
   const safeImg = (u) => IMG_OK.test(u || "") ? u : null;
   const TICKER_RE = /^[A-Z][A-Z0-9]{2}[A-Z]\d{1,2}$/; // B3
   const ATIVO_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/; // B3 ou EUA
@@ -55,11 +57,15 @@
     bdr: { nome: "BDRs", longo: "BDRs (empresas de fora na B3)", un: "BDRs" },
     acao_ext: { nome: "Ações EUA", longo: "Ações dos EUA", un: "ações" },
     etf_ext: { nome: "ETFs EUA", longo: "ETFs dos EUA", un: "cotas" },
+    cripto: { nome: "Cripto", longo: "Criptomoedas", un: "unidades" },
+    rf: { nome: "Renda fixa", longo: "Renda fixa (CDBs e caixinhas)", un: "" },
   };
-  const ORDEM_CLS = ["acao", "fii", "etf", "bdr", "acao_ext", "etf_ext"];
+  const ORDEM_CLS = ["acao", "fii", "etf", "bdr", "acao_ext", "etf_ext", "cripto"];
+  const CRIPTO_TK = /^[A-Z0-9]{2,6}-BRL$/;
+  const fracionado = (c) => c === "acao_ext" || c === "etf_ext" || c === "cripto";
   const ext = (c) => c === "acao_ext" || c === "etf_ext";
   const clsChip = (c) => CLS[c] ? `<span class="cl" data-cl="${c}">${CLS[c].nome}</span>` : "";
-  function classeDe(t) { const c = S.cotMap[t]; if (c && c.classe) return c.classe; const e = S.empresas[t]; if (e && e.classe) return e.classe; return TICKER_RE.test(t) ? "acao" : "acao_ext"; }
+  function classeDe(t) { const c = S.cotMap[t]; if (c && c.classe) return c.classe; const e = S.empresas[t]; if (e && e.classe) return e.classe; return TICKER_RE.test(t) ? "acao" : CRIPTO_TK.test(t) ? "cripto" : "acao_ext"; }
   function moedaDe(t) { const c = S.cotMap[t]; if (c && c.moeda) return c.moeda; const e = S.empresas[t]; if (e && e.moeda) return e.moeda; return ext(classeDe(t)) ? "USD" : "BRL"; }
   const px = (t, n) => money(n, moedaDe(t));
   function fx() { const d = S.painel.mercado && S.painel.mercado.dolar; return d && d.valor ? Number(d.valor) : null; }
@@ -228,11 +234,11 @@
     let tCot = null, tAn = null, tEmp = null;
     canal = sb.channel("radar")
       .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes" }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoes(); renderAll(); if (S.emp) cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); }, 2500); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "empresas" }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderEmpresas(); }, 4000); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderDia(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "empresas" }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderDia(); renderEmpresas(); }, 4000); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); renderDia(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "carteira" }, async () => { await carregarCarteira(); await carregarEmpresas(); renderAll(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "renda_fixa" }, async () => { await carregarRF(); renderRF(); renderHero(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "renda_fixa" }, async () => { await carregarRF(); aposRF(); })
       .subscribe();
     abrirPeloEndereco();
   }
@@ -291,12 +297,13 @@
     finally { b.disabled = false; b.classList.remove("spin"); }
   });
 
-  function renderAll() { renderStatus(); renderMercado(); renderHero(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); }
+  function renderAll() { renderStatus(); renderMercado(); renderHero(); renderDia(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); }
   function renderStatus() { $("#last-upd").textContent = S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
 
   /* ---------- Logos ---------- */
   function logoUrl(t) {
     const c = S.cotMap[t];
+    if (c && c.classe === "cripto") return c.extra && safeImg(c.extra.img) ? c.extra.img : null;
     if (c && c.logo && /^[a-z0-9\-\/]+$/i.test(c.logo)) return `https://s3-symbol-logo.tradingview.com/${c.logo}.svg`;
     return TICKER_RE.test(t) ? `https://icons.brapi.dev/icons/${encodeURIComponent(t)}.svg` : null;
   }
@@ -447,9 +454,13 @@
     const { rows, patr } = linhas(); const T = totais(rows);
     const patrTot = patr + rfV;
     contar($("#t-patr"), T.temPreco || rfV ? patrTot : null, brl);
-    contar($("#t-dia"), T.temPreco ? T.dia : null, (v) => esc(sinal(v, brl)) + (patr ? ` <small>${esc(pct(v / (patr - v) * 100))}</small>` : ""));
-    $("#t-dia").className = cls(T.dia);
-    if (T.custo) { const res = T.base - T.custo; contar($("#t-res"), res, (v) => esc(sinal(v, brl)) + ` <small>${esc(pct((T.base / T.custo - 1) * 100))}</small>`); $("#t-res").className = cls(res); }
+    // Hoje: variação dos ativos mais o que a renda fixa rende em um dia útil
+    const rfDia = RF && ehUtil(hojeISO()) ? RF.mes / 21 : 0;
+    const dia = (T.temPreco ? T.dia : 0) + rfDia;
+    contar($("#t-dia"), T.temPreco || rfV ? dia : null, (v) => esc(sinal(v, brl)) + (patrTot ? ` <small>${esc(pct(v / (patrTot - v) * 100))}</small>` : ""));
+    $("#t-dia").className = cls(dia);
+    const custo = T.custo + (RF ? RF.apl : 0), base = T.base + (RF ? RF.bruto : 0);
+    if (custo) { const res = base - custo; contar($("#t-res"), res, (v) => esc(sinal(v, brl)) + ` <small>${esc(pct((base / custo - 1) * 100))}</small>`); $("#t-res").className = cls(res); }
     else { $("#t-res").innerHTML = `<span class="hint">Informe o preço médio</span>`; $("#t-res")._v = null; $("#t-res").className = ""; }
     if (T.temProv) contar($("#t-prov"), T.prov, (v) => esc(brl(v)) + (patr ? ` <small>${esc(num(T.prov / patr * 100, 1))}% a.a.</small>` : ""));
     else { $("#t-prov").innerHTML = `<span class="hint">Aguardando dados</span>`; $("#t-prov")._v = null; }
@@ -457,7 +468,7 @@
     const porCls = {}; rows.forEach((r) => { porCls[r.classe] = (porCls[r.classe] || 0) + (patrTot ? (r.valor || 0) / patrTot : 0); });
     if (rfV && patrTot) porCls.rf = rfV / patrTot;
     const cl = ORDEM_CLS.concat("rf").filter((c) => porCls[c] > 0);
-    const nomeCl = (c) => c === "rf" ? "Renda fixa" : CLS[c].nome;
+    const nomeCl = (c) => CLS[c].nome;
     const anim = primeira("alloc");
     $("#alloc").innerHTML = `<div class="alloc-bar${anim ? " anim" : ""}" role="img" aria-label="Divisão por classe: ${esc(cl.map((c) => nomeCl(c) + " " + num(porCls[c] * 100, 0) + "%").join(", "))}">${cl.map((c) => `<i style="width:${(porCls[c] * 100).toFixed(2)}%;background:var(--c-${c})"></i>`).join("")}</div>
       <div class="alloc-leg">${cl.map((c) => `<span><i style="background:var(--c-${c})"></i>${nomeCl(c)} <b>${num(porCls[c] * 100, 0)}%</b></span>`).join("")}</div>`;
@@ -471,12 +482,120 @@
     ligarGrafico("hero");
   }
 
+  /* ---------- Resumo do dia ---------- */
+  const dataBRparse = (s) => { const m = String(s || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
+  function renderDia() {
+    const box = $("#dia-body"); if (!box) return;
+    const m = S.painel.mercado || {};
+    const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
+    const hoje = hojeISO();
+    $("#dia-data").textContent = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "numeric", month: "long" });
+    if (!S.carteira.length && !rfV) { box.innerHTML = `<p class="skel">Adicione seus ativos e aplicações para ver aqui, todo dia, o que mudou na sua carteira, as notícias que importam e o que vem pela frente.</p>`; return; }
+    const { rows, patr } = linhas(); const T = totais(rows);
+    const util = ehUtil(hoje);
+    const rfDia = RF && util ? RF.mes / 21 : 0;
+    const total = patr + rfV, dia = (T.temPreco ? T.dia : 0) + rfDia;
+    const pDia = total ? dia / (total - dia) * 100 : 0;
+    // Contexto do mercado
+    const ctx = [];
+    const idx = (n, o) => { if (o && o.varDia != null) ctx.push(`${n} <b class="${cls(o.varDia)}">${esc(pct(o.varDia))}</b>`); };
+    idx("Ibovespa", m.ibov); idx("IFIX", m.ifix); idx("S&amp;P 500", m.sp500);
+    if (m.dolar) ctx.push(`Dólar <b class="${cls(-m.dolar.varDia)}">${esc(pct(m.dolar.varDia))}</b>`);
+    const btc = S.cotMap["BTC-BRL"]; if (btc) ctx.push(`Bitcoin <b class="${cls(btc.var_dia)}">${esc(pct(btc.var_dia))}</b>`);
+    const comp = [];
+    if (T.temPreco) comp.push(`ativos ${esc(sinal(T.dia, brl))}`);
+    if (rfDia) comp.push(`renda fixa +${esc(brl(rfDia))}`);
+    // Quem mais mexeu hoje
+    const mov = rows.filter((r) => r.vdBRL != null && r.valor).map((r) => ({ r, imp: r.valor - r.valor / (1 + r.vdBRL / 100) }));
+    const altas = mov.filter((x) => x.r.vdBRL > 0).sort((a, b) => b.r.vdBRL - a.r.vdBRL).slice(0, 3);
+    const baixas = mov.filter((x) => x.r.vdBRL < 0).sort((a, b) => a.r.vdBRL - b.r.vdBRL).slice(0, 3);
+    const movHtml = (x) => `<button type="button" class="dia-mov" data-emp="${esc(x.r.t)}">${logoHtml(x.r.t)}<span class="tk">${esc(x.r.t)}</span><b class="${cls(x.r.vdBRL)}">${esc(pct(x.r.vdBRL))}</b><small class="${cls(x.imp)}">${esc(sinal(x.imp, brl))}</small></button>`;
+    // O que pede atenção
+    const at = [];
+    const frase = (txt) => (txt || "").replace(/^(Os sinais estão favoráveis|Sem motivo forte para mexer|Alguns sinais pedem atenção|Vários sinais negativos ao mesmo tempo)\.\s*/, "").replace(/^Hoje [^.]*\.\s*/, "").split(". ")[0].replace(/\.$/, "").trim();
+    rows.forEach((r) => {
+      const sn = r.a && r.a.sinal;
+      if (sn === "reduzir") at.push({ k: "neg", t: r.t, txt: "Sinal: considerar reduzir. " + frase(r.a.motivo) + "." });
+      else if (sn === "atencao") at.push({ k: "warn", t: r.t, txt: (frase(r.a.motivo) || "Pede atenção") + "." });
+      if (r.vdBRL != null && r.vdBRL <= -4) at.push({ k: "neg", t: r.t, txt: `Cai ${num(-r.vdBRL, 1)}% hoje.` });
+      if (r.res != null && r.res <= -20) at.push({ k: "neg", t: r.t, txt: `Está ${num(-r.res, 0)}% abaixo do seu preço médio.` });
+      const g = ((r.a && r.a.noticias) || []).find((n) => n.grave && n.data && Date.now() - Date.parse(n.data) < 3 * 864e5);
+      if (g) at.push({ k: "neg", t: r.t, txt: "Notícia sensível: " + g.titulo });
+      if (total && r.valor / total > 0.3 && r.classe !== "etf" && r.classe !== "etf_ext") at.push({ k: "warn", t: r.t, txt: `Pesa ${num(r.valor / total * 100, 0)}% do seu patrimônio.` });
+    });
+    if (RF) RF.itens.forEach(({ a, k }) => {
+      rfAvisos(a, k).filter(([c]) => c === "neg" || c === "warn").forEach(([c, txt]) => at.push({ k: c, t: a.banco, rf: true, txt: a.nome + ": " + txt }));
+      const m2 = RF_MAP[a.produto];
+      if (m2 && m2.ciclo && !k.futuro) { const rest = m2.ciclo - (k.dias % m2.ciclo); if (rest <= 5) at.push({ k: "warn", t: a.banco, rf: true, txt: `${a.nome}: o ciclo de ${m2.ciclo} dias termina em ${rest} ${rest === 1 ? "dia" : "dias"}. Confira se as entradas de ${brl(m2.reqMes)} já foram feitas.` }); }
+    });
+    const ordem = { neg: 0, warn: 1, "": 2 };
+    at.sort((a, b) => ordem[a.k] - ordem[b.k]);
+    // Notícias dos seus ativos (últimas 48 h primeiro)
+    const vistos = new Set(); let nots = [];
+    S.carteira.forEach((p) => { ((S.analises[p.ticker] && S.analises[p.ticker].noticias) || []).forEach((n) => { const k = n.titulo.slice(0, 50); if (!vistos.has(k)) { vistos.add(k); nots.push({ ...n, ticker: p.ticker }); } }); });
+    nots.sort((a, b) => (b.grave ? 1 : 0) - (a.grave ? 1 : 0) || (b.data > a.data ? 1 : -1));
+    const recentes = nots.filter((n) => n.data && Date.now() - Date.parse(n.data) < 2 * 864e5);
+    nots = (recentes.length >= 3 ? recentes : nots).slice(0, 6);
+    // Agenda: proventos, data com, renda fixa e Copom
+    const ag = [];
+    S.carteira.forEach((p) => {
+      const f = S.empresas[p.ticker] && S.empresas[p.ticker].fundamentos; if (!f) return;
+      (f.proximosProventos || []).forEach((pv) => { const d = dataBRparse(pv.pagamento); if (d && d >= hoje) ag.push({ d, t: p.ticker, txt: `${pv.tipo || "Provento"} de ${p.ticker}: ${brl(pv.valor * p.qtd)} na sua posição` }); });
+      (f.proventos || []).forEach((pv) => { const d = dataBRparse(pv.dataCom); if (d && d >= hoje && diasEntre(hoje, d) <= 30) ag.push({ d, t: p.ticker, txt: `Data com de ${p.ticker}: quem tiver a ${CLS[classeDe(p.ticker)] && classeDe(p.ticker) === "fii" ? "cota" : "ação"} no fim do dia recebe ${num(pv.valor, 4)} por unidade` }); });
+    });
+    if (RF) RF.itens.forEach(({ a, k }) => {
+      if (a.vencimento && a.vencimento >= hoje && diasEntre(hoje, a.vencimento) <= 60) ag.push({ d: a.vencimento, rf: true, txt: `Vence ${a.nome} (${a.banco}): ${brl(k.bruto)}` });
+      if (k.iofPct > 0) ag.push({ d: somaDias(a.data_aplicacao, 30), rf: true, txt: `IOF de ${a.nome} zera` });
+      const m2 = RF_MAP[a.produto];
+      if (m2 && m2.renova && !k.futuro) { const d = somaDias(a.data_aplicacao, Math.round(m2.renova * 30.44) * Math.max(1, Math.ceil((k.dias + 1) / (m2.renova * 30.44)))); if (diasEntre(hoje, d) <= 45) ag.push({ d, rf: true, txt: `${a.nome} é renovada (resgate e reaplicação, com IR)` }); }
+    });
+    const cop = ["2026-11-04", "2026-12-09"].find((d) => d >= hoje); // mesmas datas do servidor (fontes.ts)
+    if (m.selic && m.selic.proximoCopom) ag.push({ d: cop || "9999", txt: `Copom decide a Selic (${m.selic.proximoCopom}); hoje em ${num(m.selic.taxa, 2)}%` });
+    ag.sort((a, b) => a.d < b.d ? -1 : 1);
+    const dTxt = (d) => d === "9999" ? "" : d === hoje ? "Hoje" : diasEntre(hoje, d) === 1 ? "Amanhã" : dataBR(d).slice(0, 5);
+    // Sinais da carteira
+    const cont = { reforcar: 0, manter: 0, atencao: 0, reduzir: 0 };
+    rows.forEach((r) => { const sn = r.a && r.a.sinal; if (cont[sn] != null) cont[sn]++; });
+
+    box.innerHTML = `
+      <div class="dia-head">
+        <div class="dia-main">
+          <span class="label">${util ? "Hoje" : "Último pregão"}</span>
+          <div class="dia-tit">Seu patrimônio ${dia >= 0 ? "sobe" : "cai"} <b class="${cls(dia)}">${esc(pct(pDia))}</b> <span class="${cls(dia)}">(${esc(sinal(dia, brl))})</span></div>
+          <p class="hint" style="margin:4px 0 0">${comp.join(" · ")}${total ? ` · patrimônio de ${esc(brl(total))}` : ""}</p>
+        </div>
+        <div class="dia-ctx">${ctx.map((c) => `<span>${c}</span>`).join("")}</div>
+      </div>
+      ${rows.length ? `<div class="dia-sinais">${[["reforcar", "Considerar reforçar"], ["manter", "Manter"], ["atencao", "Atenção"], ["reduzir", "Considerar reduzir"]].filter(([k]) => cont[k]).map(([k, l]) => `<span class="pill s-${k}">${cont[k]} · ${l}</span>`).join("")}<a class="hint" href="#sec-carteira">ver carteira →</a></div>` : ""}
+      <div class="dia-grid">
+        <section class="dia-card">
+          <h3>Quem mais mexeu</h3>
+          ${altas.length || baixas.length ? `<div class="dia-movs">${altas.map(movHtml).join("")}${baixas.map(movHtml).join("")}</div>` : `<p class="skel">Sem variação registrada ainda hoje.</p>`}
+          ${RF ? `<p class="hint" style="margin:10px 0 0">Renda fixa: ${esc(brl(rfV))}, rendendo cerca de ${esc(brl(RF.mes / 21))} por dia útil.</p>` : ""}
+        </section>
+        <section class="dia-card">
+          <h3>Pede sua atenção</h3>
+          ${at.length ? `<ul class="dia-at">${at.slice(0, 7).map((x) => `<li class="${x.k}">${x.rf ? `<a class="tag" href="#sec-rf">${esc(x.t)}</a>` : `<button type="button" class="tag" data-emp="${esc(x.t)}">${esc(x.t)}</button>`}<span>${esc(x.txt)}</span></li>`).join("")}</ul>${at.length > 7 ? `<p class="hint" style="margin:6px 0 0">e mais ${at.length - 7}.</p>` : ""}` : `<p class="ok-msg">Nada fora do normal na sua carteira hoje.</p>`}
+        </section>
+        <section class="dia-card dia-news">
+          <h3>Notícias dos seus ativos</h3>
+          <ul class="news">${newsItems(nots, "Sem notícias recentes dos seus ativos.")}</ul>
+          <a class="hint" href="#sec-noticias">todas as notícias →</a>
+        </section>
+        <section class="dia-card">
+          <h3>Vem por aí</h3>
+          ${ag.length ? `<ul class="dia-ag">${ag.slice(0, 7).map((x) => `<li><span class="dt">${esc(dTxt(x.d))}</span><span>${esc(x.txt)}</span></li>`).join("")}</ul>` : `<p class="skel">Nenhum provento, vencimento ou evento nas próximas semanas.</p>`}
+        </section>
+      </div>`;
+  }
+
   /* ---------- Fita de cotações ---------- */
   function renderTape() {
     const m = S.painel.mercado || {}; const it = [];
     const idx = (nome, o, d) => { if (o && o.pontos != null) it.push({ n: nome, v: num(o.pontos, d), vd: o.varDia }); };
     idx("Ibovespa", m.ibov, 0); idx("IFIX", m.ifix, 0); idx("S&P 500", m.sp500, 0); idx("Nasdaq", m.nasdaq, 0);
     if (m.dolar) it.push({ n: "Dólar", v: "R$ " + num(m.dolar.valor, 3), vd: m.dolar.varDia });
+    const btc = S.cotMap["BTC-BRL"]; if (btc) it.push({ t: "BTC-BRL", n: "Bitcoin", v: brl(btc.preco), vd: btc.var_dia });
     const mine = new Set(S.carteira.map((p) => p.ticker));
     S.carteira.forEach((p) => { const c = S.cotMap[p.ticker]; if (c) it.push({ t: p.ticker, n: p.ticker, v: px(p.ticker, c.preco), vd: c.var_dia, mine: true }); });
     S.cot.filter((r) => r.classe === "acao" && !mine.has(r.ticker)).slice(0, 10).forEach((r) => it.push({ t: r.ticker, n: r.ticker, v: brl(r.preco), vd: r.var_dia }));
@@ -509,6 +628,7 @@
     if (m.sp500) kpi("S&amp;P 500", num(m.sp500.pontos, 0), m.sp500.varDia);
     if (m.nasdaq) kpi("Nasdaq", num(m.nasdaq.pontos, 0), m.nasdaq.varDia);
     if (m.dolar) kpi("Dólar", "R$ " + num(m.dolar.valor, 3), m.dolar.varDia, null, true);
+    const btc = S.cotMap["BTC-BRL"]; if (btc) kpi("Bitcoin · 24h", "R$ " + compacto(btc.preco).replace(" mil", " mil"), btc.var_dia);
     if (m.selic && m.selic.taxa != null) kpi("Selic", num(m.selic.taxa, 2) + "%", null, m.selic.proximoCopom ? "Copom " + m.selic.proximoCopom : "");
     const box = $("#kpis"); const anim = primeira("kpis");
     box.className = "kpis" + (anim ? " stagger" : ""); box.innerHTML = k.join("");
@@ -542,7 +662,7 @@
     if (S.cot.length && $("#dl-tickers").children.length < S.cot.length) $("#dl-tickers").innerHTML = S.cot.map((r) => `<option value="${esc(r.ticker)}">${esc(nomeBom(r.nome))} · ${esc((CLS[r.classe] || CLS.acao).nome)}</option>`).join("");
     $("#pos-head").hidden = !list.length;
     if (!list.length) {
-      box.innerHTML = `<div class="empty"><strong>Sua carteira está vazia</strong>Adicione abaixo o código de cada ativo e quanto você tem (ações, FIIs, ETFs ou ativos dos EUA como VOO), ou toque em "+ Adicionar" nas sugestões e na lista de ativos.</div>`;
+      box.innerHTML = `<div class="empty"><strong>Sua carteira está vazia</strong>Adicione abaixo o código de cada ativo e quanto você tem (ações, FIIs, ETFs, ativos dos EUA como VOO ou criptos como BTC), ou toque em "+ Adicionar" nas sugestões e na lista de ativos.</div>`;
       $("#alerts").hidden = true; $("#cart-when").textContent = ""; $("#cart-filtro").hidden = true;
       $("#addbox").open = true;
       return;
@@ -577,7 +697,7 @@
         <div class="pd-col">
           ${a ? `<p class="motivo">${esc(a.motivo || "")}</p>` : `<p class="neutro">A análise de ${esc(t)} está sendo preparada e aparece aqui em instantes.</p>`}
           <div class="meta"><span>Quantidade<b>${fmtQtd(r.qtd)}</b></span><span>Preço médio<b>${p.pm ? money(p.pm, moeda) : "—"}</b></span><span>Hoje<b class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) : "—"}</b></span><span>Peso<b>${num(r.peso * 100, 1)}%</b></span>${moeda === "USD" ? `<span>Em dólar<b>${usd(valorNat)}</b></span>` : ""}<span>${classe === "fii" ? "Segmento" : "Setor"}<b style="font-family:var(--body);font-size:12.5px">${esc(classe === "fii" ? r.seg || "—" : classe === "etf" || classe === "etf_ext" ? "ETF" : r.setor)}</b></span></div>
-          <div class="acts"><button type="button" class="btn sm primary" data-emp="${esc(t)}">Ver ${classe === "fii" || classe === "etf" || classe === "etf_ext" ? "fundo" : "empresa"}</button>${nNews ? `<button type="button" class="btn sm" data-news="${esc(t)}">Ver ${nNews} ${nNews === 1 ? "notícia" : "notícias"}</button>` : ""}<button type="button" class="btn sm" data-edit="${esc(t)}">Editar</button>
+          <div class="acts"><button type="button" class="btn sm primary" data-emp="${esc(t)}">Ver ${classe === "fii" || classe === "etf" || classe === "etf_ext" ? "fundo" : classe === "cripto" ? "cripto" : "empresa"}</button>${nNews ? `<button type="button" class="btn sm" data-news="${esc(t)}">Ver ${nNews} ${nNews === 1 ? "notícia" : "notícias"}</button>` : ""}<button type="button" class="btn sm" data-edit="${esc(t)}">Editar</button>
           ${S.confirmDel === t ? `<button type="button" class="btn sm danger" data-del-ok="${esc(t)}">Confirmar remoção</button><button type="button" class="btn ghost sm" data-del-no="1">Cancelar</button>` : `<button type="button" class="btn ghost sm" data-del="${esc(t)}">Remover</button>`}</div>
           ${a && a.atualizado_em ? `<span class="hint">Sinal recalculado ${esc(ago(a.atualizado_em))}${ind && ind.indice && ind.indice !== "Ibovespa" ? " · comparado com o " + esc(ind.indice) : ""}</span>` : ""}
         </div>
@@ -704,37 +824,40 @@
 
   /* ---------- Formulário: adicionar ou editar ---------- */
   function msg(t, ok) { const o = $("#form-msg"); o.textContent = t; o.className = "form-msg " + (ok ? "up" : ok === false ? "down" : ""); }
-  const normTicker = (s) => { let t = String(s || "").trim().toUpperCase(); if (/^[A-Z]{1,5}-[A-Z]$/.test(t)) t = t.replace("-", "."); return t; };
+  const normTicker = (s) => {
+    let t = String(s || "").trim().toUpperCase(); if (/^[A-Z]{1,5}-[A-Z]$/.test(t)) t = t.replace("-", ".");
+    // "BTC" vira "BTC-BRL" quando o código existe como cripto e não como ação
+    if (/^[A-Z0-9]{2,6}$/.test(t) && !S.cotMap[t] && S.cotMap[t + "-BRL"]) t = t + "-BRL";
+    return t;
+  };
   function ajustarForm() {
     const t = normTicker($("#f-ticker").value);
     $("#f-submit").textContent = S.carteira.some((x) => x.ticker === t) ? "Salvar" : "Adicionar";
     const usdT = t && (S.cotMap[t] ? S.cotMap[t].moeda === "USD" : (ATIVO_RE.test(t) && !TICKER_RE.test(t) && t.length >= 1 && /^[A-Z.]+$/.test(t)));
     $("#f-pm-lbl").textContent = usdT ? "Preço médio (US$)" : "Preço médio (R$)";
     const c = S.cotMap[t];
-    $("#f-qtd").placeholder = c && ext(c.classe) ? "0,35" : "100";
+    $("#f-qtd").placeholder = c && c.classe === "cripto" ? "0,0025" : c && ext(c.classe) ? "0,35" : "100";
   }
   $("#f-ticker").addEventListener("input", ajustarForm);
   $("#form-add").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const t = normTicker($("#f-ticker").value), qRaw = String($("#f-qtd").value).replace(",", "."), pmRaw = String($("#f-pm").value).trim().replace(",", ".");
+    let t = normTicker($("#f-ticker").value); const qRaw = String($("#f-qtd").value).replace(",", "."), pmRaw = String($("#f-pm").value).trim().replace(",", ".");
     const q = Number(qRaw), pm = pmRaw ? Number(pmRaw) : null;
-    if (!ATIVO_RE.test(t)) return msg("Use o código do ativo, como PETR4, HGLG11, BOVA11 ou VOO.", false);
+    if (!ATIVO_RE.test(t)) return msg("Use o código do ativo, como PETR4, HGLG11, BOVA11, VOO ou BTC.", false);
     if (!S.cotMap[t]) {
       if (TICKER_RE.test(t)) return msg("Não encontrei " + t + " entre os ativos negociados na B3. Confira o código em Explorar ativos.", false);
-      // Ação ou ETF dos EUA fora da lista: busca no servidor
-      msg("Procurando " + t + " nas bolsas dos EUA…");
+      // Ação ou ETF dos EUA (ou cripto) fora da lista: busca no servidor
+      msg("Procurando " + t + "…");
       $("#f-submit").disabled = true;
-      try {
-        const r = await radar({ acao: "buscar", ticker: t });
-        if (!r || !r.ok || !r.ativo) throw new Error("nao");
-        const a = { ...r.ativo, preco: Number(r.ativo.preco), var_dia: Number(r.ativo.var_dia) }; S.cot.push(a); S.cotMap[t] = a; ajustarForm();
-      } catch (err) { $("#f-submit").disabled = false; return msg(err.message === "limite" ? "Limite de buscas de hoje atingido." : "Não encontrei " + t + " na B3 nem nas bolsas dos EUA (NASDAQ, NYSE).", false); }
+      const achou = await buscarFora(t);
       $("#f-submit").disabled = false;
+      if (!achou) return msg("Não encontrei " + t + " na B3, nas bolsas dos EUA (NASDAQ, NYSE) nem entre as criptomoedas.", false);
+      t = achou;
     }
-    const c = S.cotMap[t], fora = ext(c.classe);
+    const c = S.cotMap[t], fora = ext(c.classe), frac = fracionado(c.classe);
     if (!(q > 0) || q > 1e9) return msg("Informe uma quantidade maior que zero.", false);
-    if (!fora && !Number.isInteger(q)) return msg("Na B3 a quantidade é um número inteiro de " + CLS[c.classe].un + ".", false);
-    if (fora && Math.round(q * 1e8) / 1e8 !== q) return msg("Use no máximo 8 casas decimais na quantidade.", false);
+    if (!frac && !Number.isInteger(q)) return msg("Na B3 a quantidade é um número inteiro de " + CLS[c.classe].un + ".", false);
+    if (frac && Math.round(q * 1e8) / 1e8 !== q) return msg("Use no máximo 8 casas decimais na quantidade.", false);
     if (pm != null && !(pm > 0 && pm <= 1e7)) return msg("O preço médio precisa ser um valor " + (fora ? "em dólares, como 512,30." : "em reais, como 38,50."), false);
     const existe = S.carteira.some((x) => x.ticker === t);
     $("#f-submit").disabled = true;
@@ -749,6 +872,17 @@
       catch (_) { msg(t + " adicionado. O sinal aparece na próxima atualização automática.", true); }
     }
   });
+  // Busca no servidor um código fora da lista: ação/ETF dos EUA e, se não achar, cripto (BTC -> BTC-BRL)
+  async function buscarFora(t) {
+    const tentativas = CRIPTO_TK.test(t) ? [t] : /^[A-Z0-9]{2,6}$/.test(t) ? [t, t + "-BRL"] : [t];
+    for (const x of tentativas) {
+      try {
+        const r = await radar({ acao: "buscar", ticker: x });
+        if (r && r.ok && r.ativo) { const a = { ...r.ativo, preco: Number(r.ativo.preco), var_dia: Number(r.ativo.var_dia) }; S.cot.push(a); S.cotMap[a.ticker] = a; ajustarForm(); return a.ticker; }
+      } catch (err) { if (err.message === "limite") { toast("Limite de buscas de hoje atingido."); return null; } }
+    }
+    return null;
+  }
   function escolher(t) {
     fecharEmpresa();
     $("#f-ticker").value = t; ajustarForm();
@@ -777,12 +911,13 @@
     }).join("");
   }
   $("#emp-form").addEventListener("submit", async (e) => {
-    e.preventDefault(); const t = normTicker($("#emp-q").value);
-    if (!ATIVO_RE.test(t)) { toast("Digite um código, como WEGE3, HGLG11 ou VOO."); return; }
+    e.preventDefault(); let t = normTicker($("#emp-q").value);
+    if (!ATIVO_RE.test(t)) { toast("Digite um código, como WEGE3, HGLG11, VOO ou BTC."); return; }
     if (!S.cotMap[t]) {
       if (TICKER_RE.test(t)) { toast("Não encontrei " + t + " entre os ativos da B3."); return; }
-      try { const r = await radar({ acao: "buscar", ticker: t }); if (!r || !r.ok) throw 0; const a = { ...r.ativo, preco: Number(r.ativo.preco), var_dia: Number(r.ativo.var_dia) }; S.cot.push(a); S.cotMap[t] = a; }
-      catch (_) { toast("Não encontrei " + t + " na B3 nem nas bolsas dos EUA."); return; }
+      const achou = await buscarFora(t);
+      if (!achou) { toast("Não encontrei " + t + " na B3, nos EUA nem entre as criptomoedas."); return; }
+      t = achou;
     }
     $("#emp-q").value = ""; abrirEmpresa(t);
   });
@@ -833,9 +968,10 @@
     $("#emp-head").firstElementChild.outerHTML = logoHtml(t, true);
     $("#emp-titulo").textContent = t + " · " + nome;
     const f = e && e.fundamentos;
-    const sub = c === "fii" ? ["Fundo imobiliário", f && f.segmento || (q && q.setor)] : c === "etf" ? ["ETF na B3"] : c === "etf_ext" ? ["ETF", (e && e.bolsa) || (q && q.bolsa)] : [f && f.setor, (f && f.segmento) || (q && q.setor)];
+    const cx = (q && q.extra) || (e && e.cripto) || {};
+    const sub = c === "cripto" ? ["Criptomoeda", cx.rank ? cx.rank + "ª em valor de mercado" : null, "variação em 24 h"] : c === "fii" ? ["Fundo imobiliário", f && f.segmento || (q && q.setor)] : c === "etf" ? ["ETF na B3"] : c === "etf_ext" ? ["ETF", (e && e.bolsa) || (q && q.bolsa)] : [f && f.setor, (f && f.segmento) || (q && q.setor)];
     $("#emp-sub").innerHTML = clsChip(c) + " " + esc(sub.filter(Boolean).join(" · "));
-    $("#emp-px").innerHTML = q ? `<b>${money(q.preco, q.moeda)}</b><small class="${cls(q.var_dia)}">${pct(q.var_dia)} hoje</small>${q.moeda === "USD" && fx() ? `<small class="hint" style="display:block">≈ ${brl(q.preco * fx())}</small>` : ""}` : "";
+    $("#emp-px").innerHTML = q ? `<b>${money(q.preco, q.moeda)}</b><small class="${cls(q.var_dia)}">${pct(q.var_dia)} ${q.classe === "cripto" ? "em 24 h" : "hoje"}</small>${q.moeda === "USD" && fx() ? `<small class="hint" style="display:block">≈ ${brl(q.preco * fx())}</small>` : ""}` : "";
   }
 
   // Explicações curtas e faixas de bom/ruim para cada indicador
@@ -869,6 +1005,7 @@
     const q = S.cotMap[t], a = S.analises[t], w = e.wiki || {}, f = e.fundamentos || {}, i = f.ind || {}, fa = w.fatos || {}, ds = e.desempenho || {};
     const classe = e.classe || classeDe(t), moeda = e.moeda || moedaDe(t), fora = ext(classe);
     const fundo = classe === "fii" || classe === "etf" || classe === "etf_ext";
+    const cripto = classe === "cripto", cx = e.cripto || (q && q.extra) || {};
     const M = (v) => money(v, moeda);
     const tem = S.carteira.some((p) => p.ticker === t);
     const fotos = [], vistas = new Set();
@@ -877,7 +1014,7 @@
     const rep = e.reputacao || {};
     const repCor = rep.nota >= 70 ? "var(--up)" : rep.nota >= 50 ? "var(--warn)" : "var(--down)";
     const financeira = /Bancos|Seguros/.test(e.setorMacro || "") || /Financeiro|Seguro|Banco|Finance/i.test(f.setor || "");
-    const lista = classe === "fii" ? IND_FII : fundo ? [] : IND;
+    const lista = classe === "fii" ? IND_FII : fundo || cripto ? [] : IND;
     const inds = lista.filter(([k]) => i[k] != null && !(financeira && ["divLiqEbitda", "liqCorrente", "evEbitda"].includes(k))).map(([k, rot, fmt, exp, aval]) => `<div class="ind ${aval(i[k])}"><span>${esc(rot)}</span><b>${esc(fmt(i[k]))}</b><small>${esc(exp)}</small></div>`).join("");
     const prov = (f.proventos || []).slice(0, 8);
     const proximos = f.proximosProventos || [];
@@ -885,15 +1022,16 @@
     const posicao = S.carteira.find((p) => p.ticker === t);
     const sn = a && SINAL[a.sinal] ? a.sinal : null;
     const siPath = { acao: "acoes", fii: "fundos-imobiliarios", etf: "etfs", bdr: "bdrs" }[classe];
-    const tvUrl = `https://br.tradingview.com/symbols/${fora ? (e.bolsa || (q && q.bolsa) || "NASDAQ") : "BMFBOVESPA"}-${t.replace(".", "_")}/`;
+    const tvUrl = cripto ? `https://br.tradingview.com/symbols/${t.replace("-", "")}/` : `https://br.tradingview.com/symbols/${fora ? (e.bolsa || (q && q.bolsa) || "NASDAQ") : "BMFBOVESPA"}-${t.replace(".", "_")}/`;
     const un = CLS[classe] ? CLS[classe].un : "ações";
 
     let fatosHtml;
-    if (classe === "fii") fatosHtml = fato("CNPJ", f.cnpj) + fato("Início do fundo", f.inicio) + fato("Administrador", f.administrador) + fato("Segmento", f.segmento) + fato("Cotistas", i.cotistas != null ? num(i.cotistas, 0) : null) + fato("Patrimônio", i.patrimonio != null ? "R$ " + compacto(i.patrimonio) : null) + fato("Participação no IFIX", i.partIfix != null ? num(i.partIfix, 2) + "%" : null) + fato("Negociação diária", f.liquidezDiaria != null ? "R$ " + compacto(f.liquidezDiaria) : null);
+    if (cripto) fatosHtml = fato("Símbolo", t.replace("-BRL", "")) + fato("Posição no ranking", cx.rank ? cx.rank + "ª maior do mundo" : null) + fato("Valor de mercado", cx.valorMercado || (q && q.valor_mercado_mi) ? "R$ " + compacto(cx.valorMercado || q.valor_mercado_mi * 1e6) : null) + fato("Volume em 24 h", q && q.volume ? "R$ " + compacto(q.volume) : null) + fato("Máxima histórica", cx.ath ? M(cx.ath) + (cx.athData ? " em " + cx.athData.split("-").reverse().join("/") : "") : null) + fato("Distância da máxima", cx.athPct != null ? num(cx.athPct, 1) + "%" : null) + fato("Em circulação", cx.circulante ? compacto(cx.circulante) + " unidades" : null) + fato("Oferta máxima", cx.maxima ? compacto(cx.maxima) + " unidades" : cx.circulante ? "Sem limite definido" : null) + fato("Negociação", "24 horas, todos os dias");
+    else if (classe === "fii") fatosHtml = fato("CNPJ", f.cnpj) + fato("Início do fundo", f.inicio) + fato("Administrador", f.administrador) + fato("Segmento", f.segmento) + fato("Cotistas", i.cotistas != null ? num(i.cotistas, 0) : null) + fato("Patrimônio", i.patrimonio != null ? "R$ " + compacto(i.patrimonio) : null) + fato("Participação no IFIX", i.partIfix != null ? num(i.partIfix, 2) + "%" : null) + fato("Negociação diária", f.liquidezDiaria != null ? "R$ " + compacto(f.liquidezDiaria) : null);
     else if (fundo) fatosHtml = fato("Onde é negociado", fora ? (e.bolsa === "AMEX" ? "NYSE Arca (EUA)" : (e.bolsa || "EUA")) : "B3") + fato("Moeda", moeda === "USD" ? "Dólar (US$)" : "Real (R$)") + fato("Taxa de administração", f.taxaAdm != null ? num(f.taxaAdm, 2) + "% ao ano" : null) + fato("Patrimônio", f.patrimonio != null ? (moeda === "USD" ? "US$ " : "R$ ") + compacto(f.patrimonio) : (q && q.extra && q.extra.patrimonio ? "US$ " + compacto(q.extra.patrimonio) : null)) + fato("Dividend yield", i.dy != null ? num(i.dy, 2) + "%" : null);
     else fatosHtml = fato("Razão social", f.razaoSocial) + fato("CNPJ", f.cnpj) + fato("Fundação", fa.fundacao) + fato("Sede", fa.sede) + fato("Presidente", fa.presidente) + fato("Funcionários", fa.funcionarios != null ? num(fa.funcionarios, 0) : null) + fato("Fundadores", fa.fundadores) + fato("Controlador", fa.controlador) + fato("Setor", f.setor) + fato("Segmento", f.segmento) + fato("Produtos e marcas", fa.produtos) + fato("Onde é negociada", fora ? e.bolsa || (q && q.bolsa) : classe === "bdr" ? "B3, como BDR (recibo de ação de fora)" : null) + fato("Valor de mercado", i.valorMercado != null ? (moeda === "USD" ? "US$ " : "R$ ") + compacto(i.valorMercado) : null) + fato("Negociação diária", f.liquidezDiaria != null ? "R$ " + compacto(f.liquidezDiaria) : null) + fato("Site", fa.site, true);
 
-    const dividendos = fora ? `<section class="panel" aria-labelledby="emp-div">
+    const dividendos = cripto ? "" : fora ? `<section class="panel" aria-labelledby="emp-div">
         <h3 id="emp-div">Dividendos</h3>
         <div class="rets" style="margin-top:0"><div><span>Dividend yield</span><b>${i.dy != null ? esc(num(i.dy, 2)) + "%" : "—"}</b></div>${posicao && i.dy && q ? `<div><span>Na sua posição (12m)</span><b>≈ ${esc(usd(q.preco * posicao.qtd * i.dy / 100))}</b></div>` : ""}</div>
         <p class="hint" style="margin:10px 0 0">Ativos dos EUA pagam dividendos em dólar, geralmente a cada 3 meses, com 30% de imposto retido na fonte nos EUA.${classe === "etf_ext" ? " Alguns ETFs reinvestem os dividendos automaticamente." : ""}</p></section>`
@@ -908,13 +1046,14 @@
         ${prov.length ? `<table class="prov"><thead><tr><th>Tipo</th><th>Data com</th><th>Pagamento</th><th class="r">Valor por ${classe === "fii" ? "cota" : "ação"}</th></tr></thead><tbody>${prov.map((p) => `<tr><td>${esc(p.tipo)}</td><td>${esc(p.dataCom)}</td><td>${esc(p.pagamento || "—")}</td><td class="r">${esc(num(p.valor, 4))}</td></tr>`).join("")}</tbody></table><p class="hint" style="margin:8px 0 0">"Data com" é o último dia para ter o ativo e receber aquele provento.${classe === "fii" ? " Rendimentos de FIIs são isentos de IR para pessoa física." : ""}</p>` : `<p class="skel">${classe === "etf" ? "A maioria dos ETFs da B3 reinveste os dividendos em vez de pagá-los." : "Sem proventos recentes registrados."}</p>`}
       </section>`;
 
-    const fontes = classe === "fii" ? "StatusInvest (indicadores e rendimentos), Yahoo Finance (cotações históricas), Google Notícias"
+    const fontes = cripto ? "CoinGecko (preço, ranking e máxima histórica), Yahoo Finance e Banco Central via dólar (cotações históricas), Wikipedia (texto), Google Notícias"
+      : classe === "fii" ? "StatusInvest (indicadores e rendimentos), Yahoo Finance (cotações históricas), Google Notícias"
       : fundo ? "TradingView (taxa, patrimônio e técnico), Yahoo Finance (cotações históricas), Google Notícias"
       : `Wikipedia e Wikidata (texto, fotos e fatos), ${classe === "acao" ? "StatusInvest" : "TradingView"} (indicadores${classe === "acao" ? " e proventos" : ""}), Yahoo Finance (cotações históricas), TradingView (analistas), Google Notícias`;
 
     $("#emp-body").innerHTML = `
       <div class="emp-acts">${tem ? `<span class="have">✓ Na sua carteira${posicao ? " · " + fmtQtd(posicao.qtd) + " " + un : ""}</span>` : `<button type="button" class="btn primary sm" data-pick="${esc(t)}">+ Adicionar à carteira</button>`}
-        ${sn ? `<span class="pill s-${sn}">${SINAL[sn]}</span>` : ""}${rep.nota != null ? `<span class="chip-s ${rep.nota >= 70 ? "otim" : rep.nota < 50 ? "pess" : "div"}">${fundo ? "Qualidade" : "Reputação"} ${esc(rep.rotulo || "")} · ${Math.round(rep.nota)}/100</span>` : ""}
+        ${sn ? `<span class="pill s-${sn}">${SINAL[sn]}</span>` : ""}${rep.nota != null ? `<span class="chip-s ${rep.nota >= 70 ? "otim" : rep.nota < 50 ? "pess" : "div"}">${fundo || cripto ? "Qualidade" : "Reputação"} ${esc(rep.rotulo || "")} · ${Math.round(rep.nota)}/100</span>` : ""}
         ${doCache ? `<span class="hint">Atualizando…</span>` : ""}</div>
 
       ${fotos.length ? `<div class="gal">${fotos.map((x) => `<figure><img src="${esc(x.url)}" alt="${esc(x.legenda || "Foto de " + (e.nome || t))}" loading="lazy" referrerpolicy="no-referrer">${x.legenda ? `<figcaption>${esc(x.legenda)}</figcaption>` : ""}</figure>`).join("")}</div>` : ""}
@@ -943,12 +1082,13 @@
       ${dividendos}
 
       <section class="panel" aria-labelledby="emp-rep">
-        <h3 id="emp-rep">${fundo ? "Qualidade do fundo" : "Reputação"}</h3>
+        <h3 id="emp-rep">${fundo ? "Qualidade do fundo" : cripto ? "Avaliação da moeda" : "Reputação"}</h3>
         ${rep.nota != null ? `<div class="rep-top"><div class="dscore${reduz ? "" : " anim"}" style="--p:${Math.round(rep.nota)};--sc:${repCor};width:92px;height:92px"><span><b style="font-size:24px">${Math.round(rep.nota)}</b><small>de 100</small></span></div>
-          <div><div class="h3" style="color:${repCor};margin-bottom:4px">${esc(rep.rotulo || "")}</div><p class="hint" style="margin:0;font-size:13px">${fundo ? (classe === "fii" ? "Nota do Radar a partir de tamanho, liquidez, preço sobre o patrimônio, rendimentos e noticiário." : "Nota do Radar a partir de tamanho, custo (taxa de administração), oscilação e noticiário.") : "Nota do Radar a partir de governança, solidez, resultados, dividendos e do tom do noticiário. Para ver reclamações de clientes, consulte o Reclame Aqui."}</p></div></div>
+          <div><div class="h3" style="color:${repCor};margin-bottom:4px">${esc(rep.rotulo || "")}</div><p class="hint" style="margin:0;font-size:13px">${cripto ? "Nota do Radar a partir do tamanho, oscilação, distância da máxima histórica e noticiário." : fundo ? (classe === "fii" ? "Nota do Radar a partir de tamanho, liquidez, preço sobre o patrimônio, rendimentos e noticiário." : "Nota do Radar a partir de tamanho, custo (taxa de administração), oscilação e noticiário.") : "Nota do Radar a partir de governança, solidez, resultados, dividendos e do tom do noticiário. Para ver reclamações de clientes, consulte o Reclame Aqui."}</p></div></div>
           <ul class="rep-it">${(rep.itens || []).map((x) => `<li><span class="mark ${esc(x.efeito)}">${x.efeito === "positivo" ? "+" : x.efeito === "negativo" ? "−" : "·"}</span><span class="ar">${esc(x.area)}</span><span>${esc(x.texto)}</span></li>`).join("")}</ul>` : `<p class="skel">Sem dados suficientes para a nota.</p>`}
         <div class="emp-acts" style="margin-top:12px">
-          ${!fundo ? `<a class="btn sm" href="https://www.reclameaqui.com.br/busca/?q=${nomeBusca}" target="_blank" rel="noopener noreferrer">Ver no Reclame Aqui</a>` : ""}
+          ${cripto && cx.id && /^[a-z0-9-]+$/.test(cx.id) ? `<a class="btn sm" href="https://www.coingecko.com/pt/moedas/${esc(cx.id)}" target="_blank" rel="noopener noreferrer">CoinGecko</a>` : ""}
+          ${!fundo && !cripto ? `<a class="btn sm" href="https://www.reclameaqui.com.br/busca/?q=${nomeBusca}" target="_blank" rel="noopener noreferrer">Ver no Reclame Aqui</a>` : ""}
           ${fa.site && safeUrl(fa.site) ? `<a class="btn sm" href="${esc(safeUrl(fa.site))}" target="_blank" rel="noopener noreferrer">Site da empresa</a>` : ""}
           ${siPath ? `<a class="btn sm" href="https://statusinvest.com.br/${siPath}/${encodeURIComponent(t.toLowerCase())}" target="_blank" rel="noopener noreferrer">StatusInvest</a>` : ""}
           <a class="btn sm" href="${esc(tvUrl)}" target="_blank" rel="noopener noreferrer">TradingView</a>
@@ -985,55 +1125,79 @@
   }
   function renderDiv() {
     const box = $("#div-body");
-    if (!S.carteira.length) { box.innerHTML = `<p class="skel">Cadastre seus ativos para ver como a carteira está distribuída entre classes, setores e países, e o que está faltando.</p>`; return; }
-    const { rows, patr } = linhas(); if (!patr) { box.innerHTML = `<p class="skel">Aguardando cotações para calcular a distribuição.</p>`; return; }
+    const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
+    if (!S.carteira.length && !rfV) { box.innerHTML = `<p class="skel">Cadastre seus ativos e aplicações de renda fixa para ver como o patrimônio está distribuído entre classes, setores e países, e o que está faltando.</p>`; return; }
+    const L = linhas(); const total = L.patr + rfV;
+    if (!total) { box.innerHTML = `<p class="skel">Aguardando cotações para calcular a distribuição.</p>`; return; }
+    // Pesos sobre o patrimônio total (ações, fundos, cripto e renda fixa)
+    const rows = L.rows.map((r) => ({ ...r, peso: (r.valor || 0) / total }));
     const porCls = {}; rows.forEach((r) => { porCls[r.classe] = (porCls[r.classe] || 0) + r.peso; });
-    const cl = ORDEM_CLS.filter((c) => porCls[c] > 0);
+    const rfW = rfV / total; if (rfW > 0) porCls.rf = rfW;
+    const cl = ORDEM_CLS.concat("rf").filter((c) => porCls[c] > 0);
     const etfFora = (r) => r.classe === "etf" && ETF_FORA.test(r.nome + " " + r.t);
     const foraW = rows.reduce((s, r) => s + ((ext(r.classe) || r.classe === "bdr" || etfFora(r)) ? r.peso : 0), 0);
     const expW = rows.reduce((s, r) => s + ((r.classe === "acao" && (DOLAR.has(r.setor) || DOLAR_TK.has(r.t))) ? r.peso : 0), 0);
     const dol = foraW + expW;
-    // Onde está o dinheiro: ações por setor, FIIs por segmento, ETFs juntos
-    const grupo = (r) => r.classe === "fii" ? "FII · " + (r.seg || "Outros") : r.classe === "etf" ? "ETFs na B3" : r.classe === "etf_ext" ? "ETFs dos EUA" : r.setor;
+    const criW = porCls.cripto || 0;
+    // Onde está o dinheiro: ações por setor, FIIs por segmento, ETFs juntos, cripto junto e renda fixa por banco
+    const grupo = (r) => r.classe === "fii" ? "FII · " + (r.seg || "Outros") : r.classe === "etf" ? "ETFs na B3" : r.classe === "etf_ext" ? "ETFs dos EUA" : r.classe === "cripto" ? "Criptomoedas" : r.setor;
     const grupos = {}; const corG = {};
     rows.forEach((r) => { const g = grupo(r); grupos[g] = (grupos[g] || 0) + r.peso; corG[g] = corG[g] && corG[g] !== r.classe ? "acao" : r.classe; });
+    const porBanco = {};
+    if (RF) RF.itens.forEach(({ a, k }) => { porBanco[a.banco] = (porBanco[a.banco] || 0) + k.bruto; });
+    Object.entries(porBanco).forEach(([b, v]) => { const g = "Renda fixa · " + b; grupos[g] = v / total; corG[g] = "rf"; });
     const gOrd = Object.entries(grupos).sort((a, b) => b[1] - a[1]);
-    const ehEtf = (g) => g === "ETFs na B3" || g === "ETFs dos EUA";
-    // ETFs já são diversificados por dentro: não contam como concentração
-    const indiv = rows.filter((r) => r.classe !== "etf" && r.classe !== "etf_ext");
+    // ETFs e renda fixa já são diversificados (ou garantidos): não contam como concentração
+    const ehDiv = (g) => g === "ETFs na B3" || g === "ETFs dos EUA" || g.startsWith("Renda fixa");
+    const indiv = rows.filter((r) => r.classe !== "etf" && r.classe !== "etf_ext").sort((a, b) => b.peso - a.peso);
     const top = indiv[0]; const w1 = top ? top.peso : 0;
-    const gNaoEtf = gOrd.filter(([g]) => !ehEtf(g)); const s1 = gNaoEtf[0] ? gNaoEtf[0][1] : 0;
-    const nG = gOrd.length + gOrd.filter(([g]) => ehEtf(g)).length * 2;
+    const gNaoDiv = gOrd.filter(([g]) => !ehDiv(g)); const s1 = gNaoDiv[0] ? gNaoDiv[0][1] : 0;
+    const nG = gOrd.length + gOrd.filter(([g]) => g.startsWith("ETFs")).length * 2;
     const clamp = (x) => Math.max(0, Math.min(1, x));
-    const score = Math.round(25 * Math.min(cl.length, 4) / 4 + 25 * Math.min(nG, 8) / 8 + 20 * (1 - clamp((w1 - 0.15) / 0.35)) + 15 * (1 - clamp((s1 - 0.3) / 0.4)) + 15 * clamp(dol / 0.2));
+    // Nota: classes, grupos, maior ativo, maior setor, dólar, colchão de renda fixa e excesso de cripto
+    let score = 22 * Math.min(cl.length, 4) / 4 + 20 * Math.min(nG, 8) / 8 + 18 * (1 - clamp((w1 - 0.15) / 0.35)) + 12 * (1 - clamp((s1 - 0.3) / 0.4)) + 14 * clamp(dol / 0.2)
+      + 14 * (rfW >= 0.1 && rfW <= 0.7 ? 1 : rfW > 0.7 ? 0.6 : clamp(rfW / 0.1)) - 15 * clamp((criW - 0.1) / 0.2);
+    score = Math.max(0, Math.min(100, Math.round(score)));
     const sc = score >= 70 ? "var(--up)" : score >= 45 ? "var(--warn)" : "var(--down)";
     const lbl = score >= 70 ? "Bem diversificada" : score >= 45 ? "Pode melhorar" : "Pouco diversificada";
     const obs = [];
-    obs.push({ e: cl.length >= 3 ? "positivo" : cl.length === 2 ? "neutro" : "negativo", t: `Você tem ${cl.length} ${cl.length === 1 ? "classe de ativo" : "classes de ativos"} (${cl.map((c) => CLS[c].nome).join(", ")}). ${cl.length < 3 ? "Misturar ações, fundos imobiliários e ativos de fora reduz o risco de tudo cair junto." : "Boa mistura de classes."}` });
-    if (top && w1 > 0.25) obs.push({ e: "negativo", t: `${top.t} pesa ${num(w1 * 100, 0)}% da carteira. Acima de 25% num único ativo (fora ETFs), uma queda dele pesa muito no total.` });
-    if (s1 > 0.4) obs.push({ e: "negativo", t: `${gNaoEtf[0][0]} concentra ${num(s1 * 100, 0)}% do patrimônio.` });
-    obs.push(foraW >= 0.1 ? { e: "positivo", t: `${num(foraW * 100, 0)}% da carteira está fora do Brasil (EUA, BDRs ou ETFs internacionais): protege quando o real se desvaloriza e reduz o risco Brasil.` }
-      : dol >= 0.1 ? { e: "neutro", t: `${num(dol * 100, 0)}% está em exportadoras que ganham em dólar, mas nada diretamente fora do Brasil. Um ETF como VOO ou IVVB11 completa a proteção.` }
-      : { e: "negativo", t: "Quase nada da carteira ganha em dólar. Ativos dos EUA (como VOO) ou exportadoras protegem quando o real se desvaloriza." });
+    obs.push({ e: cl.length >= 3 ? "positivo" : cl.length === 2 ? "neutro" : "negativo", t: `Você tem ${cl.length} ${cl.length === 1 ? "classe de ativo" : "classes de ativos"} (${cl.map((c) => CLS[c].nome).join(", ")}). ${cl.length < 3 ? "Misturar renda fixa, ações, fundos imobiliários e ativos de fora reduz o risco de tudo cair junto." : "Boa mistura de classes."}` });
+    if (top && w1 > 0.25) obs.push({ e: "negativo", t: `${top.t} pesa ${num(w1 * 100, 0)}% do patrimônio. Acima de 25% num único ativo (fora ETFs e renda fixa), uma queda dele pesa muito no total.` });
+    if (s1 > 0.4) obs.push({ e: "negativo", t: `${gNaoDiv[0][0]} concentra ${num(s1 * 100, 0)}% do patrimônio.` });
+    // Renda fixa: colchão, taxa média e limite do FGC
+    if (rfW === 0) obs.push({ e: "neutro", t: "Nada em renda fixa. Uma reserva em CDB ou caixinha com liquidez diária cobre imprevistos sem precisar vender ações na hora errada." });
+    else {
+      const cdiItens = RF.itens.filter(({ a }) => a.indexador === "cdi");
+      const media = cdiItens.length ? cdiItens.reduce((sm, { a, k }) => sm + Number(a.taxa) * k.bruto, 0) / cdiItens.reduce((sm, { k }) => sm + k.bruto, 0) : null;
+      obs.push({ e: rfW > 0.85 ? "neutro" : "positivo", t: `${num(rfW * 100, 0)}% em renda fixa (${brl(rfV)})${media ? `, rendendo em média ${num(media, 0)}% do CDI` : ""}. ${rfW > 0.85 ? "É seguro, mas quase sem exposição a crescimento no longo prazo." : "Amortece as quedas da bolsa e serve de reserva."}` });
+      Object.entries(porBanco).forEach(([b, v]) => { if (v > 250000) obs.push({ e: "negativo", t: `${brl(v)} em renda fixa no ${b}: o FGC garante até R$ 250 mil por CPF em cada banco. Divida o excedente entre outros bancos.` }); });
+    }
+    if (criW > 0.15) obs.push({ e: "negativo", t: `${num(criW * 100, 0)}% em criptomoedas: oscilam muito mais que ações. Muita gente limita cripto a 5% ou 10% do patrimônio.` });
+    else if (criW > 0) obs.push({ e: "neutro", t: `${num(criW * 100, 1)}% em criptomoedas: uma parte pequena, que pode oscilar bastante sem comprometer o todo.` });
+    obs.push(foraW >= 0.1 ? { e: "positivo", t: `${num(foraW * 100, 0)}% do patrimônio está fora do Brasil (EUA, BDRs ou ETFs internacionais): protege quando o real se desvaloriza e reduz o risco Brasil.` }
+      : dol >= 0.1 ? { e: "neutro", t: foraW > 0 ? `${num(foraW * 100, 0)}% está fora do Brasil e ${num(expW * 100, 0)}% em exportadoras que ganham em dólar. Levar a parte de fora para 10% ou mais completa a proteção contra a alta do dólar.` : `${num(dol * 100, 0)}% está em exportadoras que ganham em dólar, mas nada diretamente fora do Brasil. Um ETF como VOO ou IVVB11 completa a proteção.` }
+      : { e: "negativo", t: "Quase nada do patrimônio ganha em dólar. Ativos dos EUA (como VOO) ou exportadoras protegem quando o real se desvaloriza." });
     if (porCls.fii) obs.push({ e: "positivo", t: `${num(porCls.fii * 100, 0)}% em fundos imobiliários, que pagam renda todo mês isenta de IR.` });
-    const def = rows.reduce((s, r) => s + (r.classe === "acao" && DEFENSIVOS.has(r.setor) ? r.peso : 0), 0);
-    if (def > 0.5) obs.push({ e: "neutro", t: `${num(def * 100, 0)}% está em setores defensivos (bancos, seguros, energia, saneamento): bons dividendos, mas pouca exposição a crescimento.` });
+    const def = rows.reduce((sm, r) => sm + (r.classe === "acao" && DEFENSIVOS.has(r.setor) ? r.peso : 0), 0);
+    const acoesW = porCls.acao || 0;
+    if (acoesW && def / acoesW > 0.5 && def > 0.15) obs.push({ e: "neutro", t: `${num(def / acoesW * 100, 0)}% das suas ações estão em setores defensivos (bancos, seguros, energia, saneamento): bons dividendos, mas pouca exposição a crescimento.` });
 
     // Sugestões: primeiro as classes que faltam, depois os setores
     const mine = new Set(S.carteira.map((p) => p.ticker));
     const topCls = (c, n, pref) => { const out = []; (pref || []).forEach((t) => { const r = S.cotMap[t]; if (r && r.classe === c && !mine.has(t)) out.push(r); }); S.cot.filter((r) => r.classe === c && !mine.has(r.ticker) && !out.includes(r)).slice(0, n).forEach((r) => out.push(r)); return out.slice(0, n).map((r) => ({ t: r.ticker, tese: "" })); };
     const faltaCls = [];
+    if (!rfW) faltaCls.push({ s: "Renda fixa (reserva)", c: "rf", why: "CDBs e caixinhas com liquidez diária rendem perto de 100% do CDI ou mais, têm FGC e podem ser resgatados a qualquer hora.", rf: true, cands: [] });
     if (!porCls.fii) faltaCls.push({ s: "Fundos imobiliários", c: "fii", why: "Renda mensal isenta de IR, vinda de aluguéis de galpões, shoppings, escritórios e títulos imobiliários.", cands: topCls("fii", 2, ["HGLG11", "KNCR11", "XPML11"]) });
     if (foraW < 0.05) faltaCls.push({ s: "Exterior (EUA)", c: "etf_ext", why: "Coloca você nas maiores empresas do mundo e protege contra a alta do dólar. Dá para comprar pela B3 (IVVB11) ou direto nos EUA (VOO).", cands: [...topCls("etf", 1, ["IVVB11"]), ...topCls("etf_ext", 1, ["VOO"])] });
     if (!porCls.etf && !porCls.etf_ext) faltaCls.push({ s: "ETFs", c: "etf", why: "Uma cota compra dezenas de empresas de uma vez, com custo baixo. Bom para a base da carteira.", cands: topCls("etf", 2, ["BOVA11", "SMAL11"]) });
     const temAcoes = rows.some((r) => r.classe === "acao");
     const porSetor = {}; rows.forEach((r) => { if (r.classe === "acao") porSetor[r.setor] = 1; });
-    const faltando = temAcoes ? PRIORIDADE.filter((s) => !porSetor[s]).map((s) => ({ s, c: candidatos(s, mine) })).filter((x) => x.c.length) : [];
+    const faltando = temAcoes ? PRIORIDADE.filter((sx) => !porSetor[sx]).map((sx) => ({ s: sx, c: candidatos(sx, mine) })).filter((x) => x.c.length) : [];
     faltando.sort((a, b) => ((b.c[0] && b.c[0].casas) || 0) - ((a.c[0] && a.c[0].casas) || 0));
     const motivo = { "Petróleo e Gás": "Gera caixa em dólar e paga dividendos altos.", "Mineração e Siderurgia": "Receita em dólar, protege contra alta do câmbio.", "Saúde": "Demanda estável, pouco ligada ao ciclo da economia.", "Indústria": "Exportadoras e empresas de bens de capital diversificam o risco Brasil.", "Agro e Alimentos": "Setor forte do Brasil, muitas vezes com receita externa.", "Tecnologia e Telecom": "Receita recorrente e potencial de crescimento.", "Imóveis e Construção": "Ganha muito quando os juros caem.", "Transporte e Logística": "Concessões com contratos corrigidos pela inflação.", "Varejo e Consumo": "Sobe quando a renda e o crédito melhoram.", "Energia Elétrica": "Receita previsível e bons dividendos.", "Saneamento e Gás": "Monopólio regulado com crescimento contratado.", "Bancos e Financeiro": "Lucros altos e dividendos constantes.", "Seguros": "Muito caixa e dividendos altos.", "Papel, Química e Materiais": "Celulose é exportada e ganha com dólar alto.", "Educação e Serviços": "Ganha com juros menores e economia aquecida." };
     const cand = (c) => { const r = S.cotMap[c.t]; return `<div class="cand"><span><button type="button" class="tk-btn" data-emp="${esc(c.t)}"><span class="tk" style="font-size:16px">${esc(c.t)}</span></button> <span class="price">${r ? money(r.preco, r.moeda) : ""}</span>${c.casas ? ` <span class="hint">· em ${c.casas} ${c.casas === 1 ? "carteira" : "carteiras"}</span>` : ""}${r && !c.casas ? ` <span class="hint">· ${esc(nomeBom(r.nome))}</span>` : ""}</span><button type="button" class="add-btn" data-pick="${esc(c.t)}">+ Adicionar</button>${c.tese ? `<p>${esc(c.tese)}</p>` : ""}</div>`; };
     const cards = [
-      ...faltaCls.filter((x) => x.cands.length).map((x) => `<div class="gap" data-cl="${x.c}"><div class="gap-h">${clsChip(x.c)}<strong>${esc(x.s)}</strong></div><span class="why">${esc(x.why)}</span>${x.cands.map(cand).join("")}</div>`),
+      ...faltaCls.filter((x) => x.cands.length || x.rf).map((x) => `<div class="gap" data-cl="${x.c}"><div class="gap-h">${clsChip(x.c)}<strong>${esc(x.s)}</strong></div><span class="why">${esc(x.why)}</span>${x.rf ? `<div class="cand"><span class="hint">Veja em “Comparar bancos” onde rende mais.</span><a class="add-btn" href="#sec-rf">+ Adicionar aplicação</a></div>` : x.cands.map(cand).join("")}</div>`),
       ...faltando.slice(0, Math.max(0, 4 - faltaCls.length)).map((x) => `<div class="gap" data-cl="acao"><div class="gap-h"><strong>${esc(x.s)}</strong></div><span class="why">${esc(motivo[x.s] || "")}</span>${x.c.slice(0, 2).map(cand).join("")}</div>`),
     ];
     const animB = primeira("bars");
@@ -1041,19 +1205,19 @@
       <div style="min-width:0">
         <div class="div-top">
           <div class="dscore${primeira("dscore") ? " anim" : ""}" style="--p:${score};--sc:${sc}"><span><b>${score}</b><small>de 100</small></span></div>
-          <div style="min-width:0"><div class="h3" style="margin-bottom:6px;color:${sc}">${lbl}</div><ul class="obs">${obs.map((o) => `<li><span class="mark ${o.e}">${o.e === "positivo" ? "+" : o.e === "negativo" ? "−" : "·"}</span><span>${esc(o.t)}</span></li>`).join("")}</ul></div>
+          <div style="min-width:0"><div class="h3" style="margin-bottom:6px;color:${sc}">${lbl}</div><p class="hint" style="margin:0 0 8px">Patrimônio total de ${brl(total)}, contando renda fixa${criW ? " e cripto" : ""}.</p><ul class="obs">${obs.map((o) => `<li><span class="mark ${o.e}">${o.e === "positivo" ? "+" : o.e === "negativo" ? "−" : "·"}</span><span>${esc(o.t)}</span></li>`).join("")}</ul></div>
         </div>
         <div class="h3">Por classe de ativo</div>
         <div class="cls-box">
           ${donut(cl.map((c) => ({ c, w: porCls[c] })), `<b>${cl.length}</b><small>${cl.length === 1 ? "classe" : "classes"}</small>`)}
-          <div class="cls-leg">${cl.map((c) => `<div data-cl="${c}"><i></i><span>${CLS[c].longo}</span><b>${num(porCls[c] * 100, 1)}%</b><small>${brl(porCls[c] * patr)}</small></div>`).join("")}<div><i style="background:var(--faint)"></i><span>Fora do Brasil</span><b>${num(foraW * 100, 1)}%</b></div></div>
+          <div class="cls-leg">${cl.map((c) => `<div data-cl="${c}"><i></i><span>${CLS[c].longo}</span><b>${num(porCls[c] * 100, 1)}%</b><small>${brl(porCls[c] * total)}</small></div>`).join("")}<div><i style="background:var(--faint)"></i><span>Fora do Brasil</span><b>${num(foraW * 100, 1)}%</b></div></div>
         </div>
         <div class="h3">Onde está seu dinheiro</div>
-        <div class="bars${animB ? " anim" : ""}">${gOrd.map(([g, w]) => `<div class="bar" data-cl="${corG[g]}"><span class="nm2"><i></i>${esc(g)}</span><span class="track"><i class="${w > 0.4 && !ehEtf(g) ? "hot" : ""}" style="width:${(w * 100).toFixed(1)}%"></i></span><span class="pc">${num(w * 100, 0)}%</span></div>`).join("")}</div>
+        <div class="bars${animB ? " anim" : ""}">${gOrd.map(([g, w]) => `<div class="bar" data-cl="${corG[g]}"><span class="nm2"><i></i>${esc(g)}</span><span class="track"><i class="${w > 0.4 && !ehDiv(g) ? "hot" : ""}" style="width:${(w * 100).toFixed(1)}%"></i></span><span class="pc">${num(w * 100, 0)}%</span></div>`).join("")}</div>
       </div>
       <div style="min-width:0">
-      ${cards.length ? `<div class="h3">O que falta na sua carteira</div><p class="sub" style="margin:0 0 12px">Classes e setores que você ainda não tem, com ativos citados nas carteiras recomendadas das corretoras ou entre os mais negociados. Veja o perfil antes de comprar.</p>
-      <div class="gaps">${cards.join("")}</div>` : `<p class="skel">Sua carteira já cobre as principais classes e setores.</p>`}
+      ${cards.length ? `<div class="h3">O que falta no seu patrimônio</div><p class="sub" style="margin:0 0 12px">Classes e setores que você ainda não tem, com ativos citados nas carteiras recomendadas das corretoras ou entre os mais negociados. Veja o perfil antes de comprar.</p>
+      <div class="gaps">${cards.join("")}</div>` : `<p class="skel">Seu patrimônio já cobre as principais classes e setores.</p>`}
       </div></div>`;
   }
 
@@ -1094,12 +1258,12 @@
     // Filtro de setor muda conforme a classe (segmento para FIIs, sem setor para ETFs)
     if (setorDe !== c) {
       const campo = c === "fii" ? "setor" : "setor_macro";
-      const st = c === "etf" || c === "etf_ext" ? [] : [...new Set(S.cot.filter((r) => r.classe === c).map((r) => r[campo]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+      const st = c === "etf" || c === "etf_ext" || c === "cripto" ? [] : [...new Set(S.cot.filter((r) => r.classe === c).map((r) => r[campo]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
       $("#q-setor").innerHTML = `<option value="">${c === "fii" ? "Todos os segmentos" : "Todos os setores"}</option>` + st.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
       $("#q-setor").disabled = !st.length; setorDe = c;
     }
     const setor = $("#q-setor").value; const campo = c === "fii" ? "setor" : "setor_macro";
-    $("#th-mc").textContent = c === "etf_ext" ? "Patrimônio" : c === "fii" || c === "etf" ? "—" : "Valor de mercado";
+    $("#th-mc").textContent = c === "cripto" ? "Valor de mercado" : c === "etf_ext" ? "Patrimônio" : c === "fii" || c === "etf" ? "—" : "Valor de mercado";
     let rows = S.cot.filter((r) => (todasCls || r.classe === c) && (todasCls || !setor || r[campo] === setor) && (!q || r.ticker.toLowerCase().includes(q) || String(r.nome).toLowerCase().includes(q)));
     const so = { volume: (a, b) => b.volume - a.volume, alta: (a, b) => b.var_dia - a.var_dia, baixa: (a, b) => a.var_dia - b.var_dia, mc: (a, b) => (b.valor_mercado_mi || 0) - (a.valor_mercado_mi || 0), az: (a, b) => a.ticker.localeCompare(b.ticker) };
     rows = rows.slice().sort(so[ordem] || so.volume); if (ordem === "alta" || ordem === "baixa") rows = rows.filter((r) => r.volume > 0);
@@ -1107,7 +1271,7 @@
     const mine = new Set(S.carteira.map((p) => p.ticker)); const shown = rows.slice(0, S.lim);
     $("#all-body").innerHTML = shown.length ? shown.map((r) => `<tr><td><button type="button" class="tk-btn idc" data-emp="${esc(r.ticker)}">${logoHtml(r.ticker)}<span class="tk">${esc(r.ticker)}${todasCls ? " " + clsChip(r.classe) : ""}</span><span class="nm">${esc(nomeBom(r.nome))}</span></button></td><td class="r">${money(r.preco, r.moeda)}</td><td class="r ${cls(r.var_dia)}">${pct(r.var_dia)}</td><td class="r hide-sm">${compacto(r.volume)}</td><td class="r hide-sm">${r.valor_mercado_mi ? (r.moeda === "USD" ? "US$ " : "R$ ") + compacto(r.valor_mercado_mi * 1e6) : "—"}</td><td class="r">${mine.has(r.ticker) ? '<span class="have">Na carteira</span>' : `<button type="button" class="add-btn" data-pick="${esc(r.ticker)}">+ Adicionar</button>`}</td></tr>`).join("")
       : `<tr><td colspan="6" class="skel">Nenhum ativo encontrado${q ? " para “" + esc(q) + "”" : ""}.${q && /^[a-z.\-]{1,6}$/.test(q) ? ` Se for uma ação ou ETF dos EUA, adicione pelo código na carteira que buscamos para você.` : ""}</td></tr>`;
-    $("#all-count").textContent = rows.length ? `Mostrando ${shown.length} de ${rows.length} ${todasCls ? "ativos" : "· " + CLS[c].longo} · toque no código para ver o perfil${c === "acao_ext" && !todasCls ? " · as 150 maiores dos EUA" : c === "etf_ext" && !todasCls ? " · os maiores ETFs dos EUA" : ""}` : ""; $("#all-more").hidden = shown.length >= rows.length;
+    $("#all-count").textContent = rows.length ? `Mostrando ${shown.length} de ${rows.length} ${todasCls ? "ativos" : "· " + CLS[c].longo} · toque no código para ver o perfil${c === "acao_ext" && !todasCls ? " · as 150 maiores dos EUA" : c === "cripto" && !todasCls ? " · as 100 maiores do mundo, variação em 24 h" : c === "etf_ext" && !todasCls ? " · os maiores ETFs dos EUA" : ""}` : ""; $("#all-more").hidden = shown.length >= rows.length;
   }
   $("#ex-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-excls]"); if (!b) return; S.exCls = b.dataset.excls; S.lim = 50; $("#q-busca").value = ""; renderTodas(); });
   let tB; $("#q-busca").addEventListener("input", () => { clearTimeout(tB); tB = setTimeout(() => { S.lim = 50; renderTodas(); }, 150); });
@@ -1241,6 +1405,7 @@
     if (!k.iofPct && !k.futuro && !a.isento_ir) out.push(["", `IR de ${num(k.irPct, 1).replace(",0", "")}% sobre o rendimento (${k.dias} dias aplicados${k.dias <= 720 ? `; cai para ${num(aliqIR(k.dias <= 180 ? 181 : k.dias <= 360 ? 361 : 721), 1).replace(",0", "")}% depois de ${k.dias <= 180 ? "180" : k.dias <= 360 ? "360" : "720"} dias` : ""}).`]);
     return out;
   }
+  function aposRF() { renderRF(); renderHero(); renderDia(); renderDiv(); }
   async function carregarRF() {
     const { data, error } = await sb.from("renda_fixa").select("id,produto,banco,nome,indexador,taxa,limite,taxa_excedente,valor,data_aplicacao,vencimento,isento_ir,obs").order("data_aplicacao");
     if (error) { S.rfOk = false; S.rf = []; return; }
@@ -1355,7 +1520,7 @@
       const { error } = S.rfEdit ? await sb.from("renda_fixa").update(row).eq("id", S.rfEdit) : await sb.from("renda_fixa").insert(row);
       if (error) throw error;
       const editou = !!S.rfEdit; rfLimparForm(); rfMsg(editou ? "Aplicação atualizada." : "Aplicação adicionada.", true);
-      await carregarRF(); renderRF(); renderHero();
+      await carregarRF(); aposRF();
     } catch (err) { rfMsg("Não foi possível salvar agora. Tente de novo.", false); }
     finally { b.disabled = false; }
   });
@@ -1376,7 +1541,7 @@
       const { error } = await sb.from("renda_fixa").delete().eq("id", id);
       if (error) { toast("Não foi possível remover agora."); return; }
       if (S.rfEdit === id) rfLimparForm();
-      await carregarRF(); renderRF(); renderHero(); toast("Aplicação removida.");
+      await carregarRF(); aposRF(); toast("Aplicação removida.");
     }
   });
   let tRfc; $("#rf-comp-valor").addEventListener("input", () => { clearTimeout(tRfc); tRfc = setTimeout(renderRFComp, 150); });

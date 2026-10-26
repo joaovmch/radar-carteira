@@ -9,7 +9,7 @@ import {
 const cl = (x: number) => Math.max(-1, Math.min(1, x));
 const br = (n: number, d = 1) => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-type Indices = { ibov: number | null; sp: number | null; ifix: number | null };
+type Indices = { ibov: number | null; sp: number | null; ifix: number | null; btc: number | null };
 type Contexto = { idx: Indices; sent: any };
 
 async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
@@ -31,7 +31,7 @@ async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
   const ind = h ? indicadores(h) : null;
   const varDia = cot?.var_dia != null ? Number(cot.var_dia) : null;
   // Índice de referência: S&P 500 para os EUA, IFIX para FIIs, Ibovespa para o resto
-  const [indice, idxVar] = EXTERIOR(classe) ? ["S&P 500", ctx.idx.sp] : classe === "fii" && ctx.idx.ifix != null ? ["IFIX", ctx.idx.ifix] : ["Ibovespa", ctx.idx.ibov];
+  const [indice, idxVar] = classe === "cripto" ? ["Bitcoin", t === "BTC-BRL" ? null : ctx.idx.btc] : EXTERIOR(classe) ? ["S&P 500", ctx.idx.sp] : classe === "fii" && ctx.idx.ifix != null ? ["IFIX", ctx.idx.ifix] : ["Ibovespa", ctx.idx.ibov];
   const s = sinalAcao(ind, perfil?.fundamentos, nots, varDia, { ibovVar: idxVar, sent: ctx.sent, indice, moeda: cot?.moeda || "BRL", classe });
   const row: any = {
     ticker: t, nome, setor: cot?.setor_macro || null,
@@ -50,10 +50,13 @@ async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
 }
 
 async function indicesHoje(sb: SupabaseClient): Promise<Indices> {
-  const { data } = await sb.from("painel").select("dados").eq("id", "mercado").maybeSingle();
+  const [{ data }, { data: btc }] = await Promise.all([
+    sb.from("painel").select("dados").eq("id", "mercado").maybeSingle(),
+    sb.from("cotacoes").select("var_dia").eq("ticker", "BTC-BRL").maybeSingle(),
+  ]);
   const d: any = data?.dados || {};
   const n = (x: any) => (typeof x === "number" ? x : null);
-  return { ibov: n(d.ibov?.varDia), sp: n(d.sp500?.varDia), ifix: n(d.ifix?.varDia) };
+  return { ibov: n(d.ibov?.varDia), sp: n(d.sp500?.varDia), ifix: n(d.ifix?.varDia), btc: btc?.var_dia != null ? Number(btc.var_dia) : null };
 }
 // Índice resumido (pontos, variação do dia e do mês) a partir do histórico do Yahoo
 function resumoIndice(h: any) {

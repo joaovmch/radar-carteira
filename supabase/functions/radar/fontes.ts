@@ -13,11 +13,13 @@ export const json = (o: unknown, status = 200) =>
 
 export const TICKER_RE = /^[A-Z][A-Z0-9]{2}[A-Z]\d{1,2}$/; // código da B3
 export const ATIVO_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/; // B3 ou EUA (VOO, AAPL, BRK.B)
-export type Classe = "acao" | "fii" | "etf" | "bdr" | "acao_ext" | "etf_ext";
+export type Classe = "acao" | "fii" | "etf" | "bdr" | "acao_ext" | "etf_ext" | "cripto";
+export const CRIPTO = (c: string | null | undefined) => c === "cripto";
 export const EXTERIOR = (c: string | null | undefined) => c === "acao_ext" || c === "etf_ext";
 export const FUNDO = (c: string | null | undefined) => c === "fii" || c === "etf" || c === "etf_ext";
 // Símbolo no Yahoo Finance: B3 com ".SA"; EUA com hífen no lugar do ponto (BRK.B -> BRK-B)
-export const simboloYahoo = (t: string, classe?: string | null) => (EXTERIOR(classe) ? t.replace(/\./g, "-") : t + ".SA");
+// Cripto: o próprio código (BTC-BRL), montado a partir do par em dólar e do câmbio em historico()
+export const simboloYahoo = (t: string, classe?: string | null) => (CRIPTO(classe) ? t : EXTERIOR(classe) ? t.replace(/\./g, "-") : t + ".SA");
 export const moedaSimb = (m?: string | null) => (m === "USD" ? "US$" : "R$");
 const UA = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
@@ -70,7 +72,7 @@ async function obj(url: string, ms = 12000, extra: Record<string, string> = {}) 
 }
 
 const pl = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
-const r2 = (n: number | null | undefined, d = 2) => (n == null || !isFinite(n) ? null : Math.round(n * 10 ** d) / 10 ** d);
+const r2 = (n: number | null | undefined, d = 2) => (n == null || !isFinite(n) ? null : d === 2 && n !== 0 && Math.abs(n) < 1 ? Number(n.toPrecision(5)) : Math.round(n * 10 ** d) / 10 ** d);
 
 export function decodificar(s: string) {
   return s
@@ -92,6 +94,7 @@ const num = (s: string | null | undefined) => {
 /* ---------------- Preços (Yahoo Finance) ---------------- */
 export type Historico = { ts: number[]; close: number[]; vol: number[]; preco: number | null; anterior: number | null };
 export async function historico(simbolo: string, range = "1y"): Promise<Historico> {
+  if (/^[A-Z0-9]{2,6}-BRL$/.test(simbolo)) return historicoCripto(simbolo, range);
   const d = await obj(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(simbolo)}?range=${range}&interval=1d`);
   const res = d?.chart?.result?.[0];
   if (!res) throw new Error("sem histórico para " + simbolo);
@@ -103,6 +106,34 @@ export async function historico(simbolo: string, range = "1y"): Promise<Historic
   });
   const m = res.meta || {};
   return { ts, close, vol, preco: m.regularMarketPrice ?? close.at(-1) ?? null, anterior: m.chartPreviousClose ?? null };
+}
+
+// Cripto em reais: par em dólar do Yahoo (BTC-USD) vezes o dólar do mesmo dia; se o Yahoo não tiver a moeda,
+// usa o histórico diário da CoinGecko
+async function historicoCripto(t: string, range: string): Promise<Historico> {
+  try {
+    const [a, f] = await Promise.all([historico(t.replace(/-BRL$/, "-USD"), range), historico("BRL=X", range)]);
+    if (a.close.length < 5 || f.close.length < 5) throw new Error("curto");
+    const ts: number[] = [], close: number[] = [], vol: number[] = [];
+    let j = 0, fxv = f.close[0];
+    for (let i = 0; i < a.ts.length; i++) {
+      while (j < f.ts.length && f.ts[j] <= a.ts[i] + 43200) { fxv = f.close[j]; j++; }
+      ts.push(a.ts[i]); close.push(a.close[i] * fxv); vol.push(a.vol[i]);
+    }
+    const fxAgora = f.preco ?? f.close.at(-1)!;
+    return { ts, close, vol, preco: a.preco != null ? a.preco * fxAgora : close.at(-1) ?? null, anterior: null };
+  } catch (_) {
+    const sym = t.replace(/-BRL$/, "");
+    const s = await obj(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(sym)}`);
+    const coin = (s?.coins || []).filter((c: any) => String(c.symbol || "").toUpperCase() === sym).sort((x: any, y: any) => (x.market_cap_rank ?? 1e9) - (y.market_cap_rank ?? 1e9))[0];
+    if (!coin) throw new Error("sem histórico para " + t);
+    const dias = range === "1mo" ? 30 : range === "5d" ? 5 : 365;
+    const m = await obj(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coin.id)}/market_chart?vs_currency=brl&days=${dias}&interval=daily`);
+    const ts: number[] = [], close: number[] = [], vol: number[] = [];
+    (m?.prices || []).forEach(([ms, v]: [number, number], i: number) => { if (v > 0) { ts.push(Math.round(ms / 1000)); close.push(v); vol.push(m.total_volumes?.[i]?.[1] || 0); } });
+    if (close.length < 5) throw new Error("sem histórico para " + t);
+    return { ts, close, vol, preco: close.at(-1)!, anterior: null };
+  }
 }
 
 export function indicadores(h: Historico) {
@@ -187,6 +218,17 @@ const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // título cite o nome, o índice ou o código EM MAIÚSCULAS.
 export function buscaNoticias(ticker: string, nome: string, classe?: string | null) {
   const nm = String(nome || ticker).replace(/\s*\(.*\)$/, "").trim();
+  if (CRIPTO(classe)) {
+    // Cripto: pelo nome (Bitcoin, Solana) e pelo símbolo em maiúsculas (BTC, SOL)
+    const sym = ticker.replace(/-BRL$/, "");
+    const reSym = new RegExp(`(^|[^A-Za-z])${escRe(sym)}([^A-Za-z]|$)`);
+    const chaveC = nm.toLowerCase();
+    return {
+      consulta: `"${nm}" OR "${sym}" cripto OR "${sym}" criptomoeda`,
+      relevante: (titulo: string) => titulo.toLowerCase().includes(chaveC) || reSym.test(titulo),
+      exterior: true,
+    };
+  }
   if (!EXTERIOR(classe)) {
     return { consulta: ticker.length <= 2 ? `"${nm}"` : `"${ticker}" OR "${nm}"`, relevante: (_t: string) => true, exterior: false };
   }
@@ -518,25 +560,26 @@ const bi = (n: number) => n >= 1e12 ? (n / 1e12).toLocaleString("pt-BR", { maxim
 export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 12, forcar = false) {
   const { data: cache } = await sb.from("empresas").select("dados,atualizado_em").eq("ticker", ticker).maybeSingle();
   if (!forcar && cache && Date.now() - Date.parse(cache.atualizado_em) < horas * 36e5) return cache.dados;
-  const { data: cot } = await sb.from("cotacoes").select("nome,setor,setor_macro,preco,var_dia,valor_mercado_mi,classe,moeda,bolsa,logo").eq("ticker", ticker).maybeSingle();
+  const { data: cot } = await sb.from("cotacoes").select("nome,setor,setor_macro,preco,var_dia,valor_mercado_mi,classe,moeda,bolsa,logo,extra").eq("ticker", ticker).maybeSingle();
   const classe: string = cot?.classe || "acao";
   const bolsa: string = cot?.bolsa || "B3";
   const nomeB3 = cot?.nome || ticker;
   const ant = (cache?.dados || {}) as any;
   const ext = EXTERIOR(classe);
   const fundoListado = classe === "fii" || classe === "etf" || classe === "etf_ext";
+  const cripto = CRIPTO(classe);
   const [si, wiki, hist, tv, tvf] = await Promise.allSettled([
     classe === "acao" ? statusInvest(ticker) : classe === "fii" ? statusInvestFii(ticker) : Promise.resolve(null),
-    fundoListado ? Promise.resolve(null) : wikiPerfil(ticker, classe === "acao" ? nomeB3 : nomeFundo(nomeB3), ext || classe === "bdr"),
+    fundoListado ? Promise.resolve(null) : cripto ? wikiCripto(nomeB3) : wikiPerfil(ticker, classe === "acao" ? nomeB3 : nomeFundo(nomeB3), ext || classe === "bdr"),
     historico(simboloYahoo(ticker, classe)),
-    analistas([ticker], { [ticker]: bolsa }),
-    classe === "acao" || classe === "fii" ? Promise.resolve(null) : fundamentosTV(ticker, bolsa),
+    cripto ? Promise.resolve({}) : analistas([ticker], { [ticker]: bolsa }),
+    classe === "acao" || classe === "fii" || cripto ? Promise.resolve(null) : fundamentosTV(ticker, bolsa),
   ]);
   let w: any = wiki.status === "fulfilled" ? wiki.value : ant.wiki || null;
   const f2: any = tvf.status === "fulfilled" ? tvf.value : null;
   // BDR: P/L, P/VP e valor de mercado do TradingView vêm distorcidos pela proporção do recibo
   if (f2 && classe === "bdr") { f2.ind.pl = null; f2.ind.pvp = null; f2.ind.valorMercado = null; }
-  const nome = (classe === "acao" || classe === "bdr" || classe === "acao_ext") && w?.titulo ? w.titulo : classe === "acao" ? nomeCurto(nomeB3) : nomeFundo(nomeB3);
+  const nome = cripto ? nomeB3 : (classe === "acao" || classe === "bdr" || classe === "acao_ext") && w?.titulo ? w.titulo : classe === "acao" ? nomeCurto(nomeB3) : nomeFundo(nomeB3);
   const bn = buscaNoticias(ticker, nome, classe);
   const not = await noticias(bn.consulta, 12, 30, bn).catch(() => ant.noticias || []);
   const h = hist.status === "fulfilled" ? hist.value : null;
@@ -572,7 +615,24 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
     w = { titulo: nome, descricaoCurta: classe === "fii" ? "Fundo imobiliário" : "ETF · fundo de índice", paragrafos: par, imagem: null, fotos: [], fatos: { site: null }, wikipedia: null };
   }
 
-  const logo = cot?.logo ? `https://s3-symbol-logo.tradingview.com/${cot.logo}.svg` : `https://icons.brapi.dev/icons/${ticker}.svg`;
+  // Cripto: texto da Wikipedia (se houver) mais o resumo com ranking, máxima histórica, risco e imposto
+  const ce: any = cot?.extra || {};
+  if (cripto) {
+    const par: string[] = [...(w?.paragrafos || [])];
+    const sym = ticker.replace(/-BRL$/, "");
+    const det: string[] = [];
+    if (ce.rank) det.push(`é a ${ce.rank}ª maior criptomoeda do mundo em valor de mercado`);
+    if (cot?.valor_mercado_mi) det.push(`vale cerca de R$ ${bi(cot.valor_mercado_mi * 1e6)} no total`);
+    if (ce.ath && ce.athPct != null) det.push(`está ${Math.abs(ce.athPct).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}% ${ce.athPct < 0 ? "abaixo" : "acima"} da máxima histórica de R$ ${Number(ce.ath).toLocaleString("pt-BR", { maximumFractionDigits: ce.ath < 1 ? 6 : 2 })}${ce.athData ? ` (${ce.athData.split("-").reverse().join("/")})` : ""}`);
+    if (!par.length) par.push(`${nome} (${sym}) é uma criptomoeda negociada 24 horas por dia, todos os dias, em corretoras do mundo inteiro.`);
+    if (det.length) par.push(`Hoje ${nome} ${det.join(", ")}.`);
+    par.push(ce.estavel
+      ? "Por ser uma stablecoin, o preço acompanha o dólar e oscila pouco. Não tem FGC nem garantia do governo: o risco é o emissor deixar de manter o lastro."
+      : "Criptomoedas não têm FGC nem garantia do governo e podem subir ou cair muito em poucos dias. Pela regra atual, vendas de até R$ 35 mil por mês em corretoras brasileiras são isentas de IR; acima disso, o lucro paga a partir de 15%. As regras de cripto vêm mudando: confira antes de vender.");
+    w = { titulo: nome, descricaoCurta: w?.descricaoCurta || "Criptomoeda", paragrafos: par, imagem: w?.imagem || null, fotos: [], fatos: { site: null }, wikipedia: w?.wikipedia || null };
+  }
+
+  const logo = cripto ? ce.img || null : cot?.logo ? `https://s3-symbol-logo.tradingview.com/${cot.logo}.svg` : `https://icons.brapi.dev/icons/${ticker}.svg`;
   const dados: any = {
     ticker, nome, nomeB3, classe, moeda: cot?.moeda || "BRL", bolsa,
     setor: cot?.setor || f2?.subsetor || null, setorMacro: cot?.setor_macro || null,
@@ -580,6 +640,7 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
     desempenho: h ? indicadores(h) : ant.desempenho || null,
     serie: h ? serieSemanal(h) : ant.serie || [],
     noticias: not,
+    ...(cripto ? { cripto: { ...ce, valorMercado: cot?.valor_mercado_mi ? cot.valor_mercado_mi * 1e6 : null } } : {}),
     analistas: tv.status === "fulfilled" ? tv.value[ticker] || null : ant.analistas || null,
     fontesComErro: [si, wiki, hist].map((x, i) => (x.status === "rejected" ? ["StatusInvest", "Wikipedia", "Yahoo"][i] : null)).filter(Boolean),
     atualizadoEm: new Date().toISOString(),
@@ -615,6 +676,7 @@ export async function atualizarDinamico(sb: SupabaseClient, ticker: string, dado
 
 /* ---------------- Reputação (0 a 100) a partir de dados públicos ---------------- */
 export function reputacao(d: any) {
+  if (CRIPTO(d.classe)) return reputacaoCripto(d);
   if (FUNDO(d.classe)) return reputacaoFundo(d);
   const f = d.fundamentos || {}, i = f.ind || {};
   const itens: { area: string; efeito: "positivo" | "negativo" | "neutro"; texto: string }[] = [];
@@ -699,6 +761,58 @@ function reputacaoFundo(d: any) {
   return { nota, rotulo: nota >= 70 ? "Boa" : nota >= 50 ? "Regular" : "Fraca", itens };
 }
 
+// Cripto: tamanho e posição no ranking, oscilação, distância da máxima histórica e noticiário
+function reputacaoCripto(d: any) {
+  const c = d.cripto || {};
+  const itens: { area: string; efeito: "positivo" | "negativo" | "neutro"; texto: string }[] = [];
+  let pts = 45;
+  const br = (n: number, k = 0) => n.toLocaleString("pt-BR", { maximumFractionDigits: k });
+  if (c.estavel) { pts += 15; itens.push({ area: "Tipo", efeito: "neutro", texto: "Stablecoin: acompanha o dólar (ou outra moeda) e quase não oscila. Serve para guardar valor em dólar, não para buscar valorização." }); }
+  if (c.rank != null) {
+    if (c.rank <= 10) { pts += 18; itens.push({ area: "Tamanho", efeito: "positivo", texto: `Uma das ${c.rank <= 2 ? "duas" : "dez"} maiores criptomoedas do mundo (${c.rank}ª em valor de mercado): muito negociada e mais difícil de sumir.` }); }
+    else if (c.rank <= 50) { pts += 6; itens.push({ area: "Tamanho", efeito: "neutro", texto: `${c.rank}ª maior criptomoeda em valor de mercado.` }); }
+    else { pts -= 8; itens.push({ area: "Tamanho", efeito: "negativo", texto: `${c.rank}ª em valor de mercado: moedas menores sobem e caem muito mais e podem perder liquidez.` }); }
+  }
+  const v = d.desempenho?.volAnual;
+  if (v != null && !c.estavel) {
+    if (v > 90) { pts -= 10; itens.push({ area: "Risco", efeito: "negativo", texto: `Oscilação anual de ${br(v)}%: extremamente arriscado.` }); }
+    else if (v > 55) { pts -= 4; itens.push({ area: "Risco", efeito: "negativo", texto: `Oscilação anual de ${br(v)}%: bem mais arriscado que ações.` }); }
+    else itens.push({ area: "Risco", efeito: "neutro", texto: `Oscilação anual de ${br(v)}%, baixa para uma cripto, mas ainda acima da bolsa.` });
+  }
+  if (c.athPct != null && !c.estavel) {
+    if (c.athPct < -80) { pts -= 6; itens.push({ area: "Preço", efeito: "negativo", texto: `Está ${br(-c.athPct)}% abaixo da máxima histórica.` }); }
+    else if (c.athPct > -15) itens.push({ area: "Preço", efeito: "neutro", texto: `Perto da máxima histórica (${br(-c.athPct)}% abaixo).` });
+    else itens.push({ area: "Preço", efeito: "neutro", texto: `${br(-c.athPct)}% abaixo da máxima histórica.` });
+  }
+  const graves = (d.noticias || []).filter((n: any) => n.grave);
+  if (graves.length) { pts -= 12; itens.push({ area: "Imagem", efeito: "negativo", texto: `Notícias sensíveis no último mês: "${graves[0].titulo}".` }); }
+  const nota = Math.max(0, Math.min(100, Math.round(pts)));
+  return { nota, rotulo: nota >= 70 ? "Boa" : nota >= 50 ? "Regular" : "Fraca", itens };
+}
+
+// Texto da Wikipedia sobre uma criptomoeda, pelo nome
+async function wikiCripto(nome: string) {
+  const busca = await obj(`https://pt.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=4&srsearch=${encodeURIComponent(nome + " criptomoeda")}`);
+  const chave = nome.toLowerCase().split(" ")[0];
+  const hit = (busca?.query?.search || []).find((h: any) => String(h.title).toLowerCase().includes(chave));
+  if (!hit) return null;
+  const titulo = hit.title;
+  const resumo = await obj(`https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(titulo.replace(/ /g, "_"))}`);
+  if (!resumo || resumo.type === "disambiguation") return null;
+  let intro = resumo.extract || "";
+  try {
+    const ex = await obj(`https://pt.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&format=json&titles=${encodeURIComponent(titulo)}`);
+    const pg: any = Object.values(ex?.query?.pages || {})[0];
+    if (pg?.extract && pg.extract.length > intro.length) intro = pg.extract;
+  } catch (_) { /* fica o resumo */ }
+  return {
+    titulo: resumo.title || titulo, descricaoCurta: resumo.description || "Criptomoeda",
+    paragrafos: intro.split(/\n+/).map((p: string) => p.trim()).filter((p: string) => p.length > 40).slice(0, 2),
+    imagem: resumo.originalimage?.source || resumo.thumbnail?.source || null,
+    wikipedia: resumo.content_urls?.desktop?.page || null,
+  };
+}
+
 /* ---------------- Sinal por ação ---------------- */
 export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number | null, extra: { ibovVar?: number | null; sent?: any; indice?: string; moeda?: string; classe?: string } = {}) {
   const IDX = extra.indice || "Ibovespa";
@@ -732,7 +846,7 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
     else if (i.pvp != null && i.pvp > 1.15) add(-1, `Cota cara: ${br((i.pvp - 1) * 100, 0)}% acima do valor patrimonial (P/VP ${br(i.pvp, 2)}).`);
     if (i.dy != null && i.dy < 6) add(-1, `Rendimento baixo para um fundo imobiliário: ${br(i.dy)}% em 12 meses.`);
     else if (i.dy != null && i.dy >= 10 && i.dy <= 16) add(1, `Bom rendimento: ${br(i.dy)}% em 12 meses, pagos todo mês.`);
-  } else if (classe !== "etf" && classe !== "etf_ext") {
+  } else if (classe !== "etf" && classe !== "etf_ext" && classe !== "cripto") {
     if (i.margemLiquida != null && i.margemLiquida < 0) add(-2, "A empresa está com prejuízo nos últimos 12 meses.");
     else if (i.pl != null && i.pl > 0 && i.pl < 8 && (i.roe ?? 0) >= 12) add(1, `Preço baixo em relação ao lucro (P/L ${br(i.pl)}) com boa rentabilidade.`);
     else if (i.pl != null && i.pl > 35 && !(classe === "acao_ext" && (i.roe ?? 0) >= 25)) add(-1, `Preço alto em relação ao lucro (P/L ${br(i.pl)}).`);
@@ -775,7 +889,7 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
     hoje = `Hoje ${varDia < 0 ? "cai" : "sobe"} ${br(Math.abs(varDia))}%`;
     if (ib != null && Math.abs(ib) >= 0.5) hoje += `, com o ${IDX} ${ib < 0 ? "em queda de" : "em alta de"} ${br(Math.abs(ib))}%`;
     hoje += ".";
-  } else if (ib != null && Math.abs(ib) >= 1) hoje = `Hoje ${FUNDO(classe) ? "a cota" : "a ação"} está estável, enquanto o ${IDX} ${ib < 0 ? "cai" : "sobe"} ${br(Math.abs(ib))}%.`;
+  } else if (ib != null && Math.abs(ib) >= 1) hoje = `Hoje ${CRIPTO(classe) ? "a moeda" : FUNDO(classe) ? "a cota" : "a ação"} está estável, enquanto o ${IDX} ${ib < 0 ? "cai" : "sobe"} ${br(Math.abs(ib))}%.`;
   const resto = motivos.filter((m) => !/hoje|Ibovespa|S&P 500|IFIX/.test(m.t)).slice(0, 4).map((m) => m.t);
   const motivo = [intro, hoje, ...resto].filter(Boolean).join(" ");
   return { sinal, pontos: pts, motivo, fatores: motivos };
@@ -790,7 +904,7 @@ export async function analistas(tickers: string[], bolsas: Record<string, string
   const out: Record<string, any> = {};
   const lista = [...new Set(tickers.filter((t) => ATIVO_RE.test(t)))];
   const grupos: Record<"brazil" | "america", string[]> = { brazil: [], america: [] };
-  for (const t of lista) { const b = bolsas[t]; if (b && b !== "B3") grupos.america.push(b + ":" + t); else if (TICKER_RE.test(t)) grupos.brazil.push("BMFBOVESPA:" + t); }
+  for (const t of lista) { const b = bolsas[t]; if (b === "CRIPTO" || /-BRL$/.test(t)) continue; if (b && b !== "B3") grupos.america.push(b + ":" + t); else if (TICKER_RE.test(t)) grupos.brazil.push("BMFBOVESPA:" + t); }
   for (const mercado of ["brazil", "america"] as const) {
     const simbolos = grupos[mercado];
     for (let i = 0; i < simbolos.length; i += 100) {

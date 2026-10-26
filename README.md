@@ -1,10 +1,12 @@
 # Radar da Carteira
 
-Painel para acompanhar uma carteira de ações, FIIs, ETFs e BDRs da B3 e de ações e ETFs dos EUA (como VOO) pelo celular ou computador, com login próprio. Funciona sozinho, sem IA: tudo é calculado com regras fixas a partir de fontes públicas.
+Painel para acompanhar, num lugar só, ações, FIIs, ETFs e BDRs da B3, ações e ETFs dos EUA (como VOO), criptomoedas e renda fixa, pelo celular ou computador, com login próprio. Funciona sozinho, sem IA: tudo é calculado com regras fixas a partir de fontes públicas.
 
 ## O que tem
 
 - **Resumo**: patrimônio total em reais (ativos em dólar convertidos pelo câmbio do momento), ganho ou perda do dia, resultado sobre o preço médio, proventos estimados em 12 meses, divisão por classe e gráfico da evolução da carteira no último ano.
+- **Resumo do dia**: quanto o patrimônio subiu ou caiu hoje (ativos mais o rendimento da renda fixa), Ibovespa, IFIX, S&P 500, dólar e Bitcoin, os ativos que mais mexeram, o que pede atenção (sinais, quedas fortes, notícias sensíveis, IOF, limite e ciclo das caixinhas), as notícias dos seus ativos e a agenda (proventos com o valor da sua posição, data com, vencimentos, Copom).
+- **Criptomoedas**: as 100 maiores pela CoinGecko (código no formato BTC-BRL; no formulário basta digitar BTC), preço em reais a cada 10 minutos, todos os dias, variação em 24 h, histórico, notícias, sinal e perfil com ranking, máxima histórica e oferta.
 - **Classes de ativos**: ações, FIIs, ETFs e BDRs da B3, e ações e ETFs dos EUA (as 150 maiores e os 70 maiores ETFs, mais qualquer outro código digitado na carteira). Ativos dos EUA aceitam frações (ex.: 0,42 de VOO) e preço médio em dólar.
 - **Renda fixa**: CDBs, caixinhas, cofrinhos, LCIs e LCAs, com modelos prontos de cada banco (Caixinha Turbo do Nubank, Cofrinho Meli+ do Mercado Pago, Cofrinho Turbinado do PicPay, CDB 130% do PagBank, Porquinhos do Inter, CDBs de liquidez diária de C6, Itaú, Bradesco, Santander, BB, BTG, Sofisa e Daycoval) e suas regras (limite, movimentação mínima, renovação). O rendimento é calculado com o CDI diário do Banco Central desde a data da aplicação; mostra o valor hoje, o líquido se resgatar (IR regressivo e IOF), quanto rende por mês, avisos (limite estourado, IOF, ciclo da Turbo) e um comparativo de onde o mesmo valor renderia mais. Entra no patrimônio total e na divisão por classe.
 - **Carteira**: filtro por classe, alertas do que pede atenção e detalhes de cada posição.
@@ -15,7 +17,7 @@ Painel para acompanhar uma carteira de ações, FIIs, ETFs e BDRs da B3 e de aç
 - **O que os analistas acham das suas ações**: para cada ação da carteira, quantos analistas recomendam compra, neutro ou venda, preço-alvo médio e quanto falta até ele, e a leitura técnica de curto prazo. Aparece numa seção própria, numa coluna da carteira e no perfil de qualquer empresa.
 - **Conheça as empresas**: perfil completo de qualquer ação da B3, com o que a empresa faz, fotos, fatos (fundação, sede, funcionários, controlador), desempenho no último ano, indicadores explicados, dividendos (inclusive quanto a sua posição recebeu), reputação de 0 a 100 e notícias do último mês.
 - **Em destaque hoje**: maiores altas e baixas entre as ações mais negociadas, com a notícia de cada uma.
-- **Diversificação**: nota de 0 a 100, divisão por classe e por setor/segmento, quanto está fora do Brasil, alertas de concentração e sugestões para as classes e setores que faltam.
+- **Diversificação**: nota de 0 a 100 sobre o patrimônio total (incluindo renda fixa e cripto), divisão por classe, por setor/segmento e por banco na renda fixa, limite do FGC, peso de cripto, quanto está fora do Brasil, alertas de concentração e sugestões para as classes e setores que faltam.
 - **O que os analistas recomendam**: ações mais citadas nas carteiras recomendadas das corretoras (revisão mensal).
 
 Nada aqui é recomendação individual de investimento.
@@ -43,8 +45,7 @@ Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e log
 1. **Authentication → Sign In / Providers → Email**: se o site é só para você, desligue *Allow new users to sign up*.
 2. **Authentication → Passwords** (ou *Policies*): ligue *Leaked password protection* e use senha mínima de 8 caracteres com letras e números.
 3. **Edge Functions**: apague as funções antigas `chat`, `cotacoes` e `sonda` (estão desativadas) e, em *Secrets*, apague `GEMINI_API_KEY` e `ANTHROPIC_API_KEY`.
-4. **SQL Editor**: rode `supabase/migrations/20261026_renda_fixa.sql` (cria a tabela da renda fixa).
-5. **SQL Editor**: rode o bloco PENDENTE no fim de `supabase/migrations/20261022_sem_ia_empresas_seguranca.sql`.
+4. **SQL Editor**: rode o bloco PENDENTE no fim de `supabase/migrations/20261022_sem_ia_empresas_seguranca.sql`.
 
 ## Publicar
 
