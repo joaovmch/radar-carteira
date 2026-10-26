@@ -11,7 +11,14 @@ export const cors = {
 export const json = (o: unknown, status = 200) =>
   new Response(JSON.stringify(o), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-export const TICKER_RE = /^[A-Z][A-Z0-9]{2}[A-Z]\d{1,2}$/;
+export const TICKER_RE = /^[A-Z][A-Z0-9]{2}[A-Z]\d{1,2}$/; // código da B3
+export const ATIVO_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/; // B3 ou EUA (VOO, AAPL, BRK.B)
+export type Classe = "acao" | "fii" | "etf" | "bdr" | "acao_ext" | "etf_ext";
+export const EXTERIOR = (c: string | null | undefined) => c === "acao_ext" || c === "etf_ext";
+export const FUNDO = (c: string | null | undefined) => c === "fii" || c === "etf" || c === "etf_ext";
+// Símbolo no Yahoo Finance: B3 com ".SA"; EUA com hífen no lugar do ponto (BRK.B -> BRK-B)
+export const simboloYahoo = (t: string, classe?: string | null) => (EXTERIOR(classe) ? t.replace(/\./g, "-") : t + ".SA");
+export const moedaSimb = (m?: string | null) => (m === "USD" ? "US$" : "R$");
 const UA = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
   "Accept-Language": "pt-BR,pt;q=0.9",
@@ -244,30 +251,102 @@ export async function statusInvest(ticker: string) {
   }
 
   // Proventos: lista embutida no mapa de calor de dividendos
-  let proventos: { tipo: string; dataCom: string; pagamento: string; valor: number }[] = [];
+  let lista: any[] = [];
   const dl = html.indexOf("dividend-heat-map");
   if (dl > 0) {
     const ini = html.indexOf('data-list="', dl);
     const fim = html.indexOf('"', ini + 11);
     if (ini > 0 && fim > ini) {
-      try {
-        const arr = JSON.parse(decodificar(html.slice(ini + 11, fim)));
-        proventos = arr.slice(0, 40).map((p: any) => ({ tipo: p.etd || p.et || "", dataCom: p.ed || "", pagamento: p.pd || "", valor: Number(p.v) || 0 }));
-      } catch (_) { /* formato mudou */ }
+      try { lista = JSON.parse(decodificar(html.slice(ini + 11, fim))); } catch (_) { /* formato mudou */ }
     }
   }
-  const hoje = Date.now();
-  const dt = (s: string) => { const [d, mo, a] = (s || "").split("/").map(Number); return a ? Date.UTC(a, mo - 1, d) : NaN; };
-  const ult12 = proventos.filter((p) => { const t = dt(p.dataCom); return !isNaN(t) && hoje - t < 365 * 864e5 && t <= hoje; });
-  const soma12m = r2(ult12.reduce((a, p) => a + p.valor, 0), 4);
-  const proximos = proventos.filter((p) => dt(p.pagamento) > hoje).sort((a, b) => dt(a.pagamento) - dt(b.pagamento));
 
   return {
     ind, tagAlong: tagAlong ? num(tagAlong[1]) : null, liquidezDiaria: liq ? num(liq[1]) : null,
     valorizacao12m: val12 ? num(val12[1]) : null, segmentoListagem: segmento, setor, subsetor, segmento: seg2,
     razaoSocial: razao, cnpj, capa: capa && /^https:\/\/static\.statusinvest\.com\.br\//.test(capa) ? capa : null,
-    proventos: proventos.slice(0, 12), proventos12m: soma12m, proximosProventos: proximos.slice(0, 4),
+    ...resumoProventos(lista),
   };
+}
+
+// Lista de proventos no formato do StatusInvest (ed = data com, pd = pagamento, et/etd = tipo, v = valor)
+function resumoProventos(arr: any[]) {
+  const proventos = (arr || []).slice(0, 40).map((p: any) => ({ tipo: p.etd || p.et || "", dataCom: p.ed || "", pagamento: p.pd || "", valor: Number(p.v) || 0 }));
+  const hoje = Date.now();
+  const dt = (s: string) => { const [d, mo, a] = (s || "").split("/").map(Number); return a ? Date.UTC(a, mo - 1, d) : NaN; };
+  const ult12 = proventos.filter((p) => { const t = dt(p.dataCom); return !isNaN(t) && hoje - t < 365 * 864e5 && t <= hoje; });
+  return {
+    proventos: proventos.slice(0, 12),
+    proventos12m: r2(ult12.reduce((a, p) => a + p.valor, 0), 4),
+    proximosProventos: proventos.filter((p) => dt(p.pagamento) > hoje).sort((a, b) => dt(a.pagamento) - dt(b.pagamento)).slice(0, 4),
+  };
+}
+
+/* ---------------- StatusInvest: fundos imobiliários ---------------- */
+export async function statusInvestFii(ticker: string) {
+  const html = await texto(`https://statusinvest.com.br/fundos-imobiliarios/${ticker.toLowerCase()}`, 15000);
+  // Valor do primeiro <strong class="value"> depois do rótulo
+  const valor = (rot: string, max = 2500) => {
+    const i = html.indexOf(rot);
+    if (i < 0) return null;
+    const m = html.slice(i, i + max).match(/<strong class="value[^"]*"[^>]*>([\s\S]{0,80}?)<\/strong>/);
+    return m ? num(semTags(m[1])) : null;
+  };
+  const txtDepois = (rot: string, tam = 600) => { const i = html.indexOf(rot); return i < 0 ? "" : semTags(html.slice(i, i + tam)); };
+  const ultimo = txtDepois("Último rendimento").match(/R\$\s*([\d.]+,\d+)/);
+  const liq = txtDepois("Liquidez média diária", 1500).match(/R\$\s*([\d.]+,\d+)/);
+  const patr = html.match(/Patrim[oô]nio l[ií]quido"[^}]{0,80}?"value":\s*([\d.]+)/);
+  const nomePregao = txtDepois(">Nome Pregão", 300).replace(/^Nome Pregão\s*/, "").split(/\s{2,}| Ínicio| Início/)[0].trim() || null;
+  const inicio = (txtDepois("do fundo", 200).match(/\d{2}\/\d{2}\/\d{4}/) || [])[0] || null;
+  const cnpj = (html.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/) || [])[0] || null;
+  const admin = (() => { const i = html.indexOf("Administrador"); if (i < 0) return null; const m = html.slice(i, i + 1500).match(/<strong[^>]*>([\s\S]{2,120}?)<\/strong>/); return m ? semTags(m[1]) || null : null; })();
+  let lista: any[] = [];
+  const ri = html.indexOf('id="results"');
+  if (ri > 0) {
+    const ini = html.indexOf('value="', ri), fim = html.indexOf('"', ini + 7);
+    if (ini > 0 && fim > ini) { try { lista = JSON.parse(decodificar(html.slice(ini + 7, fim))); } catch (_) { /* formato mudou */ } }
+  }
+  const ind: Record<string, number | null> = {
+    dy: valor(">Dividend Yield", 3000) ?? valor("Dividend Yield", 3000),
+    pvp: valor(">P/VP<"), vpa: valor("Val. patrimonial p/cota"), caixa: valor(">Valor em caixa"),
+    cotistas: valor("Cotistas"), partIfix: valor("NO IFIX"), contratos: valor("DE CONTRATOS"),
+    rendMedio24m: valor("RENDIMENTO MENSAL MÉDIO"), valorizacao12m: valor("Valorização (12m)"),
+    ultimoRendimento: ultimo ? num(ultimo[1]) : null, patrimonio: patr ? Number(patr[1]) : null,
+  };
+  return {
+    ind, liquidezDiaria: liq ? num(liq[1]) : null, nomePregao, inicio, cnpj, administrador: admin,
+    ...resumoProventos(lista),
+  };
+}
+
+/* ---------------- TradingView: fundamentos de ações e ETFs dos EUA e BDRs ---------------- */
+const TV_FUND = ["description", "price_earnings_ttm", "price_book_fq", "dividends_yield_current", "return_on_equity", "net_margin", "market_cap_basic", "number_of_employees", "sector", "industry", "expense_ratio", "aum", "logoid", "exchange"];
+export async function fundamentosTV(ticker: string, bolsa: string | null) {
+  const ext = !!bolsa && bolsa !== "B3";
+  const r = await buscarTV(ext ? "america" : "brazil", { symbols: { tickers: [(ext ? bolsa : "BMFBOVESPA") + ":" + ticker] }, columns: TV_FUND });
+  const d = r?.data?.[0]?.d;
+  if (!d) return null;
+  const v: Record<string, any> = {};
+  TV_FUND.forEach((c, k) => { v[c] = d[k] ?? null; });
+  const n = (x: any, k = 2) => (typeof x === "number" && isFinite(x) ? r2(x, k) : null);
+  return {
+    descricao: v.description, setor: v.sector, subsetor: v.industry, funcionarios: v.number_of_employees, logoid: v.logoid, bolsa: v.exchange,
+    taxaAdm: n(v.expense_ratio), patrimonio: n(v.aum, 0),
+    ind: { pl: n(v.price_earnings_ttm, 1), pvp: n(v.price_book_fq), dy: n(v.dividends_yield_current), roe: n(v.return_on_equity, 1), margemLiquida: n(v.net_margin, 1), valorMercado: n(v.market_cap_basic, 0) },
+  };
+}
+export async function buscarTV(mercado: "america" | "brazil", corpo: unknown) {
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), 12000);
+  try {
+    const r = await fetch(`https://scanner.tradingview.com/${mercado}/scan`, {
+      method: "POST", signal: ac.signal,
+      headers: { ...UA, "Content-Type": "application/json", Origin: mercado === "brazil" ? "https://br.tradingview.com" : "https://www.tradingview.com", Referer: mercado === "brazil" ? "https://br.tradingview.com/" : "https://www.tradingview.com/" },
+      body: JSON.stringify(corpo),
+    });
+    if (!r.ok) throw new Error("tradingview respondeu " + r.status);
+    return await r.json();
+  } finally { clearTimeout(to); }
 }
 
 /* ---------------- Wikidata + Wikipedia: perfil, fatos e fotos ---------------- */
@@ -276,15 +355,20 @@ async function sparql(q: string) {
   const d = await obj(WD + encodeURIComponent(q), 15000, { Accept: "application/sparql-results+json" });
   return d?.results?.bindings || [];
 }
-export async function wikiPerfil(ticker: string, nome: string) {
+export async function wikiPerfil(ticker: string, nome: string, ext = false) {
   const raiz = ticker.slice(0, 4);
-  let rows = await sparql(`SELECT ?item ?t ?art WHERE { ?item p:P414 ?s. ?s pq:P249 ?t. FILTER(?t IN ("${ticker}","${raiz}3","${raiz}4","${raiz}11","${raiz}")) OPTIONAL{?art schema:about ?item; schema:isPartOf <https://pt.wikipedia.org/>} } LIMIT 5`);
+  // EUA: só listagens na NASDAQ (Q82059) ou na NYSE (Q13677), para não pegar outra empresa com o mesmo código
+  const filtro = ext
+    ? `?s pq:P249 "${ticker.replace(/[^A-Z.\-]/g, "")}". ?s ps:P414 ?ex. FILTER(?ex IN (wd:Q82059, wd:Q13677))`
+    : `?s pq:P249 ?t. FILTER(?t IN ("${ticker}","${raiz}3","${raiz}4","${raiz}11","${raiz}"))`;
+  const rows = await sparql(`SELECT ?item ?art WHERE { ?item p:P414 ?s. ${filtro} OPTIONAL{?art schema:about ?item; schema:isPartOf <https://pt.wikipedia.org/>} } LIMIT 5`).catch(() => []);
   let qid: string | null = rows[0]?.item?.value?.split("/").pop() || null;
   let titulo: string | null = rows.find((r: any) => r.art)?.art?.value?.split("/wiki/")[1] || null;
   if (titulo) titulo = decodeURIComponent(titulo);
   if (!titulo) {
     // Plano B: busca na Wikipedia pelo nome da empresa
-    const busca = await obj(`https://pt.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=3&srsearch=${encodeURIComponent(nomeCurto(nome) + " empresa")}`);
+    const termo = (ext ? nome.replace(/\b(Inc|Corp|Corporation|Co|Ltd|plc|N\.?V|S\.?A|Class [A-C]|Holdings?)\b\.?/gi, " ").replace(/\s+/g, " ").trim() : nomeCurto(nome)) + " empresa";
+    const busca = await obj(`https://pt.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=3&srsearch=${encodeURIComponent(termo)}`);
     const hit = (busca?.query?.search || [])[0];
     if (hit) titulo = hit.title;
   }
@@ -358,22 +442,96 @@ export async function wikiPerfil(ticker: string, nome: string) {
 }
 
 /* ---------------- Perfil completo (com cache na tabela empresas) ---------------- */
+// Índice que um ETF acompanha, pelo nome
+function indiceDoEtf(nome: string): string | null {
+  const n = nome.toLowerCase();
+  const tab: [RegExp, string][] = [
+    [/s&p 500|s&p500|sp500/, "o S&P 500, as 500 maiores empresas dos Estados Unidos"],
+    [/nasdaq|qqq/, "a Nasdaq-100, as 100 maiores empresas não financeiras da Nasdaq (muita tecnologia)"],
+    [/total (stock )?market/, "o mercado de ações americano inteiro (milhares de empresas)"],
+    [/total world|all.?world|acwi/, "ações do mundo inteiro"],
+    [/russell 2000|small.?cap|smll|smal/, "empresas pequenas (small caps)"],
+    [/dividend|divo|dividendos/, "empresas boas pagadoras de dividendos"],
+    [/ibovespa|bova/, "o Ibovespa, as ações mais negociadas da B3"],
+    [/ibrx|brax/, "o IBrX-100, as 100 ações mais negociadas da B3"],
+    [/ifix|fii/, "o IFIX, índice dos fundos imobiliários"],
+    [/gold|ouro/, "o preço do ouro"],
+    [/bitcoin|btc|cripto|crypto|ether/, "criptomoedas"],
+    [/treasury|bond|tesouro|ima-b|imab|renda fixa/, "títulos de renda fixa"],
+    [/emerging|emergentes/, "ações de países emergentes"],
+    [/europe|europa/, "ações europeias"],
+    [/china/, "ações chinesas"],
+    [/semicondutor|semiconductor|smh|soxx/, "empresas de semicondutores"],
+    [/technology|tecnologia|xlk/, "empresas de tecnologia"],
+  ];
+  for (const [re, t] of tab) if (re.test(n)) return t;
+  return null;
+}
+const nomeFundo = (s: string) => s.replace(/\s*[-–]?\s*(Fundo de (Investimento|[IÍ]ndice)|Fundo Imobili|FII\b|FIAGRO|Fiagro|Cotas\b|Responsabilidade Limitada).*$/i, "").replace(/\s+(Shs|Brazilian Depositary|Brazilian Depository|Unsponsored|Sponsored)\b.*$/i, "").trim() || s;
+const bi = (n: number) => n >= 1e12 ? (n / 1e12).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + " tri" : n >= 1e9 ? (n / 1e9).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " bi" : (n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " mi";
+
 export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 12, forcar = false) {
   const { data: cache } = await sb.from("empresas").select("dados,atualizado_em").eq("ticker", ticker).maybeSingle();
   if (!forcar && cache && Date.now() - Date.parse(cache.atualizado_em) < horas * 36e5) return cache.dados;
-  const { data: cot } = await sb.from("cotacoes").select("nome,setor,setor_macro,preco,var_dia,valor_mercado_mi").eq("ticker", ticker).maybeSingle();
+  const { data: cot } = await sb.from("cotacoes").select("nome,setor,setor_macro,preco,var_dia,valor_mercado_mi,classe,moeda,bolsa,logo").eq("ticker", ticker).maybeSingle();
+  const classe: string = cot?.classe || "acao";
+  const bolsa: string = cot?.bolsa || "B3";
   const nomeB3 = cot?.nome || ticker;
   const ant = (cache?.dados || {}) as any;
-  const [si, wiki, hist, tv] = await Promise.allSettled([statusInvest(ticker), wikiPerfil(ticker, nomeB3), historico(ticker + ".SA"), analistas([ticker])]);
-  const w = wiki.status === "fulfilled" ? wiki.value : ant.wiki || null;
-  const nome = w?.titulo || nomeCurto(nomeB3);
-  const not = await noticias(`"${ticker}" OR "${nome.replace(/\s*\(.*\)$/, "")}"`, 12, 30).catch(() => ant.noticias || []);
+  const ext = EXTERIOR(classe);
+  const fundoListado = classe === "fii" || classe === "etf" || classe === "etf_ext";
+  const [si, wiki, hist, tv, tvf] = await Promise.allSettled([
+    classe === "acao" ? statusInvest(ticker) : classe === "fii" ? statusInvestFii(ticker) : Promise.resolve(null),
+    fundoListado ? Promise.resolve(null) : wikiPerfil(ticker, classe === "acao" ? nomeB3 : nomeFundo(nomeB3), ext || classe === "bdr"),
+    historico(simboloYahoo(ticker, classe)),
+    analistas([ticker], { [ticker]: bolsa }),
+    classe === "acao" || classe === "fii" ? Promise.resolve(null) : fundamentosTV(ticker, bolsa),
+  ]);
+  let w: any = wiki.status === "fulfilled" ? wiki.value : ant.wiki || null;
+  const f2: any = tvf.status === "fulfilled" ? tvf.value : null;
+  // BDR: P/L, P/VP e valor de mercado do TradingView vêm distorcidos pela proporção do recibo
+  if (f2 && classe === "bdr") { f2.ind.pl = null; f2.ind.pvp = null; f2.ind.valorMercado = null; }
+  const nome = (classe === "acao" || classe === "bdr" || classe === "acao_ext") && w?.titulo ? w.titulo : classe === "acao" ? nomeCurto(nomeB3) : nomeFundo(nomeB3);
+  const busca = ticker.length <= 2 ? `"${nome.replace(/\s*\(.*\)$/, "")}"` : `"${ticker}" OR "${nome.replace(/\s*\(.*\)$/, "")}"`;
+  const not = await noticias(busca, 12, 30).catch(() => ant.noticias || []);
   const h = hist.status === "fulfilled" ? hist.value : null;
+
+  // Fundamentos no mesmo formato para todos os tipos (ind = indicadores)
+  let fundamentos: any = si.status === "fulfilled" && si.value ? si.value : null;
+  if (!fundamentos && f2) fundamentos = { ind: f2.ind, setor: f2.setor, subsetor: f2.subsetor, segmento: f2.subsetor, taxaAdm: f2.taxaAdm, patrimonio: f2.patrimonio, proventos: [], proximosProventos: [], proventos12m: null };
+  if (!fundamentos) fundamentos = ant.fundamentos || null;
+  if (classe === "fii" && fundamentos) { fundamentos.setor = "Fundo imobiliário"; fundamentos.segmento = cot?.setor || fundamentos.segmento || null; }
+
+  // Texto "o que você está comprando" para fundos (não costumam ter artigo na Wikipedia)
+  if (fundoListado) {
+    const par: string[] = [];
+    const ind = fundamentos?.ind || {};
+    if (classe === "fii") {
+      par.push(`${nome} é um fundo imobiliário (FII) negociado na B3${cot?.setor ? `, do segmento ${cot.setor.toLowerCase()}` : ""}. Ao comprar cotas, você vira sócio de imóveis ou de títulos ligados a imóveis e recebe, em geral todo mês, a maior parte do que o fundo arrecada, isento de imposto de renda para pessoa física.`);
+      const det: string[] = [];
+      if (ind.patrimonio) det.push(`patrimônio de R$ ${bi(ind.patrimonio)}`);
+      if (ind.cotistas) det.push(`${Math.round(ind.cotistas).toLocaleString("pt-BR")} cotistas`);
+      if (ind.contratos) det.push(`${Math.round(ind.contratos)} contratos`);
+      if (det.length) par.push(`O fundo tem ${det.join(", ")}.`);
+      if (ind.ultimoRendimento) par.push(`O último rendimento foi de R$ ${ind.ultimoRendimento.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} por cota${ind.dy ? `, e nos últimos 12 meses o fundo rendeu ${ind.dy.toLocaleString("pt-BR")}% em proventos sobre o preço atual` : ""}.`);
+    } else {
+      const idx = indiceDoEtf(nomeB3 + " " + (f2?.descricao || ""));
+      const onde = classe === "etf_ext" ? `nos Estados Unidos (${bolsa === "AMEX" ? "NYSE Arca" : bolsa})` : "na B3";
+      par.push(`${nome} é um ETF (fundo de índice) negociado ${onde}. Com uma única cota você compra, de uma vez, uma cesta de ativos${idx ? ` que acompanha ${idx}` : ""}, sem precisar escolher empresa por empresa.`);
+      const det: string[] = [];
+      if (f2?.patrimonio) det.push(`patrimônio de ${classe === "etf_ext" ? "US$" : "R$"} ${bi(f2.patrimonio)}`);
+      if (f2?.taxaAdm != null) det.push(`taxa de administração de ${f2.taxaAdm.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ao ano`);
+      if (det.length) par.push(`O fundo tem ${det.join(" e ")}.`);
+      if (classe === "etf_ext") par.push("Por ser cotado em dólar, além do desempenho do índice o valor em reais também sobe ou desce com o câmbio. Dividendos de ETFs americanos têm 30% de imposto retido na fonte nos EUA.");
+    }
+    w = { titulo: nome, descricaoCurta: classe === "fii" ? "Fundo imobiliário" : "ETF · fundo de índice", paragrafos: par, imagem: null, fotos: [], fatos: { site: null }, wikipedia: null };
+  }
+
+  const logo = cot?.logo ? `https://s3-symbol-logo.tradingview.com/${cot.logo}.svg` : `https://icons.brapi.dev/icons/${ticker}.svg`;
   const dados: any = {
-    ticker, nome, nomeB3, setor: cot?.setor || null, setorMacro: cot?.setor_macro || null,
-    logo: `https://icons.brapi.dev/icons/${ticker}.svg`,
-    wiki: w,
-    fundamentos: si.status === "fulfilled" ? si.value : ant.fundamentos || null,
+    ticker, nome, nomeB3, classe, moeda: cot?.moeda || "BRL", bolsa,
+    setor: cot?.setor || f2?.subsetor || null, setorMacro: cot?.setor_macro || null,
+    logo, wiki: w, fundamentos,
     desempenho: h ? indicadores(h) : ant.desempenho || null,
     serie: h ? serieSemanal(h) : ant.serie || [],
     noticias: not,
@@ -381,6 +539,7 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
     fontesComErro: [si, wiki, hist].map((x, i) => (x.status === "rejected" ? ["StatusInvest", "Wikipedia", "Yahoo"][i] : null)).filter(Boolean),
     atualizadoEm: new Date().toISOString(),
   };
+  if (f2?.funcionarios && dados.wiki?.fatos && !dados.wiki.fatos.funcionarios) dados.wiki.fatos.funcionarios = f2.funcionarios;
   dados.dinamicoEm = dados.atualizadoEm;
   dados.noticiasEm = dados.atualizadoEm;
   dados.reputacao = reputacao(dados);
@@ -394,10 +553,11 @@ export async function perfilEmpresa(sb: SupabaseClient, ticker: string, horas = 
 export async function atualizarDinamico(sb: SupabaseClient, ticker: string, dados: any, pronto: { h?: Historico | null; sent?: any } = {}) {
   const d = { ...dados };
   const precisaNoticias = !d.noticiasEm || Date.now() - Date.parse(d.noticiasEm) > 60 * 60000;
+  const nm = String(d.nome || ticker).replace(/\s*\(.*\)$/, "");
   const [hist, tv, not] = await Promise.allSettled([
-    pronto.h ? Promise.resolve(pronto.h) : historico(ticker + ".SA"),
-    pronto.sent !== undefined ? Promise.resolve({ [ticker]: pronto.sent }) : analistas([ticker]),
-    precisaNoticias ? noticias(`"${ticker}" OR "${String(d.nome || ticker).replace(/\s*\(.*\)$/, "")}"`, 12, 30) : Promise.resolve(null),
+    pronto.h ? Promise.resolve(pronto.h) : historico(simboloYahoo(ticker, d.classe)),
+    pronto.sent !== undefined ? Promise.resolve({ [ticker]: pronto.sent }) : analistas([ticker], { [ticker]: d.bolsa || "B3" }),
+    precisaNoticias ? noticias(ticker.length <= 2 ? `"${nm}"` : `"${ticker}" OR "${nm}"`, 12, 30) : Promise.resolve(null),
   ]);
   if (hist.status === "fulfilled" && hist.value) { d.desempenho = indicadores(hist.value) || d.desempenho; d.serie = serieSemanal(hist.value); }
   if (tv.status === "fulfilled" && tv.value[ticker]) d.analistas = tv.value[ticker];
@@ -410,6 +570,7 @@ export async function atualizarDinamico(sb: SupabaseClient, ticker: string, dado
 
 /* ---------------- Reputação (0 a 100) a partir de dados públicos ---------------- */
 export function reputacao(d: any) {
+  if (FUNDO(d.classe)) return reputacaoFundo(d);
   const f = d.fundamentos || {}, i = f.ind || {};
   const itens: { area: string; efeito: "positivo" | "negativo" | "neutro"; texto: string }[] = [];
   let pts = 50;
@@ -449,8 +610,55 @@ export function reputacao(d: any) {
   return { nota, rotulo: nota >= 70 ? "Boa" : nota >= 50 ? "Regular" : "Fraca", itens };
 }
 
+// FIIs e ETFs: nota a partir de tamanho, custo, desconto sobre o patrimônio, rendimento e noticiário
+function reputacaoFundo(d: any) {
+  const f = d.fundamentos || {}, i = f.ind || {};
+  const itens: { area: string; efeito: "positivo" | "negativo" | "neutro"; texto: string }[] = [];
+  let pts = 55;
+  const br = (n: number, k = 2) => n.toLocaleString("pt-BR", { maximumFractionDigits: k });
+  if (d.classe === "fii") {
+    if (i.patrimonio != null) {
+      if (i.patrimonio >= 1e9) { pts += 8; itens.push({ area: "Tamanho", efeito: "positivo", texto: `Fundo grande: patrimônio de R$ ${bi(i.patrimonio)}, o que costuma trazer imóveis mais diversificados.` }); }
+      else if (i.patrimonio < 2e8) { pts -= 6; itens.push({ area: "Tamanho", efeito: "negativo", texto: `Fundo pequeno: patrimônio de R$ ${bi(i.patrimonio)}. Depende de poucos imóveis ou devedores.` }); }
+    }
+    if (i.cotistas != null && i.cotistas >= 100000) { pts += 4; itens.push({ area: "Liquidez", efeito: "positivo", texto: `${Math.round(i.cotistas).toLocaleString("pt-BR")} cotistas: fácil de comprar e vender.` }); }
+    if (f.liquidezDiaria != null && f.liquidezDiaria < 500000) { pts -= 5; itens.push({ area: "Liquidez", efeito: "negativo", texto: `Pouco negociado: cerca de R$ ${bi(f.liquidezDiaria)} por dia. Pode ser difícil vender rápido.` }); }
+    if (i.pvp != null) {
+      if (i.pvp < 0.85) { pts += 2; itens.push({ area: "Preço", efeito: "neutro", texto: `Cota ${br((1 - i.pvp) * 100, 0)}% abaixo do valor patrimonial (P/VP ${br(i.pvp)}): pode ser oportunidade ou sinal de desconfiança do mercado.` }); }
+      else if (i.pvp <= 1.05) { pts += 4; itens.push({ area: "Preço", efeito: "positivo", texto: `Cota perto do valor patrimonial (P/VP ${br(i.pvp)}).` }); }
+      else if (i.pvp > 1.2) { pts -= 5; itens.push({ area: "Preço", efeito: "negativo", texto: `Cota ${br((i.pvp - 1) * 100, 0)}% acima do valor patrimonial (P/VP ${br(i.pvp)}).` }); }
+    }
+    if (i.dy != null) {
+      if (i.dy >= 8 && i.dy <= 16) { pts += 6; itens.push({ area: "Rendimentos", efeito: "positivo", texto: `Rendimento de ${br(i.dy)}% nos últimos 12 meses.` }); }
+      else if (i.dy > 16) { itens.push({ area: "Rendimentos", efeito: "neutro", texto: `Rendimento muito alto (${br(i.dy)}% em 12 meses): confira se não foi pontual ou se a cota caiu por algum problema.` }); }
+      else if (i.dy < 6) { pts -= 5; itens.push({ area: "Rendimentos", efeito: "negativo", texto: `Rendimento baixo para um FII: ${br(i.dy)}% em 12 meses.` }); }
+    }
+  } else {
+    if (f.patrimonio != null) {
+      const grande = d.classe === "etf_ext" ? 1e10 : 1e9;
+      if (f.patrimonio >= grande) { pts += 12; itens.push({ area: "Tamanho", efeito: "positivo", texto: `ETF grande e consolidado: ${d.moeda === "USD" ? "US$" : "R$"} ${bi(f.patrimonio)} sob gestão.` }); }
+      else if (f.patrimonio < grande / 50) { pts -= 6; itens.push({ area: "Tamanho", efeito: "negativo", texto: `ETF pequeno (${d.moeda === "USD" ? "US$" : "R$"} ${bi(f.patrimonio)}): menos negociado e com mais risco de ser encerrado.` }); }
+    }
+    if (f.taxaAdm != null) {
+      if (f.taxaAdm <= 0.1) { pts += 12; itens.push({ area: "Custo", efeito: "positivo", texto: `Taxa de administração baixíssima: ${br(f.taxaAdm)}% ao ano.` }); }
+      else if (f.taxaAdm <= 0.4) { pts += 5; itens.push({ area: "Custo", efeito: "positivo", texto: `Taxa de administração de ${br(f.taxaAdm)}% ao ano.` }); }
+      else if (f.taxaAdm >= 0.75) { pts -= 6; itens.push({ area: "Custo", efeito: "negativo", texto: `Taxa de administração alta: ${br(f.taxaAdm)}% ao ano, que sai do seu retorno todo ano.` }); }
+    }
+    const v = d.desempenho?.volAnual;
+    if (v != null) itens.push({ area: "Risco", efeito: v > 35 ? "negativo" : "neutro", texto: `Oscilação anual de ${br(v, 0)}%${v > 35 ? ": bem arriscado." : v < 20 ? ": relativamente estável para renda variável." : "."}` });
+  }
+  const nots: any[] = d.noticias || [];
+  const graves = nots.filter((n) => n.grave);
+  if (graves.length) { pts -= 12; itens.push({ area: "Imagem", efeito: "negativo", texto: `Notícias sensíveis no último mês: "${graves[0].titulo}".` }); }
+  const nota = Math.max(0, Math.min(100, Math.round(pts)));
+  return { nota, rotulo: nota >= 70 ? "Boa" : nota >= 50 ? "Regular" : "Fraca", itens };
+}
+
 /* ---------------- Sinal por ação ---------------- */
-export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number | null, extra: { ibovVar?: number | null; sent?: any } = {}) {
+export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number | null, extra: { ibovVar?: number | null; sent?: any; indice?: string; moeda?: string; classe?: string } = {}) {
+  const IDX = extra.indice || "Ibovespa";
+  const SIMB = moedaSimb(extra.moeda);
+  const classe = extra.classe || "acao";
   let pts = 0;
   const motivos: { peso: number; t: string }[] = [];
   const add = (p: number, t: string) => { pts += p; motivos.push({ peso: p, t }); };
@@ -473,11 +681,19 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
     }
   }
   const i = fund?.ind || {};
-  if (i.margemLiquida != null && i.margemLiquida < 0) add(-2, "A empresa está com prejuízo nos últimos 12 meses.");
-  else if (i.pl != null && i.pl > 0 && i.pl < 8 && (i.roe ?? 0) >= 12) add(1, `Preço baixo em relação ao lucro (P/L ${br(i.pl)}) com boa rentabilidade.`);
-  else if (i.pl != null && i.pl > 35) add(-1, `Preço alto em relação ao lucro (P/L ${br(i.pl)}).`);
-  if (i.dy != null && i.dy >= 7) add(1, `Dividendos altos: ${br(i.dy)}% em 12 meses.`);
-  if (i.divLiqEbitda != null && i.divLiqEbitda > 3.5) add(-1, `Dívida elevada (${br(i.divLiqEbitda)}x o EBITDA).`);
+  if (classe === "fii") {
+    // FIIs: desconto sobre o valor patrimonial e rendimento mensal
+    if (i.pvp != null && i.pvp < 0.9 && (i.dy ?? 0) >= 9) add(1, `Cota abaixo do valor patrimonial (P/VP ${br(i.pvp, 2)}) com rendimento de ${br(i.dy)}% em 12 meses.`);
+    else if (i.pvp != null && i.pvp > 1.15) add(-1, `Cota cara: ${br((i.pvp - 1) * 100, 0)}% acima do valor patrimonial (P/VP ${br(i.pvp, 2)}).`);
+    if (i.dy != null && i.dy < 6) add(-1, `Rendimento baixo para um fundo imobiliário: ${br(i.dy)}% em 12 meses.`);
+    else if (i.dy != null && i.dy >= 10 && i.dy <= 16) add(1, `Bom rendimento: ${br(i.dy)}% em 12 meses, pagos todo mês.`);
+  } else if (classe !== "etf" && classe !== "etf_ext") {
+    if (i.margemLiquida != null && i.margemLiquida < 0) add(-2, "A empresa está com prejuízo nos últimos 12 meses.");
+    else if (i.pl != null && i.pl > 0 && i.pl < 8 && (i.roe ?? 0) >= 12) add(1, `Preço baixo em relação ao lucro (P/L ${br(i.pl)}) com boa rentabilidade.`);
+    else if (i.pl != null && i.pl > 35 && !(classe === "acao_ext" && (i.roe ?? 0) >= 25)) add(-1, `Preço alto em relação ao lucro (P/L ${br(i.pl)}).`);
+    if (i.dy != null && i.dy >= 7) add(1, `Dividendos altos: ${br(i.dy)}% em 12 meses.`);
+    if (i.divLiqEbitda != null && i.divLiqEbitda > 3.5) add(-1, `Dívida elevada (${br(i.divLiqEbitda)}x o EBITDA).`);
+  }
   const recentes = nots.filter((n) => n.data && Date.now() - Date.parse(n.data) < 7 * 864e5);
   const pos = recentes.filter((n) => n.tom === "positivo").length, neg = recentes.filter((n) => n.tom === "negativo").length;
   const grave = recentes.find((n) => n.grave);
@@ -488,8 +704,8 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
   const ib = extra.ibovVar;
   if (varDia != null && varDia <= -7) add(-2, `Queda forte hoje: ${br(-varDia)}%.`);
   else if (varDia != null && varDia <= -3) add(-1, `Cai ${br(-varDia)}% hoje.`);
-  if (ib != null && ib <= -2) add(-1, `O mercado todo está em queda hoje (Ibovespa ${br(ib, 2)}%).`);
-  else if (ib != null && ib >= 2) add(0, `O mercado todo sobe hoje (Ibovespa +${br(ib, 2)}%).`);
+  if (ib != null && ib <= -2) add(-1, `O mercado todo está em queda hoje (${IDX} ${br(ib, 2)}%).`);
+  else if (ib != null && ib >= 2) add(0, `O mercado todo sobe hoje (${IDX} +${br(ib, 2)}%).`);
 
   // Termômetro técnico de curto prazo (médias e osciladores do dia) e consenso dos analistas
   const s = extra.sent;
@@ -498,7 +714,7 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
   else if (tec != null && tec >= 0.5) add(1, "Indicadores técnicos de curto prazo apontam compra forte.");
   const an = s?.analistas;
   if (an && an.total >= 3) {
-    const alvo = an.alvoMedio != null ? ` Preço-alvo médio de R$ ${br(an.alvoMedio, 2)}${an.potencial != null ? ` (${an.potencial >= 0 ? "+" : ""}${br(an.potencial)}%)` : ""}.` : "";
+    const alvo = an.alvoMedio != null ? ` Preço-alvo médio de ${SIMB} ${br(an.alvoMedio, 2)}${an.potencial != null ? ` (${an.potencial >= 0 ? "+" : ""}${br(an.potencial)}%)` : ""}.` : "";
     const txt = `${an.compra} de ${an.total} analistas recomendam compra e ${an.venda} venda.${alvo}`;
     if (s.nota >= 70 && (an.potencial ?? 0) >= 15) add(1, txt);
     else if (s.nota < 40) add(-1, txt);
@@ -512,10 +728,10 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
   let hoje = "";
   if (varDia != null && Math.abs(varDia) >= 0.5) {
     hoje = `Hoje ${varDia < 0 ? "cai" : "sobe"} ${br(Math.abs(varDia))}%`;
-    if (ib != null && Math.abs(ib) >= 0.5) hoje += `, com o Ibovespa ${ib < 0 ? "em queda de" : "em alta de"} ${br(Math.abs(ib))}%`;
+    if (ib != null && Math.abs(ib) >= 0.5) hoje += `, com o ${IDX} ${ib < 0 ? "em queda de" : "em alta de"} ${br(Math.abs(ib))}%`;
     hoje += ".";
-  } else if (ib != null && Math.abs(ib) >= 1) hoje = `Hoje a ação está estável, enquanto o Ibovespa ${ib < 0 ? "cai" : "sobe"} ${br(Math.abs(ib))}%.`;
-  const resto = motivos.filter((m) => !/hoje|Ibovespa/.test(m.t)).slice(0, 4).map((m) => m.t);
+  } else if (ib != null && Math.abs(ib) >= 1) hoje = `Hoje ${FUNDO(classe) ? "a cota" : "a ação"} está estável, enquanto o ${IDX} ${ib < 0 ? "cai" : "sobe"} ${br(Math.abs(ib))}%.`;
+  const resto = motivos.filter((m) => !/hoje|Ibovespa|S&P 500|IFIX/.test(m.t)).slice(0, 4).map((m) => m.t);
   const motivo = [intro, hoje, ...resto].filter(Boolean).join(" ");
   return { sinal, pontos: pts, motivo, fatores: motivos };
 }
@@ -524,31 +740,27 @@ export function sinalAcao(ind: any, fund: any, nots: Noticia[], varDia: number |
 // Uma chamada traz, para várias ações de uma vez: consenso dos analistas (compra/neutro/venda),
 // preço-alvo médio, máximo e mínimo, e a leitura técnica de curto prazo.
 const TV_COLS = ["close", "change", "Recommend.All", "recommendation_mark", "recommendation_buy", "recommendation_over", "recommendation_hold", "recommendation_under", "recommendation_sell", "recommendation_total", "price_target_average", "price_target_high", "price_target_low"];
-export async function analistas(tickers: string[]): Promise<Record<string, any>> {
+// bolsas: código -> bolsa ("B3", "NASDAQ", "NYSE", "AMEX"). Sem bolsa = B3.
+export async function analistas(tickers: string[], bolsas: Record<string, string | null | undefined> = {}): Promise<Record<string, any>> {
   const out: Record<string, any> = {};
-  const lista = [...new Set(tickers.filter((t) => TICKER_RE.test(t)))];
-  for (let i = 0; i < lista.length; i += 100) {
-    const ac = new AbortController();
-    const to = setTimeout(() => ac.abort(), 12000);
-    try {
-      const r = await fetch("https://scanner.tradingview.com/brazil/scan", {
-        method: "POST", signal: ac.signal,
-        headers: { ...UA, "Content-Type": "application/json", Origin: "https://br.tradingview.com", Referer: "https://br.tradingview.com/" },
-        body: JSON.stringify({ symbols: { tickers: lista.slice(i, i + 100).map((t) => "BMFBOVESPA:" + t) }, columns: TV_COLS }),
-      });
-      if (!r.ok) throw new Error("tradingview respondeu " + r.status);
-      const d = await r.json();
+  const lista = [...new Set(tickers.filter((t) => ATIVO_RE.test(t)))];
+  const grupos: Record<"brazil" | "america", string[]> = { brazil: [], america: [] };
+  for (const t of lista) { const b = bolsas[t]; if (b && b !== "B3") grupos.america.push(b + ":" + t); else if (TICKER_RE.test(t)) grupos.brazil.push("BMFBOVESPA:" + t); }
+  for (const mercado of ["brazil", "america"] as const) {
+    const simbolos = grupos[mercado];
+    for (let i = 0; i < simbolos.length; i += 100) {
+      const d = await buscarTV(mercado, { symbols: { tickers: simbolos.slice(i, i + 100) }, columns: TV_COLS });
       for (const row of d?.data || []) {
-        const t = String(row.s || "").split(":")[1];
+        const [ex, t] = String(row.s || "").split(":");
         const v: Record<string, number | null> = {};
         TV_COLS.forEach((c, k) => { const x = row.d?.[k]; v[c] = typeof x === "number" && isFinite(x) ? x : null; });
-        if (t) out[t] = montarSentimento(t, v);
+        if (t) out[t] = montarSentimento(t, v, ex);
       }
-    } finally { clearTimeout(to); }
+    }
   }
   return out;
 }
-function montarSentimento(t: string, v: Record<string, number | null>) {
+function montarSentimento(t: string, v: Record<string, number | null>, ex = "BMFBOVESPA") {
   const compra = (v.recommendation_buy || 0) + (v.recommendation_over || 0);
   const neutro = v.recommendation_hold || 0;
   const venda = (v.recommendation_under || 0) + (v.recommendation_sell || 0);
@@ -572,7 +784,7 @@ function montarSentimento(t: string, v: Record<string, number | null>) {
     } : null,
     tecnico: tec != null ? { valor: r2(tec, 2), rotulo: rotTec } : null,
     preco: r2(preco), varDia: r2(v.change),
-    fontes: [{ nome: "TradingView", url: `https://br.tradingview.com/symbols/BMFBOVESPA-${t}/forecast/` }],
+    fontes: [{ nome: "TradingView", url: `https://br.tradingview.com/symbols/${ex}-${t.replace(".", "_")}/forecast/` }],
     atualizadoEm: new Date().toISOString(),
   };
 }

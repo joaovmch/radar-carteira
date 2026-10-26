@@ -1,17 +1,20 @@
 # Radar da Carteira
 
-Painel para acompanhar uma carteira de ações da B3 pelo celular ou computador, com login próprio. Funciona sozinho, sem IA: tudo é calculado com regras fixas a partir de fontes públicas.
+Painel para acompanhar uma carteira de ações, FIIs, ETFs e BDRs da B3 e de ações e ETFs dos EUA (como VOO) pelo celular ou computador, com login próprio. Funciona sozinho, sem IA: tudo é calculado com regras fixas a partir de fontes públicas.
 
 ## O que tem
 
-- **Carteira**: patrimônio, ganho ou perda do dia, resultado sobre o preço médio e alertas do que pede atenção.
-- **Cotações de todas as ações da B3**, atualizadas a cada 2 minutos durante o pregão (fonte: brapi.dev, com atraso de até ~30 min no plano gratuito).
+- **Resumo**: patrimônio total em reais (ativos em dólar convertidos pelo câmbio do momento), ganho ou perda do dia, resultado sobre o preço médio, proventos estimados em 12 meses, divisão por classe e gráfico da evolução da carteira no último ano.
+- **Classes de ativos**: ações, FIIs, ETFs e BDRs da B3, e ações e ETFs dos EUA (as 150 maiores e os 70 maiores ETFs, mais qualquer outro código digitado na carteira). Ativos dos EUA aceitam frações (ex.: 0,42 de VOO) e preço médio em dólar.
+- **Carteira**: filtro por classe, alertas do que pede atenção e detalhes de cada posição.
+- **Fita de cotações**: Ibovespa, IFIX, S&P 500, Nasdaq, dólar e seus ativos rolando no topo.
+- **Cotações** de ações, FIIs, ETFs e BDRs da B3 (brapi.dev, com atraso de até ~30 min no plano gratuito) e dos EUA (TradingView), atualizadas a cada 2 minutos durante o pregão.
 - **Termômetro do mercado**: nota de 0 a 100 recalculada a cada 5 minutos no pregão, com Ibovespa, dólar, Selic, amplitude (quantas ações sobem) e o tom das manchetes.
 - **Sinal por ação** (considerar reforçar, manter, atenção, considerar reduzir), recalculado a cada 5 minutos no pregão, com os motivos: o movimento da ação e do Ibovespa hoje, tendência de preço (médias de 50 e 200 dias), força recente (IFR), leitura técnica de curto prazo, consenso dos analistas, preço em relação ao lucro, dividendos, dívida e notícias da semana. O resumo sempre começa pelo que está acontecendo hoje.
 - **O que os analistas acham das suas ações**: para cada ação da carteira, quantos analistas recomendam compra, neutro ou venda, preço-alvo médio e quanto falta até ele, e a leitura técnica de curto prazo. Aparece numa seção própria, numa coluna da carteira e no perfil de qualquer empresa.
 - **Conheça as empresas**: perfil completo de qualquer ação da B3, com o que a empresa faz, fotos, fatos (fundação, sede, funcionários, controlador), desempenho no último ano, indicadores explicados, dividendos (inclusive quanto a sua posição recebeu), reputação de 0 a 100 e notícias do último mês.
 - **Em destaque hoje**: maiores altas e baixas entre as ações mais negociadas, com a notícia de cada uma.
-- **Diversificação**: nota de 0 a 100, distribuição por setor, alertas de concentração e exposição ao dólar, e sugestões para os setores que faltam.
+- **Diversificação**: nota de 0 a 100, divisão por classe e por setor/segmento, quanto está fora do Brasil, alertas de concentração e sugestões para as classes e setores que faltam.
 - **O que os analistas recomendam**: ações mais citadas nas carteiras recomendadas das corretoras (revisão mensal).
 
 Nada aqui é recomendação individual de investimento.
@@ -25,7 +28,7 @@ Nada aqui é recomendação individual de investimento.
 | Função `radar` (`supabase/functions/radar`) | Edge Function com três ações: `cotacoes`, `analisar` (mercado, destaques, sinais e analistas) e `empresa` (perfil completo; gráfico, desempenho e analistas renovados a cada 15 min, texto e balanço a cada 12 h) |
 | Agendamento | `pg_cron` no banco: cotações a cada 2 min no pregão; mercado, sinais e analistas de todas as ações das carteiras a cada 5 min das 9h às 19h nos dias úteis e a cada 3 h no resto do tempo |
 
-Fontes: brapi.dev (cotações), Yahoo Finance (histórico de preços, Ibovespa e dólar), TradingView (consenso de analistas, preço-alvo e leitura técnica), Banco Central (Selic), Google Notícias e Bing Notícias (manchetes), StatusInvest (indicadores, governança e proventos), Wikipedia e Wikidata (descrição, fotos e fatos das empresas).
+Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e logos dos EUA, nomes de fundos e BDRs), Yahoo Finance (histórico de preços, Ibovespa e dólar), TradingView (consenso de analistas, preço-alvo e leitura técnica), Banco Central (Selic), Google Notícias e Bing Notícias (manchetes), StatusInvest (indicadores, governança e proventos), Wikipedia e Wikidata (descrição, fotos e fatos das empresas).
 
 ## Segurança
 

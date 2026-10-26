@@ -1,9 +1,10 @@
 // Função única do Radar da Carteira (sem IA).
-// Ações: "cotacoes" (preços da B3), "analisar" (mercado, destaques e sinais) e "empresa" (perfil completo).
+// Ações: "cotacoes" (preços de ações, FIIs, ETFs, BDRs e EUA), "analisar" (mercado, destaques e sinais),
+// "empresa" (perfil completo) e "buscar" (ação ou ETF dos EUA fora da lista).
 // Aceita só o agendamento do banco (cabeçalho x-cron-secret) ou usuários logados.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { admin, cors, json, quemChama } from "./fontes.ts";
-import { atualizarCotacoes } from "./cotacoes.ts";
+import { admin, ATIVO_RE, cors, dentroDoLimite, json, quemChama, TICKER_RE } from "./fontes.ts";
+import { atualizarCotacoes, buscarAtivoEua } from "./cotacoes.ts";
 import { rodarAnalise } from "./analisar.ts";
 import { rodarEmpresa } from "./empresa.ts";
 
@@ -20,6 +21,14 @@ Deno.serve(async (req) => {
       case "cotacoes": return json(await atualizarCotacoes(sb, quem.cron && !!body.forcar), 200);
       case "analisar": { const [r, s] = await rodarAnalise(sb, quem, body); return json(r, s); }
       case "empresa": { const [r, s] = await rodarEmpresa(sb, quem, body); return json(r, s); }
+      case "buscar": {
+        // Ação ou ETF dos EUA que ainda não está na lista (ex.: PLTR): busca e grava a cotação
+        const t = String(body.ticker || "").toUpperCase().trim();
+        if (!ATIVO_RE.test(t) || TICKER_RE.test(t)) return json({ ok: false, erro: "ticker" }, 400);
+        if (quem.userId && !(await dentroDoLimite(sb, quem.userId, "buscar", 60))) return json({ ok: false, erro: "limite" }, 429);
+        const l = await buscarAtivoEua(sb, t);
+        return json(l ? { ok: true, ativo: l } : { ok: false, erro: "nao_encontrada" }, l ? 200 : 404);
+      }
       default: return json({ ok: false, erro: "acao" }, 400);
     }
   } catch (e) {

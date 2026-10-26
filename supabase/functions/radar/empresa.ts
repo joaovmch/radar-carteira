@@ -3,11 +3,11 @@
 // Texto, fotos e balanço ficam em cache por 12 horas; gráfico, desempenho e analistas
 // são renovados se tiverem mais de 15 minutos, e as notícias a cada hora.
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { atualizarDinamico, dentroDoLimite, perfilEmpresa, TICKER_RE } from "./fontes.ts";
+import { ATIVO_RE, atualizarDinamico, dentroDoLimite, perfilEmpresa } from "./fontes.ts";
 
 export async function rodarEmpresa(sb: SupabaseClient, quem: { cron: boolean; userId: string | null }, body: any): Promise<[unknown, number]> {
   const t = String(body.ticker || "").toUpperCase();
-  if (!TICKER_RE.test(t)) return [{ ok: false, erro: "ticker" }, 400];
+  if (!ATIVO_RE.test(t)) return [{ ok: false, erro: "ticker" }, 400];
   const { data: existe } = await sb.from("cotacoes").select("ticker").eq("ticker", t).maybeSingle();
   if (!existe) return [{ ok: false, erro: "nao_encontrada" }, 404];
   const { data: cache } = await sb.from("empresas").select("dados,atualizado_em").eq("ticker", t).maybeSingle();

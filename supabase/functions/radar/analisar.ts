@@ -3,17 +3,18 @@
 // Um usuário logado também pode pedir a análise imediata de uma ação da própria carteira.
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
-  analistas, atualizarDinamico, dentroDoLimite, historico, indicadores, noticias, nomeCurto, perfilEmpresa, proximoCopom, selic, sinalAcao, TICKER_RE,
+  analistas, ATIVO_RE, atualizarDinamico, buscarTV, dentroDoLimite, EXTERIOR, historico, indicadores, noticias, nomeCurto, perfilEmpresa, proximoCopom, selic, simboloYahoo, sinalAcao,
 } from "./fontes.ts";
 
 const cl = (x: number) => Math.max(-1, Math.min(1, x));
 const br = (n: number, d = 1) => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-type Contexto = { ibovVar: number | null; sent: any };
+type Indices = { ibov: number | null; sp: number | null; ifix: number | null };
+type Contexto = { idx: Indices; sent: any };
 
 async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
   const [{ data: cot }, { data: ant }] = await Promise.all([
-    sb.from("cotacoes").select("nome,preco,var_dia,setor_macro").eq("ticker", t).maybeSingle(),
+    sb.from("cotacoes").select("nome,preco,var_dia,setor_macro,classe,moeda,bolsa").eq("ticker", t).maybeSingle(),
     sb.from("analises").select("noticias,indicadores").eq("ticker", t).maybeSingle(),
   ]);
   const perfil: any = await perfilEmpresa(sb, t, 24).catch(() => null);
@@ -21,19 +22,23 @@ async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
   // Notícias da semana: renovadas a cada 15 minutos (o resto do sinal é recalculado em toda rodada)
   const notEm = ant?.indicadores?.noticiasEm;
   const reusar = notEm && Date.now() - Date.parse(notEm) < 15 * 60000 && Array.isArray(ant?.noticias);
+  const classe = cot?.classe || "acao";
+  const nm = nome.replace(/\s*\(.*\)$/, "");
   const [h, nots] = await Promise.all([
-    historico(t + ".SA").catch(() => null),
-    reusar ? Promise.resolve(ant!.noticias) : noticias(`"${t}" OR "${nome.replace(/\s*\(.*\)$/, "")}"`, 8, 7).catch(() => ant?.noticias || []),
+    historico(simboloYahoo(t, classe)).catch(() => null),
+    reusar ? Promise.resolve(ant!.noticias) : noticias(t.length <= 2 ? `"${nm}"` : `"${t}" OR "${nm}"`, 8, 7).catch(() => ant?.noticias || []),
   ]);
   const ind = h ? indicadores(h) : null;
   const varDia = cot?.var_dia != null ? Number(cot.var_dia) : null;
-  const s = sinalAcao(ind, perfil?.fundamentos, nots, varDia, ctx);
+  // Índice de referência: S&P 500 para os EUA, IFIX para FIIs, Ibovespa para o resto
+  const [indice, idxVar] = EXTERIOR(classe) ? ["S&P 500", ctx.idx.sp] : classe === "fii" && ctx.idx.ifix != null ? ["IFIX", ctx.idx.ifix] : ["Ibovespa", ctx.idx.ibov];
+  const s = sinalAcao(ind, perfil?.fundamentos, nots, varDia, { ibovVar: idxVar, sent: ctx.sent, indice, moeda: cot?.moeda || "BRL", classe });
   const row: any = {
     ticker: t, nome, setor: cot?.setor_macro || null,
     preco: cot?.preco ?? ind?.preco ?? null, var_dia: varDia,
     sinal: s.sinal, motivo: s.motivo,
     noticias: nots.map(({ titulo, url, fonte, quando, tom, data }: any) => ({ titulo, url, fonte, quando, tom, data })),
-    indicadores: { ...(ind || {}), pontos: s.pontos, fatores: s.fatores, ibovVar: ctx.ibovVar, noticiasEm: reusar ? notEm : new Date().toISOString() },
+    indicadores: { ...(ind || {}), pontos: s.pontos, fatores: s.fatores, ibovVar: idxVar, indice, noticiasEm: reusar ? notEm : new Date().toISOString() },
     atualizado_em: new Date().toISOString(),
   };
   if (ctx.sent) row.sentimento = ctx.sent;
@@ -44,19 +49,30 @@ async function analisarTicker(sb: SupabaseClient, t: string, ctx: Contexto) {
   return { ticker: t, sinal: s.sinal };
 }
 
-async function ibovHoje(sb: SupabaseClient): Promise<number | null> {
+async function indicesHoje(sb: SupabaseClient): Promise<Indices> {
   const { data } = await sb.from("painel").select("dados").eq("id", "mercado").maybeSingle();
-  const v = (data?.dados as any)?.ibov?.varDia;
-  return typeof v === "number" ? v : null;
+  const d: any = data?.dados || {};
+  const n = (x: any) => (typeof x === "number" ? x : null);
+  return { ibov: n(d.ibov?.varDia), sp: n(d.sp500?.varDia), ifix: n(d.ifix?.varDia) };
+}
+// Índice resumido (pontos, variação do dia e do mês) a partir do histórico do Yahoo
+function resumoIndice(h: any) {
+  if (!h || h.close.length < 3) return null;
+  const c = h.close, n = c.length, pontos = h.preco ?? c[n - 1];
+  const ind = indicadores(h);
+  return { pontos: Math.round(pontos * 100) / 100, varDia: Math.round((pontos / c[n - 2] - 1) * 10000) / 100, ret1m: ind?.ret1m ?? null, ret12m: ind?.ret12m ?? null };
 }
 
 async function mercado(sb: SupabaseClient) {
-  const [ibovH, dolH, taxa, manch, top] = await Promise.all([
+  const [ibovH, dolH, taxa, manch, top, spH, nqH, ifixTv] = await Promise.all([
     historico("^BVSP", "1y").catch(() => null),
     historico("BRL=X", "1mo").catch(() => null),
     selic().catch(() => null),
     noticias('Ibovespa OR "bolsa de valores" OR "mercado financeiro"', 10, 2).catch(() => []),
-    sb.from("cotacoes").select("ticker,var_dia,volume").gt("volume", 0).order("volume", { ascending: false }).limit(150),
+    sb.from("cotacoes").select("ticker,var_dia,volume").eq("classe", "acao").gt("volume", 0).order("volume", { ascending: false }).limit(150),
+    historico("^GSPC", "1y").catch(() => null),
+    historico("^IXIC", "1y").catch(() => null),
+    buscarTV("brazil", { symbols: { tickers: ["BMFBOVESPA:IFIX"] }, columns: ["close", "change"] }).catch(() => null),
   ]);
   const { data: anterior } = await sb.from("painel").select("dados").eq("id", "mercado").maybeSingle();
   const ant: any = anterior?.dados || {};
@@ -105,8 +121,11 @@ async function mercado(sb: SupabaseClient) {
   nota = Math.max(0, Math.min(100, Math.round(nota)));
   const rotulo = nota < 25 ? "Risco de queda" : nota < 45 ? "Cautela" : nota < 60 ? "Neutro" : nota < 80 ? "Favorável" : "Muito favorável";
   const resumo = partes.length ? partes.join("; ").replace(/^./, (c) => c.toUpperCase()) + "." : ant.termometro?.resumo || "";
+  const ifixD = (ifixTv as any)?.data?.[0]?.d;
+  const ifix = ifixD && typeof ifixD[0] === "number" ? { pontos: Math.round(ifixD[0]), varDia: Math.round((ifixD[1] || 0) * 100) / 100 } : ant.ifix || null;
   const dados = {
     ibov, dolar, selic: { taxa: sel, proximoCopom: proximoCopom() },
+    sp500: resumoIndice(spH) || ant.sp500 || null, nasdaq: resumoIndice(nqH) || ant.nasdaq || null, ifix,
     manchetes: manch.length ? manch.map(({ titulo, url, fonte, quando, tom, data }) => ({ titulo, url, fonte, quando, tom, data })) : ant.manchetes || [],
     termometro: { nota, rotulo, resumo, fatores },
     atualizadoEm: new Date().toISOString(),
@@ -136,14 +155,15 @@ export async function rodarAnalise(sb: SupabaseClient, quem: { cron: boolean; us
   // Usuário: só uma ação da própria carteira
   if (!quem.cron) {
     const t = String(body.ticker || "").toUpperCase();
-    if (!TICKER_RE.test(t)) return [{ ok: false, erro: "ticker" }, 400];
+    if (!ATIVO_RE.test(t)) return [{ ok: false, erro: "ticker" }, 400];
     const { data: tem } = await sb.from("carteira").select("id").eq("user_id", quem.userId).eq("ticker", t).limit(1);
     if (!tem || !tem.length) return [{ ok: false, erro: "fora_da_carteira" }, 403];
     const { data: a } = await sb.from("analises").select("atualizado_em").eq("ticker", t).maybeSingle();
     if (a && Date.now() - Date.parse(a.atualizado_em) < 4 * 60000) return [{ ok: true, pulado: true }, 200];
     if (!(await dentroDoLimite(sb, quem.userId!, "analisar", 120))) return [{ ok: false, erro: "limite" }, 429];
-    const [ibovVar, an] = await Promise.all([ibovHoje(sb), analistas([t]).catch(() => ({} as Record<string, any>))]);
-    return [{ ok: true, ...(await analisarTicker(sb, t, { ibovVar, sent: an[t] || null })) }, 200];
+    const { data: c } = await sb.from("cotacoes").select("bolsa").eq("ticker", t).maybeSingle();
+    const [idx, an] = await Promise.all([indicesHoje(sb), analistas([t], { [t]: c?.bolsa }).catch(() => ({} as Record<string, any>))]);
+    return [{ ok: true, ...(await analisarTicker(sb, t, { idx, sent: an[t] || null })) }, 200];
   }
 
   // Agendamento: mercado + todas as ações das carteiras que estão há mais de 4 minutos sem análise
@@ -157,10 +177,13 @@ export async function rodarAnalise(sb: SupabaseClient, quem: { cron: boolean; us
   const velhas = tickers.filter((t) => body.forcar || idade(t) > 4 * 60000).sort((a, b) => idade(b) - idade(a));
   // Até 20 por rodada, 5 em paralelo, para caber no tempo máximo da função
   const fila = velhas.slice(0, Math.min(Number(body.lote) || 20, 30));
-  const [ibovVar, sentMap] = await Promise.all([ibovHoje(sb), analistas(fila).catch((e) => { res.analistasErro = String(e?.message || e); return {} as Record<string, any>; })]);
+  const { data: bl } = await sb.from("cotacoes").select("ticker,bolsa").in("ticker", fila.length ? fila : ["-"]);
+  const bolsas: Record<string, string> = {};
+  (bl || []).forEach((r: any) => { bolsas[r.ticker] = r.bolsa; });
+  const [idx, sentMap] = await Promise.all([indicesHoje(sb), analistas(fila, bolsas).catch((e) => { res.analistasErro = String(e?.message || e); return {} as Record<string, any>; })]);
   res.acoes = [];
   for (let i = 0; i < fila.length; i += 5) {
-    res.acoes.push(...await Promise.all(fila.slice(i, i + 5).map((t) => analisarTicker(sb, t, { ibovVar, sent: sentMap[t] || null }).catch((e) => ({ ticker: t, erro: String(e?.message || e) })))));
+    res.acoes.push(...await Promise.all(fila.slice(i, i + 5).map((t) => analisarTicker(sb, t, { idx, sent: sentMap[t] || null }).catch((e) => ({ ticker: t, erro: String(e?.message || e) })))));
   }
   res.restantes = velhas.length - fila.length;
   return [res, 200];
