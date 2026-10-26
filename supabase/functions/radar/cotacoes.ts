@@ -1,4 +1,4 @@
-// Cotações de todas as ações da B3 (brapi.dev), gravadas na tabela cotacoes.
+// Cotações de ações, FIIs, ETFs e BDRs da B3 (brapi.dev) e de ações e ETFs dos EUA (TradingView), gravadas na tabela cotacoes.
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { ATIVO_RE, buscarTV, TICKER_RE } from "./fontes.ts";
 
