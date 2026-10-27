@@ -236,7 +236,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes" }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoes(); renderAll(); if (S.emp) cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); }, 2500); })
       .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderDia(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
       .on("postgres_changes", { event: "*", schema: "public", table: "empresas" }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderDia(); renderEmpresas(); }, 4000); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); renderDia(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); renderDia(); renderEscritorio(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "carteira" }, async () => { await carregarCarteira(); await carregarEmpresas(); renderAll(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "renda_fixa" }, async () => { await carregarRF(); aposRF(); })
       .subscribe();
@@ -298,7 +298,7 @@
     finally { b.disabled = false; b.classList.remove("spin"); }
   });
 
-  function renderAll() { renderStatus(); renderMercado(); renderConv(); renderHero(); renderDia(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); renderRanking(); }
+  function renderAll() { renderStatus(); renderMercado(); renderConv(); renderHero(); renderDia(); renderEscritorio(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); renderRanking(); }
   function renderStatus() { $("#last-upd").textContent = S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
 
   /* ---------- Logos ---------- */
@@ -482,6 +482,32 @@
     box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff" }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
     ligarGrafico("hero");
   }
+
+  /* ---------- Escritório animado ---------- */
+  S.escSim = null;
+  function diaPct() {
+    const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
+    if (!S.carteira.length && !rfV) return null;
+    const { rows, patr } = linhas(); const T = totais(rows);
+    const rfDia = RF && ehUtil(hojeISO()) ? RF.mes / 21 : 0;
+    const total = patr + rfV, dia = (T.temPreco ? T.dia : 0) + rfDia;
+    return total - dia ? dia / (total - dia) * 100 : 0;
+  }
+  function renderEscritorio() {
+    const box = $("#esc-body"); if (!box || !window.RadarEscritorio) return;
+    const sim = S.escSim != null;
+    const pct = sim ? S.escSim : diaPct();
+    const p = S.perfil || {};
+    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", emoji: p.avatar || "", fechado: !sim && !ehUtil(hojeISO()) });
+  }
+  $("#esc-sim").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-humor]"); if (!b) return;
+    S.escSim = b.dataset.humor === "" ? null : Number(b.dataset.humor);
+    $("#esc-sim").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderEscritorio();
+  });
+  if ("IntersectionObserver" in window) new IntersectionObserver((es) => es.forEach((x) => $("#esc-body").classList.toggle("of-pausa", !x.isIntersecting))).observe($("#esc-body"));
+  document.addEventListener("visibilitychange", () => $("#esc-body").classList.toggle("of-pausa", document.hidden));
 
   /* ---------- Resumo do dia ---------- */
   const dataBRparse = (s) => { const m = String(s || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };

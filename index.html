@@ -850,6 +850,95 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 
 .flash{animation:flash 1.2s ease}
 @keyframes flash{from{box-shadow:0 0 0 4px var(--accent-bg),var(--shadow)}to{box-shadow:var(--shadow)}}
+/* Escritório animado */
+.of-palco{position:relative;border-radius:18px;overflow:hidden;background:radial-gradient(120% 90% at 50% 0%,#EEF2FF,#F8FAFC 60%);border:1px solid var(--line)}
+.of-h-feliz{background:radial-gradient(120% 90% at 50% 0%,#DCFCE7,#F8FAFC 60%)}
+.of-h-euforico{background:radial-gradient(120% 90% at 50% 0%,#FEF3C7,#FDF2F8 65%)}
+.of-h-preocupado{background:radial-gradient(120% 90% at 50% 0%,#FFEDD5,#F8FAFC 60%)}
+.of-h-triste{background:radial-gradient(120% 90% at 50% 0%,#CBD5E1,#E2E8F0 65%)}
+
+.of-h-triste .of-svg{filter:saturate(.7) brightness(.94)}
+[data-theme="dark"] .of-palco{filter:brightness(.93);border-color:var(--line-2)}
+.of-svg{display:block;width:100%;height:auto;max-height:560px;margin:0 auto;padding-top:56px}
+.of-svg g,.of-svg rect,.of-svg line,.of-svg circle,.of-svg path,.of-svg text,.of-svg polygon,.of-svg ellipse{transform-box:view-box}
+.of-card{position:absolute;left:14px;top:14px;max-width:380px;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:14px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);box-shadow:var(--shadow);animation:rise .5s var(--ease) both .3s}
+.of-card>div{flex:1;min-width:0}.of-card b{display:block;font-family:var(--display);font-size:15px}.of-card span{font-size:12.5px;color:var(--muted)}
+.of-emo{font-size:28px;line-height:1;animation:ofBalanca 2.4s ease-in-out infinite}
+.of-card strong{font-family:var(--mono);font-size:18px;white-space:nowrap}
+.of-sim{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0 0}
+.of-sim button{border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:15px;cursor:pointer;transition:transform .2s var(--ease),border-color .2s}
+.of-sim button:hover{transform:translateY(-2px);border-color:var(--accent)}.of-sim button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
+.of-sim .hint{font-size:12px;margin-right:4px}
+/* boneco */
+.of-braco{transform:rotate(var(--a));transition:transform .4s}
+.of-olhos{transform-box:fill-box!important;transform-origin:center;animation:ofPisca 4.2s infinite}
+.of-corpo{animation:ofRespira 3.2s ease-in-out infinite;transform-origin:0 0}
+.of-euforico .of-corpo{animation:ofPula .62s cubic-bezier(.3,0,.5,1) infinite alternate}
+.of-euforico .of-sombra{transform-box:fill-box!important;transform-origin:center;animation:ofSombra .62s cubic-bezier(.3,0,.5,1) infinite alternate}
+.of-aceno{animation:ofAceno .62s ease-in-out infinite alternate}.of-aceno.d2{animation-delay:-.31s}
+.of-coca{animation:ofCoca 1.4s ease-in-out infinite alternate}.of-coca.d2{animation-delay:-.7s}
+.of-preocupado .of-cabeca{animation:ofNao 2.8s ease-in-out infinite;transform-origin:0 -50px}
+.of-triste .of-cabeca{transform:translateY(2px) rotate(-6deg);transform-origin:0 -50px}
+.of-triste .of-corpo{animation:ofSuspira 4s ease-in-out infinite}
+.of-tranquilo .of-cabeca{animation:ofCurte 1.8s ease-in-out infinite;transform-origin:0 -50px}
+.of-controle{animation:ofControle .35s steps(2) infinite}
+.of-taco{animation:ofTaco 2.6s cubic-bezier(.5,0,.2,1) infinite}
+.of-bola{animation:ofBola 2.6s cubic-bezier(.2,.6,.3,1) infinite}
+.of-lagrima{animation:ofLagrima 1.8s ease-in infinite}
+.of-suor{animation:ofLagrima 2.2s ease-in infinite .6s}
+.of-nuvemcab{animation:ofFlutua 3s ease-in-out infinite}
+.of-chuvinha{animation:ofChuvinha .7s linear infinite;animation-delay:var(--d)}
+.of-balao{animation:ofFlutua 2.4s ease-in-out infinite}
+/* cenário */
+.of-sol{transform-box:fill-box!important;transform-origin:center;animation:sweep 18s linear infinite}
+.of-nuvem{animation:ofNuvem 9s ease-in-out infinite alternate}.of-nuvem.d2{animation-duration:7s;animation-direction:alternate-reverse}
+.of-chuva{animation:ofChuva .8s linear infinite;animation-delay:calc(var(--d) * -1)}
+.of-tela{animation:ofTv 5s infinite}
+.of-tela-linha{stroke-dasharray:4;stroke-dashoffset:4;animation:ofDesenha 3.5s ease-out infinite}
+.of-letreiro{animation:ofLetreiro 9s linear infinite}
+.of-pulo{animation:ofPuloTv 1.2s ease-in-out infinite}
+.of-moeda{transform-box:fill-box!important;transform-origin:center;animation:ofMoeda 1s linear infinite}
+.of-inimigo{animation:ofInimigo 3s ease-in-out infinite alternate}
+.of-cursor{animation:ofCursor 1s steps(2) infinite}
+.of-seg{animation:sweep 60s linear infinite}
+.of-folhas{transform-origin:0 0;animation:ofFolhas 4s ease-in-out infinite}
+.of-vapor{animation:ofVapor 2.6s ease-out infinite}
+.of-luz{animation:ofLuz 5s ease-in-out infinite}
+.of-confete{animation:ofConfete var(--t) linear infinite;animation-delay:var(--d);transform-box:fill-box!important;transform-origin:center}
+.of-holofote{transform:rotate(var(--a));animation:ofHolofote 3s ease-in-out infinite alternate;animation-delay:var(--d)}
+.of-pausa *{animation-play-state:paused!important}
+@keyframes ofPisca{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+@keyframes ofRespira{50%{transform:translateY(-.8px)}}
+@keyframes ofPula{from{transform:translateY(0) scale(1.03,.97)}to{transform:translateY(-18px) scale(.98,1.03)}}
+@keyframes ofSombra{to{transform:scale(.65);opacity:.08}}
+@keyframes ofAceno{from{transform:rotate(calc(var(--a) - 18deg))}to{transform:rotate(calc(var(--a) + 14deg))}}
+@keyframes ofCoca{from{transform:rotate(calc(var(--a) - 6deg))}to{transform:rotate(calc(var(--a) + 8deg))}}
+@keyframes ofNao{0%,100%{transform:rotate(0)}25%{transform:rotate(-5deg)}75%{transform:rotate(5deg)}}
+@keyframes ofSuspira{50%{transform:translateY(1.4px)}}
+@keyframes ofCurte{50%{transform:rotate(4deg) translateY(-1px)}}
+@keyframes ofControle{50%{transform:translate(.6px,-.6px)}}
+@keyframes ofTaco{0%,30%{transform:translate(0,0)}55%{transform:translate(-14px,4px)}62%{transform:translate(8px,-2.3px)}75%,100%{transform:translate(0,0)}}
+@keyframes ofBola{0%,61%{transform:translate(0,0);opacity:1}88%{transform:translate(62px,-26px);opacity:1}92%,100%{transform:translate(66px,-28px);opacity:0}}
+@keyframes ofLagrima{0%{transform:translateY(0);opacity:0}15%{opacity:1}100%{transform:translateY(16px);opacity:0}}
+@keyframes ofFlutua{50%{transform:translateY(-4px)}}
+@keyframes ofChuvinha{from{transform:translateY(-3px);opacity:1}to{transform:translateY(12px);opacity:0}}
+@keyframes ofNuvem{to{transform:translateX(.5px)}}
+@keyframes ofChuva{from{transform:translateY(0)}to{transform:translateY(2.4px)}}
+@keyframes ofTv{0%,96%,100%{opacity:1}97%{opacity:.82}}
+@keyframes ofDesenha{0%{stroke-dashoffset:4}55%,100%{stroke-dashoffset:0}}
+@keyframes ofLetreiro{to{transform:translateX(-9px)}}
+@keyframes ofPuloTv{0%,40%,100%{transform:translate(0,0)}60%{transform:translate(.25px,-.45px)}80%{transform:translate(.5px,0)}}
+@keyframes ofMoeda{50%{transform:scaleX(.15)}}
+@keyframes ofInimigo{to{transform:translateX(-.6px)}}
+@keyframes ofCursor{50%{opacity:0}}
+@keyframes ofFolhas{50%{transform:rotate(2.5deg)}}
+@keyframes ofVapor{0%{transform:translateY(2px);opacity:0}30%{opacity:.9}100%{transform:translateY(-8px);opacity:0}}
+@keyframes ofLuz{50%{opacity:.75}}
+@keyframes ofConfete{0%{transform:translateY(0) rotate(0);opacity:0}5%{opacity:1}100%{transform:translateY(560px) rotate(var(--r));opacity:1}}
+@keyframes ofHolofote{to{transform:rotate(calc(var(--a) * -1))}}
+@keyframes ofBalanca{50%{transform:rotate(-8deg) scale(1.08)}}
+@media (max-width:760px){.of-svg{padding-top:0}.of-card{position:static;margin:8px;max-width:none;border-radius:12px}}
+@media (max-width:560px){.of-card strong{font-size:15px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}.reveal{opacity:1;transform:none}.logo path{stroke-dashoffset:0}#arcs path,.chart .ln{stroke-dashoffset:0}.tape-track{flex-wrap:wrap}html{scroll-behavior:auto}}
 </style>
 </head>
@@ -874,6 +963,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <span class="tab-ind" id="tab-ind" aria-hidden="true"></span>
       <a href="#sec-resumo">Resumo</a>
       <a href="#sec-dia">Hoje</a>
+      <a href="#sec-escritorio">Escritório</a>
       <a href="#sec-mercado">Mercado</a>
       <a href="#sec-conv">Câmbio</a>
       <a href="#sec-carteira">Carteira</a>
@@ -935,6 +1025,13 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
     <section class="band panel" id="sec-dia" aria-labelledby="h-dia">
       <div class="panel-head"><h2 id="h-dia">Resumo do dia</h2><span class="when" id="dia-data"></span></div>
       <div id="dia-body"><div class="carregando"><i></i><i style="width:80%"></i><i style="width:60%"></i></div></div>
+    </section>
+
+    <!-- 0b. Escritório animado -->
+    <section class="band panel" id="sec-escritorio" aria-labelledby="h-esc">
+      <div class="panel-head"><h2 id="h-esc">Seu escritório</h2><span class="when" id="esc-when">o humor segue o seu dia</span></div>
+      <div id="esc-body"></div>
+      <div class="of-sim" id="esc-sim" role="group" aria-label="Ver outros humores"><span class="hint">Ver como fica:</span><button type="button" data-humor="" aria-pressed="true" title="Hoje de verdade">📍 Hoje</button><button type="button" data-humor="-3" title="Queda forte">😢</button><button type="button" data-humor="-1" title="Queda">😟</button><button type="button" data-humor="0" title="Estável">😌</button><button type="button" data-humor="1" title="Alta">😄</button><button type="button" data-humor="3" title="Alta forte">🤩</button></div>
     </section>
 
     <!-- 1. Mercado hoje -->
@@ -1147,6 +1244,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
+<script src="escritorio.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
