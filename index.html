@@ -925,7 +925,17 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .of-cams button{border:1px solid var(--line);background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--fg);cursor:pointer;box-shadow:var(--shadow);transition:transform .2s var(--ease),border-color .2s}
 .of-cams button:hover{transform:translateY(-2px);border-color:var(--accent)}.of-cams button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
 .of-dica{position:absolute;right:14px;bottom:10px;font-size:11.5px;color:var(--muted);pointer-events:none;opacity:.85}
-@media (max-width:760px){.of-cams{left:10px;right:auto;top:10px}.of-dica{display:none}}
+.of-edbar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 24px);padding:7px 8px 7px 14px;border-radius:16px;background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--accent);box-shadow:var(--shadow);font-size:12.5px;animation:rise .35s var(--ease) both}
+.of-edbar span{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.of-edbar button{border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--fg);cursor:pointer}
+.of-edbar button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.of-editando .of-dica,.of-editando .of-card{display:none}
+.of-editando .of-canvas{cursor:move}
+.of-deco button{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface);color:var(--fg);cursor:pointer;font:inherit;font-size:12px;transition:transform .2s var(--ease),border-color .2s}
+.of-deco button:hover{transform:translateY(-2px);border-color:var(--accent)}
+.of-deco button[aria-pressed="true"]{border-color:color-mix(in srgb,var(--up) 45%,var(--line));background:color-mix(in srgb,var(--up) 8%,var(--surface))}
+.of-deco button[aria-pressed="false"]{opacity:.75;border-style:dashed}
+@media (max-width:760px){.of-cams{left:10px;right:auto;top:10px;flex-wrap:wrap}.of-dica{display:none}.of-edbar span{display:none}}
 @keyframes ofPisca{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
 @keyframes ofRespira{50%{transform:translateY(-.8px)}}
 @keyframes ofPula{from{transform:translateY(0) scale(1.03,.97)}to{transform:translateY(-18px) scale(.98,1.03)}}
@@ -1023,6 +1033,7 @@ button .ic,.btn .ic{margin:0}
 .pf-bn-3d{position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:radial-gradient(circle at 50% 30%,var(--surface),var(--sunk));box-shadow:inset 0 0 0 1px var(--line)}
 .pf-bn-3d canvas{width:100%!important;height:100%!important;display:block;touch-action:none;cursor:grab}
 .pf-bn-op{display:flex;flex-direction:column;gap:4px}
+@media (min-width:561px){.pf-bn-3d{position:sticky;top:8px}}
 .bn-sws{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:4px}
 .bn-sw{width:28px;height:28px;border-radius:50%;border:3px solid var(--surface);background:var(--c);box-shadow:0 0 0 1px var(--line);transition:transform .15s}
 .bn-sw:hover{transform:scale(1.12)}.bn-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--fg);transform:scale(1.08)}
@@ -1372,8 +1383,8 @@ button .ic,.btn .ic{margin:0}
 
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
-<script src="icones.js?v=2"></script>
-<script src="escritorio.js?v=3d5"></script>
-<script src="app.js?v=20261027c"></script>
+<script src="icones.js?v=3"></script>
+<script src="escritorio.js?v=3d6"></script>
+<script src="app.js?v=20261030a"></script>
 </body>
 </html>

@@ -1,0 +1,425 @@
+
+  /* ----- lugares no mundo (seguem os móveis) ----- */
+  lugares() {
+    const n = this.nav, l = (id, p) => this.lugar(id, p);
+    const livre = (p) => { const q = n.perto(p[0], p[1]); return [q[0], q[1], p[2] ?? 0]; };
+    const monXZ = l("mesa", [7.45, 1.95]), monAlvo = l("mesa", [6.8, 0.3]);
+    const L = {
+      sofaS: l("sofa", [3.2, 3.0, PI]), sofaP: livre(l("sofa", [3.2, 2.3, PI])),
+      cafeP: livre(l("cafe", [0.98, 4.9, -PI / 2])),
+      cadS: l("mesa", [6.8, 1.2, PI]), cadP: livre(l("mesa", [6.8, 1.95, PI])),
+      monP: livre([monXZ[0], monXZ[1], yawPara(monXZ, monAlvo)]),
+      ritmo1: livre(l("mesa", [5.5, 2.35])), ritmo2: livre(l("mesa", [7.9, 2.45])),
+      polS: l("poltrona", [0.92, 3.2, PI / 4]), polP: livre(l("poltrona", [1.36, 3.64, PI / 4])),
+      janP: livre([0.62, 1.85, -PI / 2]), danca: livre([3.4, 5.25, PI / 4]),
+      sinP: this.sinP ? livre(this.sinP) : livre([8.5, 4.6, -PI / 2]),
+    };
+    return L;
+  }
+  // tacada: bola branca, direção da caçapa, onde fica a ponta do taco e onde o boneco se posiciona
+  calibrarTacada() {
+    const s = this.sinuca; const Bc = [7.62, 4.52]; const pk = [s.x0 + 0.11, s.z0 + 0.11];
+    const d = [pk[0] - Bc[0], pk[1] - Bc[1]], Ld = Math.hypot(...d), u = [d[0] / Ld, d[1] / Ld];
+    const Y = [Bc[0] + u[0] * 0.5, Bc[1] + u[1] * 0.5];
+    const C = [Y[0] - u[0] * 0.06, Y[1] - u[1] * 0.06];
+    const fimB = [C[0] + u[0] * 0.1 - u[1] * 0.12, C[1] + u[1] * 0.1 + u[0] * 0.12];
+    this.bolas = { R: Bc, Y, C, u, fimB, pk };
+    const yaw = Math.atan2(u[0], u[1]); const dir = [u[1], -u[0]];   // direita do boneco
+    const raiz = [Bc[0] - u[0] * 0.9 - dir[0] * 0.13, Bc[1] - u[1] * 0.9 - dir[1] * 0.13];
+    this.tacoBase = { tip: [Bc[0] - u[0] * 0.035, Bc[1] - u[1] * 0.035], u, el: 0.16 };
+    this.sinP = this.lugar("sinuca", [raiz[0], raiz[1], yaw]);
+  }
+  // pontas do taco (mundo) para cada estado: -1 encostado na mesa, 0 na mão (em pé), 1 na tacada
+  tacoPontas(p) {
+    const b = this.boneco, root = b.root; const t = p.taco, rec = p.recuo || 0;
+    const viaMesa = (x, y, z) => this.pto("sinuca", x, y, z);
+    const apoio = [viaMesa(8.14, 0.02, 5.1), viaMesa(8.11, 1.46, 4.93)];
+    const mao = [root.localToWorld(V(0.27, 0.05, 0.17)), root.localToWorld(V(0.33, 1.5, 0.25))];
+    const tb = this.tacoBase; const cE = Math.cos(tb.el), sE = Math.sin(tb.el);
+    const ax = this.pto("sinuca", tb.tip[0] - tb.u[0] * cE, 0.81 + sE, tb.tip[1] - tb.u[1] * cE).sub(this.pto("sinuca", tb.tip[0], 0.81, tb.tip[1])).normalize();
+    const tip = this.pto("sinuca", tb.tip[0], 0.812, tb.tip[1]).addScaledVector(ax, rec * 0.2);
+    const jogo = [tip.clone().addScaledVector(ax, 1.45), tip];
+    let a, c, w;
+    if (t <= 0) { w = suave(t + 1); a = apoio[0].clone().lerp(mao[0], w); c = apoio[1].clone().lerp(mao[1], w); }
+    else { w = suave(t); a = mao[0].clone().lerp(jogo[0], w); c = mao[1].clone().lerp(jogo[1], w); }
+    // durante a troca, o taco passa por cima da mesa (nunca por dentro)
+    if (t > 0 && t < 1) { const sobe = Math.sin(PI * w) * 0.25; a.y += sobe; c.y += sobe; }
+    return { butt: a, tip: c, ax, apoioBridge: this.pto("sinuca", tb.tip[0], 0.8, tb.tip[1]).addScaledVector(ax, 0.26).setY(0.835) };
+  }
+  aplicarTaco(p) {
+    const T = this.tacoPontas(p); const taco = this.itens.taco; taco.visible = true;
+    const dir = T.tip.clone().sub(T.butt); const L = dir.length() || 1; dir.divideScalar(L);
+    taco.position.copy(T.butt); taco.quaternion.setFromUnitVectors(V(0, 1, 0), dir);
+    const t = p.taco; const k = cl(t + 1);
+    // mão direita no cabo: em pé segura alto, na tacada segura atrás
+    const g = lerp(0.98, 0.5, cl(t)); const pg = T.butt.clone().addScaledVector(dir, g);
+    p.ikR = [pg.x, pg.y, pg.z]; p.kR = Math.max(p.kR || 0, k);
+    if (t > 0.02) { const br = T.apoioBridge; p.ikL = [br.x, br.y, br.z]; p.kL = Math.max(p.kL || 0, cl(t)); }
+    p.item = t > 0.5 ? "tacoShot" : t > -0.5 ? "tacoV" : p.item;
+  }
+  teclado() { return { L: this.pto("mesa", 6.62, 0.83, 0.64), R: this.pto("mesa", 6.97, 0.83, 0.64) }; }
+  mundo(o) { return o.getWorldPosition(new THREE.Vector3()); }
+  alvoCao() { return this.mundo(this.cao.cab).add(V(0, 0.05, 0)); }
+  alvoArcade() { return this.arcMao.map((o) => this.mundo(o)); }
+  alvoTouro() { return this.mundo(this.touroCab); }
+  alvoCofre() { return this.mundo(this.cofreMacaneta); }
+  alvoPorco() { return this.mundo(this.porco).add(V(0, 0.17, 0)); }
+  alvoTrofeu() { const p = this.trofeuPai, b = this.trofeuBase; return { L: p.localToWorld(b.clone().add(V(-0.1, 0.17, 0))), R: p.localToWorld(b.clone().add(V(0.1, 0.17, 0))) }; }
+
+  /* ----- dados do app ----- */
+  atualizar(d) {
+    const ant = this.d; this.d = d;
+    const h = d.humor || "tranquilo";
+    if (this.boneco) { if (d.boneco !== ant.boneco || d.acessorio !== ant.acessorio) this.boneco.setAparencia(d.boneco, d.acessorio); this.boneco.setCor(d.cor); if (d.icone !== ant.icone) this.boneco.setIcone(d.icone); }
+    if (this.cadAcento) this.cadAcento.color.set(d.cor || "#2457F5");
+    this.titulo = d.titulo; this.pctTxt = d.pct == null || !isFinite(d.pct) ? "" : (d.pct > 0 ? "+" : "") + d.pct.toFixed(2).replace(".", ",") + "%";
+    const velhos = Object.fromEntries((ant.ativos || []).map((a) => [a.t, a]));
+    for (const a of d.ativos || []) { const o = velhos[a.t]; if (o && o.preco != null && a.preco != null && Math.abs(o.preco - a.preco) > 1e-9) this.flash[a.t] = { t: performance.now(), up: a.preco > o.preco }; }
+    if (ant.ativos && JSON.stringify((ant.ativos || []).map((a) => [a.t, a.preco])) !== JSON.stringify((d.ativos || []).map((a) => [a.t, a.preco]))) this.log("cotações atualizadas");
+    if (!d.sim && d.pct != null && isFinite(d.pct)) { const l = this.hist[this.hist.length - 1]; if (!l || Math.abs(l.v - d.pct) > 1e-6) { this.hist.push({ v: d.pct, t: Date.now() }); if (this.hist.length > 60) this.hist.shift(); } }
+    if (d.layout !== undefined && !this.salvando && !this.arrasto) { const n = (L) => JSON.stringify({ m: (L && L.m) || {}, off: [...((L && L.off) || [])].sort() }); if (n(d.layout) !== n(this.layoutAtual())) { this.aplicarLayout(d.layout, true); this.navOk = false; } }
+    this.tem = d.tem || {};
+    if (!this.dir) this.dir = new Diretor(this);
+    const mudou = this.aplicarDecor(!d.tudo && !d.sim);
+    if (h !== this.h) {
+      if (this.h) this.log(d.sim ? "simulando: " + (d.titulo || h).toLowerCase() : "humor: " + (d.titulo || h).toLowerCase());
+      this.h = h; this.aplicarHumor(); this.dir.humor(h);
+    }
+    if (mudou || !this.navOk) { this.navOk = true; this.mudouLayout(); }
+    this.renderer.domElement.setAttribute("aria-label", "Escritório 3D: " + (d.titulo || ""));
+    this.sujo = true;
+  }
+  // decoração visível = liberada e equipada; item recém-liberado aparece com uma animação de descoberta
+  aplicarDecor(marcarVistos) {
+    let mudou = false;
+    for (const id in this.dec) {
+      const o = this.dec[id]; const alvo = !!this.tem[id] && !this.off.has(id);
+      const obj = o.outer || o; if (obj.visible === alvo) continue;
+      obj.visible = alvo; mudou = true;
+      if (alvo) {
+        this.pops[id] = performance.now();
+        if (marcarVistos && !this.vistos.has(id)) { this.vistos.add(id); this.salvarVistos(); if (this.dir) this.dir.novidade(id); }
+      }
+    }
+    if (this.dec.cachorro) this.cao.g.visible = this.dec.cachorro.outer.visible;
+    return mudou;
+  }
+  get pops() { return this._pops || (this._pops = {}); }
+  lerVistos() { try { return new Set(JSON.parse(localStorage.getItem("radar-esc-vistos") || "[]")); } catch (_) { return new Set(); } }
+  salvarVistos() { try { localStorage.setItem("radar-esc-vistos", JSON.stringify([...this.vistos])); } catch (_) { /* modo privado */ } }
+  // equipar/desequipar um item da decoração
+  equipar(id, on) {
+    if (on) this.off.delete(id); else this.off.add(id);
+    if (this.aplicarDecor(false)) this.mudouLayout();
+    this.avisarLayout();
+    this.log((on ? "colocou " : "guardou ") + (this.moveis[id] ? this.moveis[id].nome.toLowerCase() : id));
+  }
+  avisarLayout() { if (typeof this.d.onLayout === "function") { this.salvando = true; try { this.d.onLayout(this.layoutAtual()); } finally { this.salvando = false; } } }
+  restaurar() { const off = [...this.off]; this.aplicarLayout({ off }); this.avisarLayout(); this.log("restaurou os móveis"); }
+  aplicarHumor() {
+    const L = LUZ[this.h];
+    this.cfg = L;
+    this.confete.visible = this.h === "euforico";
+    for (const n of this.notas) this.scene.remove(n.m); this.notas = [];
+    this.aplicarLuz();
+  }
+  aplicarLuz() {
+    const L = this.cfg; const noite = this.noite;
+    this.hemi.intensity = L.hemi * (noite ? 0.55 : 1); this.hemi.color.set(noite ? "#A9B8E8" : "#E3EBFF");
+    this.key.intensity = L.key * (noite ? 0.35 : 1); this.key.color.set(noite ? "#9DB0FF" : L.keyCor);
+    this.fill.intensity = noite ? 0.25 : 0.35;
+    const lamp = L.lamp || noite;
+    this.lampLuz.intensity = lamp ? 2.6 : 0; this.lampHalo.material.opacity = lamp ? 0.55 : 0; this.cupula.material.emissiveIntensity = lamp ? 1.1 : 0;
+    const pend = L.pend || noite;
+    this.pendLuz.intensity = pend ? 2.4 : 0;
+    this.tvLuz.color.set(L.tv); this.monLuz.color.set(L.mon); this.monHalo.material.color.set(L.mon);
+    this.feixe.material.opacity = noite ? 0.06 : L.raio; this.feixe.material.color.set(noite ? "#A5B4FC" : "#FFE7A3");
+    this.renderer.toneMappingExposure = L.exp * (noite ? 0.86 : 1); this.scene.environmentIntensity = noite ? 0.14 : 0.32;
+  }
+
+  /* ----- câmera, modo de edição e controles ----- */
+  ligarControles() {
+    const c = this.renderer.domElement; let arr = null;
+    c.style.touchAction = "pan-y";
+    const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plano = new THREE.Plane(V(0, 1, 0), 0);
+    const mira = (e) => { const r = c.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, this.cam); };
+    const chao = (e) => { mira(e); const p = new THREE.Vector3(); return ray.ray.intersectPlane(plano, p) ? p : null; };
+    c.addEventListener("pointerdown", (e) => {
+      if (this.edit) {
+        mira(e);
+        const alvos = []; for (const id in this.moveis) { const m = this.moveis[id]; if (this.ativo(m)) alvos.push(m.outer); }
+        const hit = ray.intersectObjects(alvos, true).find((h) => h.object.userData.movel);
+        if (hit) {
+          const m = this.moveis[hit.object.userData.movel]; const p = chao(e) || hit.point;
+          this.arrasto = { m, ini: [m.x, m.z, m.ri], off: [m.x - p.x, m.z - p.z], moveu: false, id: e.pointerId, x: e.clientX, y: e.clientY, ok: true };
+          this.sel = m; try { c.setPointerCapture(e.pointerId); } catch (_) { /* ok */ }
+          e.preventDefault(); this.sujo = true; return;
+        }
+      }
+      arr = { x: e.clientX, y: e.clientY, az: this.az, el: this.el_, id: e.pointerId, moveu: false };
+    });
+    window.addEventListener("pointermove", (e) => {
+      const a = this.arrasto;
+      if (a && e.pointerId === a.id) {
+        if (!a.moveu && Math.hypot(e.clientX - a.x, e.clientY - a.y) > 5) a.moveu = true;
+        if (!a.moveu) return;
+        const p = chao(e); if (!p) return;
+        let x = Math.round((p.x + a.off[0]) / 0.05) * 0.05, z = Math.round((p.z + a.off[1]) / 0.05) * 0.05;
+        [x, z] = this.prender(a.m, x, z, a.m.ri);
+        a.ok = this.cabe(a.m, x, z, a.m.ri); this.posicionar(a.m, x, z, a.m.ri); this.sujo = true;
+        return;
+      }
+      if (!arr || e.pointerId !== arr.id) return;
+      const dx = e.clientX - arr.x, dy = e.clientY - arr.y;
+      if (!arr.moveu && Math.hypot(dx, dy) > 6) { arr.moveu = true; try { c.setPointerCapture(e.pointerId); } catch (_) { /* ok */ } if (this.camModo !== "sala") this.setCam("sala", true); }
+      if (arr.moveu) { this.az = cl(arr.az - dx * 0.006, 0.12, PI / 2 - 0.12); if (e.pointerType !== "touch") this.el_ = cl(arr.el + dy * 0.004, 0.22, 1.0); this.sujo = true; }
+    });
+    const fim = (e) => {
+      const a = this.arrasto;
+      if (a && (!e || e.pointerId === a.id)) {
+        this.arrasto = null; const m = a.m;
+        if (!a.moveu) {   // toque: gira 45°
+          for (let k = 1; k <= 8; k++) { const ri = a.ini[2] + k; const [x, z] = this.prender(m, m.x, m.z, ri); if (this.cabe(m, x, z, ri)) { this.posicionar(m, x, z, ri); break; } }
+          this.log("girou " + m.nome.toLowerCase());
+        } else if (!a.ok) { this.posicionar(m, ...a.ini); this.log("não cabe ali"); }
+        else this.log("moveu " + m.nome.toLowerCase());
+        this.mudouLayout(); this.avisarLayout(); this.sujo = true; return;
+      }
+      if (arr && arr.moveu) this.log("girou a câmera"); arr = null;
+    };
+    window.addEventListener("pointerup", fim); window.addEventListener("pointercancel", fim);
+    c.addEventListener("dblclick", () => { if (this.edit) return; this.az = PI / 4; this.el_ = 0.5; this.setCam("sala"); });
+  }
+  setEdicao(on) {
+    this.edit = !!on; this.sel = null; this.sujo = true;
+    this.renderer.domElement.style.cursor = on ? "grab" : "";
+    for (const id in this.moveis) this.moveis[id].marca.visible = false;
+    if (on && this.camModo !== "sala") this.setCam("sala", true);
+    this.log(on ? "arrumando o escritório" : "terminou de arrumar");
+  }
+  setCam(m, silencio) { this.camModo = m; this.sujo = true; if (!silencio) this.log({ sala: "visão da sala", tela: "zoom no computador", seguir: "seguindo o boneco" }[m] || m); }
+  alvoCamera(T) {
+    const asp = this.cam.aspect;
+    if (window.__ofCamOv) return window.__ofCamOv(this, T, V);
+    if (this.camModo === "tela") return asp < 1 ? { pos: this.pto("mesa", 7.12, 1.2, 1.1), alvo: this.pto("mesa", 6.8, 1.13, 0.22), fov: 70 } : { pos: this.pto("mesa", 7.2, 1.24, 1.2), alvo: this.pto("mesa", 6.87, 1.12, 0.22), fov: 50 };
+    if (this.camModo === "seguir") {
+      const r = this.boneco.root.position; const az = this.az + 0.1 * Math.sin(T * 0.2), el = 0.42, dist = asp < 1 ? 4.6 : 3.9;
+      const pos = V(r.x + Math.sin(az) * Math.cos(el) * dist, 0.95 + Math.sin(el) * dist, r.z + Math.cos(az) * Math.cos(el) * dist);
+      return { pos, alvo: V(r.x, 0.95, r.z), fov: 38 };
+    }
+    const fov = 30, sway = this.reduz || this.edit ? 0 : Math.sin(T * 0.15) * 0.025;
+    const chave = [this.az.toFixed(3), this.el_.toFixed(3), asp.toFixed(3)].join();
+    if (chave !== this.fitKey) { this.fitKey = chave; this.fit = this.enquadrar(this.az, this.el_, fov, asp); }
+    const { dist, alvo } = this.fit; const ce = Math.cos(this.el_), az = this.az + sway;
+    return { pos: V(alvo.x + Math.sin(az) * ce * dist, alvo.y + Math.sin(this.el_) * dist, alvo.z + Math.cos(az) * ce * dist), alvo: alvo.clone(), fov };
+  }
+
+  /* ----- quadro a quadro ----- */
+  laco() {
+    this.raf = 0;
+    if (!this.el.isConnected) { this.destruir(); return; }
+    const pausado = document.hidden || this.el.closest(".of-pausa");
+    if (!pausado) {
+      const agora = performance.now(); const dtr = (agora - this.tAnt) / 1000; const dt = Math.min(window.__ofT != null ? 0.3 : 0.05, dtr); this.tAnt = agora;
+      const T = this.reduz ? 2 : (agora - this.t0) / 1000;
+      if (!this.reduz || this.sujo) this.quadro(T, this.reduz ? 0 : dt);
+      this.sujo = false;
+      // qualidade adaptativa: se o aparelho não acompanha, baixa a resolução aos poucos (nunca abaixo de 1×)
+      this.ms = this.ms == null ? 16 : this.ms * 0.95 + Math.min(dtr * 1000, 100) * 0.05;
+      if (this.ms > 30 && this.pr > 1 && agora - (this.tPr || 0) > 3000) { this.tPr = agora; this.pr = Math.max(1, this.pr - 0.25); this.renderer.setPixelRatio(this.pr); this.redimensionar(); }
+    } else this.tAnt = performance.now();
+    this.raf = requestAnimationFrame(this.laco);
+  }
+  emitir(pos, n = 10, cor = "#FDE68A") {
+    let k = 0;
+    for (const f of this.faiscas) { if (f.vida < 1.1) continue; f.vida = 0; f.s.visible = true; f.s.material.color.set(cor); f.s.position.copy(pos); f.v = V((Math.random() - 0.5) * 1.6, 1 + Math.random() * 1.4, (Math.random() - 0.5) * 1.6); if (++k >= n) break; }
+  }
+  quadro(T, dt) {
+    const hr = new Date().getHours(); const noite = window.__ofNoite != null ? !!window.__ofNoite : hr < 6 || hr >= 19;
+    if (noite !== this.noite) { this.noite = noite; this.aplicarLuz(); }
+    const b = this.boneco;
+    const r = this.dir.passo(window.__ofT != null ? window.__ofT : null, dt);
+    let p = r.pose; const st = r.s || {}; const fx = st.fx || ""; const tl = r.tl; const fxk = r.pose.fxk || 0;
+    // posição e giro do corpo com mola (sem trancos entre passos)
+    const pf = this.posF || (this.posF = { x: r.pos[0], z: r.pos[1], y: r.pos[2], vx: 0, vz: 0, vy: 0 });
+    const mola = (x, v, alvo, w) => { const e = x - alvo, ex = Math.exp(-w * dt), tmp = (v + w * e) * dt; return [alvo + (e + tmp) * ex, (v - w * tmp) * ex]; };
+    const px0 = pf.x, pz0 = pf.z, py0 = pf.y;
+    if (dt > 0 && window.__ofT == null) {
+      [pf.x, pf.vx] = mola(pf.x, pf.vx, r.pos[0], 12); [pf.z, pf.vz] = mola(pf.z, pf.vz, r.pos[1], 12);
+      const ya = pf.y + difAng(pf.y, r.pos[2]); [pf.y, pf.vy] = mola(pf.y, pf.vy, ya, 11);
+    } else { pf.x = r.pos[0]; pf.z = r.pos[1]; pf.y = r.pos[2]; }
+    // passinhos automáticos ao girar ou se ajeitar no lugar (os pés não deslizam)
+    if (dt > 0 && !p.andando && (p.sent || 0) < 0.3) {
+      const vel = Math.hypot(pf.x - px0, pf.z - pz0) / dt, vy = Math.abs(difAng(py0, pf.y)) / dt;
+      const quer = cl((vel - 0.08) * 5 + (vy - 0.5) * 0.9);
+      this.passoK = lerp(this.passoK || 0, quer, Math.min(1, dt * 8));
+      this.passoF = (this.passoF || 0) + dt * (2.2 + vel * 4 + vy * 0.8) * this.passoK;
+      if (this.passoK > 0.02) {
+        const s = Math.sin(this.passoF * PI), k = this.passoK;
+        p = { ...p, lL: [p.lL[0] + 0.28 * Math.max(0, s) * k, p.lL[1] + 0.55 * Math.max(0, s) * k], lR: [p.lR[0] + 0.28 * Math.max(0, -s) * k, p.lR[1] + 0.55 * Math.max(0, -s) * k], alt: p.alt - 0.012 * Math.abs(s) * k };
+      }
+    }
+    p = this.filtro.passo(p, dt);
+    b.root.position.set(pf.x, 0, pf.z); b.root.rotation.y = pf.y + (p.yawAdd || 0);
+    b.root.updateMatrixWorld(true);
+    const comTaco = p.taco > -0.98 && this.h === "feliz";
+    if (comTaco) { p = { ...p }; this.aplicarTaco(p); }
+    else { /* taco encostado na mesa */ const q = this.tacoPontas({ taco: -1 }); const dir = q.tip.clone().sub(q.butt).normalize(); const tc = this.itens.taco; tc.visible = true; tc.position.copy(q.butt); tc.quaternion.setFromUnitVectors(V(0, 1, 0), dir); }
+    b.aplicar(p, T, dt); b.desenharRosto(p, T);
+    b.blob.position.set(pf.x, 0.004, pf.z); b.blob.material.opacity = cl(1 - (p.dy || 0) * 2, 0.3, 1);
+    // itens de mão
+    const it = this.itens; const q = b.root.quaternion; const hq = new THREE.Quaternion();
+    it.controle.visible = p.item === "controle"; this.ctrlMesa.visible = !it.controle.visible;
+    if (it.controle.visible) { it.controle.position.copy(b.mL).add(b.mR).multiplyScalar(0.5).add(V(0, 0.01, 0)); it.controle.quaternion.copy(q); it.controle.rotateX(-0.5); }
+    it.xicara.visible = p.item === "xicara";
+    if (it.xicara.visible) { const yaw = b.root.rotation.y; it.xicara.position.copy(b.mR).add(V(Math.sin(yaw) * 0.05, 0.06, Math.cos(yaw) * 0.05)); it.xicara.quaternion.copy(q); }
+    it.nota.visible = p.item === "nota";
+    if (it.nota.visible) { it.nota.position.copy(b.mR).add(V(0, 0.05, 0)); it.nota.quaternion.copy(q); it.nota.rotateX(1.2); }
+    it.celular.visible = p.item === "celular";
+    if (it.celular.visible) { it.celular.position.copy(b.mR).add(V(0, 0.05, 0)); it.celular.quaternion.copy(q); it.celular.rotateX(-0.35); this.desenharCel(T); }
+    it.dardo.visible = p.item === "dardo";
+    if (it.dardo.visible) { b.R.hand.getWorldQuaternion(hq); it.dardo.position.copy(b.mR); it.dardo.quaternion.copy(hq); it.dardo.rotateX(PI / 2); }
+    let moeda = p.item === "moeda";
+    if (moeda) { it.moeda.position.copy(b.mR).add(V(0, 0.02, 0)); it.moeda.quaternion.copy(q); }
+    // bolas da sinuca (coordenadas da própria mesa)
+    const B = this.bolas, yb = 0.81;
+    const est = this.h === "feliz" ? p.bolas || "ini" : "ini";
+    if (est === "ini") { this.bB.position.set(B.R[0], yb, B.R[1]); this.bA.position.set(B.Y[0], yb, B.Y[1]); this.bA.visible = true; this.bA.scale.setScalar(1); }
+    else if (est === "jogo") {
+      const k1 = fase(tl, TACADA, TACADA + 0.28), k2 = fase(tl, TACADA + 0.28, TACADA + 1.0), k3 = fase(tl, TACADA + 1.0, TACADA + 1.15);
+      const cb = k2 > 0 ? [lerp(B.C[0], B.fimB[0], sai(k2)), lerp(B.C[1], B.fimB[1], sai(k2))] : [lerp(B.R[0], B.C[0], k1), lerp(B.R[1], B.C[1], k1)];
+      this.bB.position.set(cb[0], yb, cb[1]);
+      this.bA.position.set(lerp(B.Y[0], B.pk[0], sai(k2)), yb - 0.06 * k3, lerp(B.Y[1], B.pk[1], sai(k2))); this.bA.scale.setScalar(1 - 0.6 * k3); this.bA.visible = k3 < 1;
+      this.bA.rotation.x += dt * 20 * (k2 > 0 && k2 < 1 ? 1 : 0);
+    } else { this.bB.position.set(B.fimB[0], yb, B.fimB[1]); this.bA.visible = false; }
+    /* efeitos das recompensas */
+    // cachorro
+    if (this.cao.g.visible) {
+      let alvo, estado;
+      const fw = [Math.sin(pf.y), Math.cos(pf.y)];
+      if (fx === "caoVem" || fx === "caoCarinho") { const a = [pf.x + fw[0] * 0.55, pf.z + fw[1] * 0.55]; alvo = [a[0], a[1], yawPara(a, [pf.x, pf.z])]; estado = fx === "caoCarinho" ? "carinho" : "senta"; }
+      else {
+        const modo = { triste: "dorme", preocupado: "senta", tranquilo: "dorme", feliz: "senta", euforico: "pula" }[this.h];
+        if (modo === "dorme") { alvo = this.lugar("cachorro", [1.35, 6.2, 0.8]); estado = "dorme"; }
+        else { const ini = this.caoPerto || [pf.x, pf.z]; alvo = [ini[0], ini[1], yawPara(ini, [pf.x, pf.z])]; estado = modo; }
+      }
+      const chegou = this.cao.mover(alvo, dt, this.nav);
+      this.cao.g.position.set(this.cao.pos[0], 0, this.cao.pos[1]); this.cao.g.rotation.y = this.cao.yaw;
+      this.cao.quadro(chegou ? estado : "anda", T);
+      // perto do boneco, num lugar livre (recalcula de vez em quando)
+      if (!this.caoT || T - this.caoT > 4) { this.caoT = T; const lado = [Math.cos(pf.y), -Math.sin(pf.y)]; const tent = [[0.75, 0.35], [-0.75, 0.35], [0.8, -0.3], [-0.8, -0.3]]; for (const [a, f] of tent) { const x = pf.x + lado[0] * a + fw[0] * f, z = pf.z + lado[1] * a + fw[1] * f; if (this.nav.livre(x, z)) { this.caoPerto = [x, z]; break; } } }
+    }
+    // ração no aquário e peixes subindo
+    const comendo = fx === "racao" && tl > 1.0 && tl < 4.2;
+    if (this.dec.aquario.outer.visible) {
+      this.racao.forEach((f, i) => { const k = comendo ? ((tl - 1.0) * 0.55 + i / 14) % 1 : 0; f.visible = comendo; f.position.set(0.25 + ruido(i) * 0.2, 1.24 - k * 0.42, 6.65 + ruido(i + 5) * 0.35); });
+      const sobe = this.peixeSobe = lerp(this.peixeSobe || 0, comendo ? 1 : 0, Math.min(1, dt * 1.5));
+      this.peixes.forEach((f, i) => { const a = T * (0.5 + i * 0.12) + i * 1.7; f.position.set(0.35 + Math.sin(a * 1.3) * 0.15 * (1 - sobe * 0.6), lerp(0.95 + i * 0.06 + Math.sin(a * 2) * 0.03, 1.15 + Math.sin(a * 4) * 0.02, sobe), 6.83 + Math.cos(a) * 0.32 * (1 - sobe * 0.5)); f.rotation.y = Math.atan2(-Math.sin(a) * 0.32, Math.cos(a * 1.3) * 0.2) + PI; });
+      this.bolhas.forEach((bb, i) => { const k = (T * 0.4 + i / 6) % 1; bb.position.set(0.45 + Math.sin(T * 3 + i) * 0.02, 0.8 + k * 0.42, 7.1 - i * 0.02); });
+    }
+    // fliperama
+    const jogando = fx === "arcade";
+    if (this.dec.fliperama.outer.visible) { this.joy.rotation.set(jogando ? Math.sin(T * 9) * 0.35 : 0, 0, jogando ? Math.sin(T * 7.3) * 0.35 : 0); this.botoesArc.forEach((bt, i) => { bt.position.y = 1.07 - (jogando && Math.sin(T * 13 + i * 2) > 0.6 ? 0.008 : 0); }); }
+    // cofre
+    if (this.dec.cofre.outer.visible) { const ang = fx === "cofre" || fx === "moedaJoga" ? p.porta : 0; this.cofrePorta.rotation.y = -ang; this.cofreBrilho.material.opacity = cl(ang / 1.9) * 0.85; }
+    if (fx === "moedaJoga") { moeda = true; const k = fxk; const hgt = 4 * k * (1 - k) * 0.55; it.moeda.position.copy(b.mR).add(V(0, 0.02 + hgt, 0)); it.moeda.quaternion.copy(q); it.moeda.rotateX(k * 6 * PI); }
+    // porquinho: a moeda cai no cofrinho
+    if (fx === "porco") {
+      const sl = this.alvoPorco();
+      if (tl > 0.9 && tl < 1.15) { moeda = true; it.moeda.position.copy(b.mR).lerp(sl, fase(tl, 0.9, 1.15)); it.moeda.quaternion.copy(q); }
+      if (tl > 1.15 && this.fxId !== st.t0) { this.fxId = st.t0; this.emitir(sl, 8, "#FDE68A"); }
+      const j = tl > 1.15 ? Math.sin((tl - 1.15) * 30) * Math.exp(-(tl - 1.15) * 4) : 0; this.porco.scale.set(1 + j * 0.12, 1 - j * 0.12, 1 + j * 0.12);
+    } else this.porco.scale.setScalar(1);
+    it.moeda.visible = moeda;
+    // troféu nas mãos
+    const segura = fx === "trofeu" || (fx === "trofeuPega" && fxk > 0.92) || (fx === "trofeuSolta" && fxk < 0.85);
+    if (this.dec.trofeu.outer.visible) {
+      const tr = this.trofeuObj;
+      if (segura) { const m = b.mL.clone().add(b.mR).multiplyScalar(0.5).add(V(0, -0.15, 0)); tr.position.copy(this.trofeuPai.worldToLocal(m)); tr.rotation.y = b.root.rotation.y - this.dec.trofeu.outer.rotation.y; }
+      else { tr.position.copy(this.trofeuBase); tr.rotation.y = 0; }
+    }
+    // dardos
+    if (this.dec.dardos.visible) {
+      if (fx === "dardo" && fxk < 0.01 && tl < 0.15) { this.dardos.forEach((dd) => { dd.visible = false; }); this.voos = []; }
+      if (fx === "dardo" && fxk % 1 > 0.4) { const i = Math.floor(fxk); const key = st.t0 + ":" + i; if (this.dardoKey !== key && i < 3) { this.dardoKey = key; (this.voos ||= []).push({ i, de: b.mR.clone(), t: 0 }); } }
+      for (const v of this.voos || []) {
+        v.t += dt; const k = cl(v.t / 0.32); const a = V(...this.dardosAlvo[v.i]); const pos = v.de.clone().lerp(a, k); pos.y += Math.sin(PI * k) * 0.18;
+        const dd = this.dardos[v.i]; dd.visible = true; dd.position.copy(pos); dd.rotation.set(0, 0, -PI / 2 + (1 - k) * 0.4);
+      }
+    } else this.dardos.forEach((dd) => { dd.visible = false; });
+    // globo de festa
+    const festa = this.dec.globo.visible && (this.h === "euforico" || fx === "globo");
+    for (const s of this.spots) s.intensity = festa ? 9 : 0;
+    if (this.dec.globo.visible) { this.globo.rotation.y = T * 0.8; this.spots.forEach((sp, i) => { const a = T * 0.9 + i * TAU / 4; sp.target.position.set(3.4 + Math.cos(a) * 2.2, 0, 5.0 + Math.sin(a) * 1.8); }); }
+    // item recém-liberado: cresce com um pulinho e solta brilhos
+    const agoraMs = performance.now();
+    for (const id in this.pops) {
+      const k = (agoraMs - this.pops[id]) / 900; const o = this.dec[id]; const obj = o.outer || o;
+      if (k >= 1 || !obj.visible) { obj.scale.setScalar(1); delete this.pops[id]; continue; }
+      const s = 1 + Math.sin(k * PI * 2.5) * Math.exp(-k * 4) * 0.35; obj.scale.setScalar(Math.max(0.01, k < 0.25 ? sai(k / 0.25) * s : s));
+      if (!this.popFx || this.popFx !== id + this.pops[id]) { this.popFx = id + this.pops[id]; this.emitir(this.mundo(obj).add(V(0, 0.6, 0)), 14); }
+    }
+    if (fx === "novidade" && this.fxId !== "n" + st.t0 && tl > 0.2) { this.fxId = "n" + st.t0; const cab = this.mundo(b.head); this.emitir(cab.add(V(0, 0.35, 0)), 12, "#FACC15"); }
+    for (const f of this.faiscas) { if (f.vida >= 1.1) continue; f.vida += dt; f.v.y -= 2.4 * dt; f.s.position.addScaledVector(f.v, dt); const k = f.vida / 1.1; f.s.material.opacity = 1 - k; f.s.scale.setScalar(0.09 * (1 - k * 0.5)); f.s.material.rotation += dt * 3; if (f.vida >= 1.1) f.s.visible = false; }
+    // nuvem de chuva e balão
+    const cab = this.mundo(b.head);
+    this.nuvem.visible = p.nuvem > 0.5;
+    if (this.nuvem.visible) { this.nuvem.position.set(cab.x, cab.y + 0.75 + Math.sin(T * 1.6) * 0.03, cab.z); this.gotas.forEach((g, i) => { const k = (T * 1.8 + i * 0.37) % 1; g.position.y = -0.12 - k * 0.4; g.material.opacity = 0.9 * (1 - k); }); }
+    this.balaoS.visible = p.balao > 0.05;
+    if (this.balaoS.visible) {
+      if (p.balaoT !== this.balaoT) { this.balaoT = p.balaoT; const { g, t } = this.balao; g.clearRect(0, 0, 128, 128); g.fillStyle = "#FFF"; g.strokeStyle = "#CBD5E1"; g.lineWidth = 3; rr(g, 8, 8, 112, 86, 22); g.fill(); g.stroke(); g.beginPath(); g.moveTo(40, 92); g.lineTo(34, 120); g.lineTo(62, 93); g.fill(); if (window.RI) window.RI.desenhar(g, p.balaoT, 64, 51, 60, p.balaoT === "chart-line-down" ? "#DC2626" : p.balaoT === "smiley-nervous" ? "#F59E0B" : "#7C3AED"); t.needsUpdate = true; }
+      this.balaoS.position.set(cab.x + 0.25, cab.y + 0.6, cab.z); this.balaoS.scale.setScalar(0.42 * p.balao); this.balaoS.material.opacity = p.balao;
+    }
+    // notas jogadas
+    if (p.solta && p.solta !== this.ultSolta) { this.ultSolta = p.solta; for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(this.notaGeo, this.notaMat); m.castShadow = true; m.position.copy(b.mR); this.scene.add(m); const fw = V(Math.sin(pf.y), 0, Math.cos(pf.y)); this.notas.push({ m, v: V(fw.x * 0.6 + (Math.random() - 0.5) * 1.2, 2.2 + Math.random() * 1.2, fw.z * 0.6 + (Math.random() - 0.5) * 1.2), rv: V(Math.random() * 6, Math.random() * 6, Math.random() * 6), vida: 0 }); } }
+    if (!p.solta) this.ultSolta = 0;
+    for (let i = this.notas.length - 1; i >= 0; i--) {
+      const n = this.notas[i]; n.vida += dt;
+      if (n.m.position.y > 0.01) { n.v.y -= 4.5 * dt; n.v.multiplyScalar(0.985); n.m.position.addScaledVector(n.v, dt); n.m.rotation.x += n.rv.x * dt; n.m.rotation.y += n.rv.y * dt; n.m.rotation.z += n.rv.z * dt; if (n.v.y < -0.6) n.v.y = -0.6 + Math.sin(n.vida * 9) * 0.25; }
+      else { n.m.position.y = 0.006; n.m.rotation.set(0, n.m.rotation.y, 0); }
+      if (n.vida > 6) { this.scene.remove(n.m); this.notas.splice(i, 1); }
+    }
+    // ambiente
+    const agora = new Date(); const sg = agora.getSeconds() + agora.getMilliseconds() / 1000, mi = agora.getMinutes() + sg / 60, ho = (agora.getHours() % 12) + mi / 60;
+    this.pS.rotation.z = -sg / 60 * TAU; this.pM.rotation.z = -mi / 60 * TAU; this.pH.rotation.z = -ho / 12 * TAU;
+    (this.plantas || []).forEach((f, i) => { f.rotation.z = Math.sin(T * 0.8 + i) * 0.03; f.rotation.x = Math.sin(T * 0.6 + i * 2) * 0.02; });
+    this.vapor.forEach((v, i) => { const k = (T * 0.35 + i / 4) % 1; v.position.set(0.38 + Math.sin(T * 2 + i) * 0.02, 1.0 + k * 0.4, 4.9); v.material.opacity = 0.35 * Math.sin(PI * k); v.scale.setScalar(0.06 + k * 0.12); });
+    const digitando = p.item === "tecla";
+    this.teclas.material.emissiveIntensity = digitando ? 0.4 + 0.3 * Math.abs(Math.sin(T * 14)) : 0.25;
+    this.monLuz.intensity = 1.0 + 0.25 * Math.sin(T * 2.2) + (performance.now() - (this.ultimaAcao || 0) < 900 ? 0.8 : 0);
+    if (this.dec.neon.visible) { const pisca = Math.sin(T * 7) > 0.97 || Math.sin(T * 23) > 0.995; this.neonM.opacity = pisca ? 0.35 : 1; this.neonHalo.material.opacity = pisca ? 0.1 : 0.35; }
+    if (this.dec.arcoiris.visible) this.arcoHalo.material.opacity = 0.25 + (this.dir.itemAtual === "arcoiris" ? 0.25 * Math.abs(Math.sin(T * 4)) : 0);
+    if (this.decPorquinho.visible && fx !== "porco") this.porco.position.y = 0.775 + Math.abs(Math.sin(T * 1.6)) * 0.012;
+    if (this.confete.visible) {
+      const o = this.dummy || (this.dummy = new THREE.Object3D());
+      this.confData.forEach((c, i) => { const y = H - ((T * c.v + c.y0) % (H + 0.3)); o.position.set(c.x + Math.sin(T * 1.5 + c.sw) * 0.2, y, c.z + Math.cos(T * 1.2 + c.sw) * 0.15); o.rotation.set(T * c.rv + c.r, T * c.rv * 0.7, c.r); o.updateMatrix(); this.confete.setMatrixAt(i, o.matrix); });
+      this.confete.instanceMatrix.needsUpdate = true;
+    }
+    // telas (com taxa menor para poupar bateria)
+    const perto = this.camModo === "tela";
+    if (this.reduz || T - (this.tMon || -9) > (perto ? 1 / 30 : 1 / 8) || this.sujo) { this.tMon = T; this.desenharMonitor(T); }
+    if (this.reduz || T - (this.tTv || -9) > 1 / 15) { this.tTv = T; this.desenharTV(T, this.h === "tranquilo" ? "jogo" : "news"); }
+    if (this.reduz || T - (this.tCeu || -9) > 1 / 8) { this.tCeu = T; this.desenharCeu(T); }
+    if (this.dec.fliperama.outer.visible && (this.reduz || T - (this.tArc || -9) > (jogando ? 1 / 20 : 1 / 6))) { this.tArc = T; this.desenharArcade(T * (jogando ? 2 : 1)); }
+    // contornos do modo de edição
+    if (this.edit) for (const id in this.moveis) {
+      const m = this.moveis[id], mk = m.marca; mk.visible = this.ativo(m); if (!mk.visible) continue;
+      const bx = this.caixasDe(m)[0]; mk.position.set(bx.c[0], 0.02 + (m.piso ? 0 : 0.005), bx.c[1]); mk.rotation.set(-PI / 2, 0, bx.r); mk.scale.set(bx.h[0] * 2 + 0.08, bx.h[1] * 2 + 0.08, 1);
+      const a = this.arrasto && this.arrasto.m === m; mk.material.color.set(a && !this.arrasto.ok ? "#EF4444" : a || this.sel === m ? "#22C55E" : "#60A5FA"); mk.material.opacity = a || this.sel === m ? 1 : 0.55;
+    }
+    // câmera
+    const c = this.alvoCamera(T);
+    if (!this.camAtual || this.reduz) this.camAtual = { pos: c.pos.clone(), alvo: c.alvo.clone(), fov: c.fov };
+    const k = window.__ofT != null ? 1 : 1 - Math.exp(-dt * 4);
+    this.camAtual.pos.lerp(c.pos, k); this.camAtual.alvo.lerp(c.alvo, k); this.camAtual.fov = lerp(this.camAtual.fov, c.fov, k);
+    this.cam.position.copy(this.camAtual.pos); this.cam.lookAt(this.camAtual.alvo); if (Math.abs(this.cam.fov - this.camAtual.fov) > 0.01) { this.cam.fov = this.camAtual.fov; this.cam.updateProjectionMatrix(); }
+    this.renderer.render(this.scene, this.cam);
+  }
+  desenharCel(T) {
+    if (T - (this.tCel || -9) < 0.2) return; this.tCel = T;
+    const { g, t } = this.celTela; g.fillStyle = "#0B1220"; g.fillRect(0, 0, 64, 128);
+    g.fillStyle = "#FB923C"; g.font = "bold 16px system-ui"; g.fillText("₿", 6, 20);
+    g.strokeStyle = "#4ADE80"; g.lineWidth = 3; g.beginPath(); for (let i = 0; i < 10; i++) { const x = 4 + i * 6, y = 100 - i * 6 - Math.sin(i + T * 3) * 6; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+    t.needsUpdate = true;
+  }
+  destruir() { cancelAnimationFrame(this.raf); this.ro && this.ro.disconnect(); this.renderer.dispose(); }

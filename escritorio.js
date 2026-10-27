@@ -32,7 +32,7 @@
   const IC = (n, o) => (window.RI ? window.RI.svg(n, o) : "");
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const MOD = "./escritorio3d.js?v=20261027-5";
+  const MOD = "./escritorio3d.js?v=20261030-1";
   let mod = null, carregando = null, inst = null, modo = null, ultimo = null, render2d = null, el0 = null;
   const pendentes = []; let secao = "";
   function temWebGL() {
@@ -96,15 +96,23 @@
     if (!palco) {
       el.innerHTML = `<div class="of-palco of-palco3d">
         <div class="of-3d"><div class="of-load"><i></i>Montando o escritório…</div>
-          <div class="of-cams" role="group" aria-label="Câmera"><button type="button" data-cam="sala" aria-pressed="true" title="Visão da sala">${IC("house")} Sala</button><button type="button" data-cam="tela" aria-pressed="false" title="Chegar perto da tela do computador">${IC("monitor")} Tela</button><button type="button" data-cam="seguir" aria-pressed="false" title="Câmera seguindo o boneco">${IC("crosshair")} Seguir</button></div>
+          <div class="of-cams" role="group" aria-label="Câmera"><button type="button" data-cam="sala" aria-pressed="true" title="Visão da sala">${IC("house")} Sala</button><button type="button" data-cam="tela" aria-pressed="false" title="Chegar perto da tela do computador">${IC("monitor")} Tela</button><button type="button" data-cam="seguir" aria-pressed="false" title="Câmera seguindo o boneco">${IC("crosshair")} Seguir</button><button type="button" data-act="editar" aria-pressed="false" title="Arrastar e girar os móveis">${IC("arrows-out-cardinal")} Arrumar</button></div>
+          <div class="of-edbar" hidden><span>${IC("hand-grabbing")} Arraste um móvel para mudar de lugar · toque nele para girar</span><button type="button" data-act="restaurar">${IC("arrow-counter-clockwise")} Restaurar</button><button type="button" data-act="pronto" class="pri">${IC("check")} Pronto</button></div>
           <span class="of-dica">arraste para girar · toque duplo para centralizar</span></div>
         <div class="of-card"><span class="of-emo"></span><div><b></b><span></span></div><strong></strong></div>
       </div>`;
       palco = el.querySelector(".of-palco3d"); inst = null;
       palco.querySelector(".of-cams").addEventListener("click", (e) => {
+        const ed = e.target.closest("[data-act=editar]"); if (ed) { editar(ed.getAttribute("aria-pressed") !== "true"); return; }
         const b = e.target.closest("[data-cam]"); if (!b) return;
+        if (editando) editar(false);
         palco.querySelectorAll("[data-cam]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
         if (inst) inst.setCam(b.dataset.cam);
+      });
+      palco.querySelector(".of-edbar").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-act]"); if (!b) return;
+        if (b.dataset.act === "restaurar" && inst) inst.restaurar();
+        if (b.dataset.act === "pronto") editar(false);
       });
     }
     palco.className = `of-palco of-palco3d of-h-${h}${inst ? " pronto" : ""}`;
@@ -112,7 +120,7 @@
     palco.querySelector(".of-card b").textContent = info.titulo + (d.fechado ? " · mercado fechado" : "");
     palco.querySelector(".of-card span:not(.of-emo)").textContent = d.fechado ? "Bolsa fechada hoje. Dia de videogame." : info.frase;
     const st = palco.querySelector(".of-card strong"); st.textContent = v; st.className = d.pct > 0 ? "up" : d.pct < 0 ? "down" : ""; st.hidden = !v;
-    ultimo = { humor: h, titulo: info.titulo, pct: d.pct, cor: d.cor, icone: d.icone || "", boneco: d.boneco || "", acessorio: d.acessorio || "", fechado: !!d.fechado, sim: !!d.sim, ativos: d.ativos || [], tem };
+    ultimo = { humor: h, titulo: info.titulo, pct: d.pct, cor: d.cor, icone: d.icone || "", boneco: d.boneco || "", acessorio: d.acessorio || "", fechado: !!d.fechado, sim: !!d.sim, tudo: !!d.tudo, ativos: d.ativos || [], tem, layout: d.layout || null, onLayout: d.onLayout || null };
     if (inst && inst.el.isConnected) { inst.atualizar(ultimo); return h; }
     if (!temWebGL()) { usar2d(el, d); return h; }
     if (!carregando) carregando = import(MOD).then((m) => (mod = m));
@@ -120,16 +128,28 @@
       const box = el.querySelector(".of-3d"); if (!box) return;
       if (inst && inst.el.isConnected) { inst.atualizar(ultimo); return; }
       try { inst = mod.criar(box, ultimo); } catch (err) { console.warn("Escritório 3D indisponível:", err); usar2d(el, d); return; }
-      inst.secao = secao; pendentes.splice(0).forEach((t) => inst.log(t));
+      inst.secao = secao; pendentes.splice(0).forEach((t) => inst.log(t)); if (editando) inst.setEdicao(true);
       const ld = box.querySelector(".of-load"); if (ld) ld.remove();
       el.querySelector(".of-palco3d").classList.add("pronto");
     }).catch((err) => { console.warn("Escritório 3D indisponível:", err); usar2d(el, d); });
     return h;
   }
+  // Modo de arrumar: arrasta e gira os móveis (a câmera fica parada na visão da sala)
+  let editando = false;
+  function editar(on) {
+    editando = !!on; const pal = el0 && document.querySelector(".of-palco3d"); if (!pal) return;
+    pal.classList.toggle("of-editando", editando);
+    const b = pal.querySelector("[data-act=editar]"); if (b) b.setAttribute("aria-pressed", String(editando));
+    const bar = pal.querySelector(".of-edbar"); if (bar) bar.hidden = !editando;
+    if (editando) pal.querySelectorAll("[data-cam]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.cam === "sala")));
+    if (inst) { if (editando) inst.setCam("sala", true); inst.setEdicao(editando); }
+  }
+  // Guarda ou coloca de volta um item da decoração
+  function equipar(id, on) { if (inst) inst.equipar(id, on); }
   // Prévia do boneco (perfil): gira sozinho, arrasta para girar
   async function vitrine(el, d) {
     if (!el || !temWebGL()) return null;
     try { if (!carregando) carregando = import(MOD).then((m) => (mod = m)); await carregando; return mod.vitrine ? mod.vitrine(el, d) : null; } catch (err) { console.warn("Prévia do boneco indisponível:", err); return null; }
   }
-  window.RadarEscritorio = { render, humorDe, HUMORES, DECOR, acao, esc, vitrine };
+  window.RadarEscritorio = { render, humorDe, HUMORES, DECOR, acao, esc, vitrine, editar, equipar };
 })();

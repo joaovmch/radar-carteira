@@ -439,12 +439,33 @@
       const mp = new Map(); s.forEach(([ts, v]) => mp.set(dia(ts), v));
       comps.push({ mp, ent: [...mp.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1), mult });
     });
-    if (!comps.length) return { serie: null, fora };
-    const inicio = comps.reduce((a, c) => c.ent[0][0] > a ? c.ent[0][0] : a, "");
-    const dias = [...new Set(comps.flatMap((c) => c.ent.map((x) => x[0])))].filter((d) => d >= inicio).sort();
-    const ult = comps.map((c) => { let v = null; for (const [d, x] of c.ent) { if (d > inicio) break; v = x; } return v; });
-    const serie = dias.map((d) => { let tot = 0; comps.forEach((c, i) => { const v = c.mp.get(d); if (v != null) ult[i] = v; if (ult[i] != null) tot += ult[i] * c.mult; }); return [Date.parse(d + "T15:00:00Z") / 1000, Math.round(tot * 100) / 100]; });
-    return { serie: serie.length > 5 ? serie : null, fora };
+    // Renda fixa: o valor de hoje "descontado" pelo CDI (ou pela taxa prefixada) até cada dia do gráfico
+    let RF = null; try { RF = S.rf.length ? rfTotais() : null; } catch (_) { RF = null; }
+    const temRF = !!(RF && RF.bruto > 0);
+    if (!comps.length && !temRF) return { serie: null, fora, rf: false };
+    const hoje = hojeISO();
+    let dias;
+    if (comps.length) {
+      const inicio = comps.reduce((a, c) => c.ent[0][0] > a ? c.ent[0][0] : a, "");
+      dias = [...new Set(comps.flatMap((c) => c.ent.map((x) => x[0])))].filter((d) => d >= inicio).sort();
+    } else { dias = []; for (let d = somaDias(hoje, -365); d <= hoje; d = somaDias(d, 1)) if (ehUtil(d)) dias.push(d); }
+    const rfDia = new Array(dias.length).fill(0);
+    if (temRF) {
+      const C = RF.C;
+      RF.itens.forEach(({ a, k }) => {
+        if (!(k.bruto > 0)) return;
+        let g = 1; const taxa = Number(a.taxa);
+        for (let i = dias.length - 1; i >= 0; i--) {
+          const prox = i === dias.length - 1 ? (dias[i] < hoje ? hoje : dias[i]) : dias[i + 1];
+          if (dias[i] < prox && !k.futuro) g *= fatorRF(dias[i], prox, a.indexador, taxa, C).f;
+          rfDia[i] += k.bruto / g;
+        }
+      });
+    }
+    let ult = [];
+    if (comps.length) { const inicio = dias[0]; ult = comps.map((c) => { let v = null; for (const [d, x] of c.ent) { if (d > inicio) break; v = x; } return v; }); }
+    const serie = dias.map((d, i) => { let tot = 0; comps.forEach((c, j) => { const v = c.mp.get(d); if (v != null) ult[j] = v; if (ult[j] != null) tot += ult[j] * c.mult; }); return [Date.parse(d + "T15:00:00Z") / 1000, Math.round((tot + rfDia[i]) * 100) / 100]; });
+    return { serie: serie.length > 5 ? serie : null, fora, rf: temRF };
   }
   function renderHero() {
     const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
@@ -476,11 +497,11 @@
       <div class="alloc-leg">${cl.map((c) => `<span><i style="background:var(--c-${c})"></i>${nomeCl(c)} <b>${num(porCls[c] * 100, 0)}%</b></span>`).join("")}</div>`;
     const temUsd = rows.some((r) => r.moeda === "USD");
     $("#hero-fx").textContent = temUsd && fx() ? "Dólar R$ " + num(fx(), 3) : "";
-    const { serie, fora } = serieCarteira();
+    const { serie, fora, rf: comRF } = serieCarteira();
     const box = $("#hero-chart");
     if (!serie) { box.innerHTML = `<p class="hint" style="color:rgba(255,255,255,.8);margin-top:14px">O gráfico aparece assim que o histórico dos seus ativos for carregado (alguns minutos depois de adicioná-los).</p>`; return; }
     if (box.querySelector(".g-tip:not([hidden])")) return; // não redesenha com o dedo/mouse em cima
-    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff" }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
+    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff" }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${comRF ? ", com a renda fixa incluída (o saldo de hoje recalculado pelo CDI de cada dia)" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
     ligarGrafico("hero");
   }
 
@@ -494,6 +515,35 @@
     const total = patr + rfV, dia = (T.temPreco ? T.dia : 0) + rfDia;
     return total - dia ? dia / (total - dia) * 100 : 0;
   }
+  // Arrumação do escritório (onde ficam os móveis e o que está guardado): no perfil, com cópia neste aparelho
+  const escLocal = () => { try { return JSON.parse(localStorage.getItem("radar-escritorio") || "null"); } catch (_) { return null; } };
+  const escLayout = () => (S.perfil && S.perfil.escritorio) || escLocal();
+  let tSalvaEsc = 0;
+  function salvarEsc(L) {
+    try { localStorage.setItem("radar-escritorio", JSON.stringify(L)); } catch (_) { /* modo privado */ }
+    if (S.perfil) S.perfil.escritorio = L;
+    renderDeco();
+    clearTimeout(tSalvaEsc);
+    tSalvaEsc = setTimeout(async () => {
+      if (!S.perfil || !S.user) return;
+      const { error } = await sb.from("perfis").update({ escritorio: L }).eq("user_id", S.user.id);
+      if (error && !/escritorio|column|schema cache/i.test(error.message || "")) console.warn("Não deu para salvar o escritório:", error.message);
+    }, 1200);
+  }
+  function renderDeco() {
+    if (!window.RadarEscritorio) return;
+    const lib = new Set((S.conq && S.conq.itens) || []); const off = new Set(((escLayout() || {}).off) || []);
+    $("#esc-deco").innerHTML = `<span class="hint" style="border:0;background:none;padding-left:0">Decoração (libera com as recompensas; toque para guardar ou colocar):</span>` + window.RadarEscritorio.DECOR.map((x) => {
+      const ok = lib.has(x.item) || S.escTudo;
+      if (!ok) return `<span class="lock" title="${esc(x.req)}">${IC(x.ic + ":d")} ${esc(x.nome)} · ${esc(x.req)}</span>`;
+      const on = !off.has(x.id);
+      return `<button type="button" data-deco="${x.id}" aria-pressed="${on}" title="${on ? "No escritório. Toque para guardar." : "Guardado. Toque para colocar de volta."}">${IC(x.ic + ":d")} ${esc(x.nome)} ${IC(on ? "check" : "eye-slash")}</button>`;
+    }).join("");
+  }
+  $("#esc-deco").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-deco]"); if (!b || !window.RadarEscritorio) return;
+    window.RadarEscritorio.equipar(b.dataset.deco, b.getAttribute("aria-pressed") !== "true");
+  });
   function renderEscritorio() {
     const box = $("#esc-body"); if (!box || !window.RadarEscritorio) return;
     const sim = S.escSim != null;
@@ -504,12 +554,8 @@
     let ativos = [];
     try { if (S.carteira.length) ativos = linhas().rows.slice(0, 8).map((r) => ({ t: r.t, preco: r.preco, vd: r.vd, moeda: r.moeda })); } catch (_) { /* sem cotações ainda */ }
     const k = avKey(p.avatar);
-    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", icone: k ? AV_IC[k] : "", boneco: p.boneco || bonecoLocal(), acessorio: p.acessorio || "", fechado: !sim && !ehUtil(hojeISO()), itens, tudo: S.escTudo, sim, ativos });
-    const lib = new Set(itens);
-    $("#esc-deco").innerHTML = `<span class="hint" style="border:0;background:none;padding-left:0">Decoração (libera com as recompensas do perfil):</span>` + window.RadarEscritorio.DECOR.map((x) => {
-      const ok = lib.has(x.item);
-      return `<span class="${ok ? "ok" : "lock"}" title="${esc(x.req)}">${IC(x.ic + ":d")} ${esc(x.nome)}${ok ? " " + IC("check") : ` · ${esc(x.req)}`}</span>`;
-    }).join("");
+    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", icone: k ? AV_IC[k] : "", boneco: p.boneco || bonecoLocal(), acessorio: p.acessorio || "", fechado: !sim && !ehUtil(hojeISO()), itens, tudo: S.escTudo, sim, ativos, layout: escLayout(), onLayout: salvarEsc });
+    renderDeco();
   }
   $("#esc-sim").addEventListener("click", (e) => {
     const b = e.target.closest("[data-humor],[data-tudo]"); if (!b) return;
@@ -1683,13 +1729,17 @@
   const avKey = (v) => !v ? "" : AV_IC[v] ? v : AV_ANTIGO[v] || "";
   const CORES = ["#2457F5", "#7C3AED", "#DB2777", "#E11D48", "#EA580C", "#CA8A04", "#16A34A", "#0F9D8A", "#0891B2", "#475569", "#111827", "#9333EA"];
   const CAPAS = [["cor", "Sua cor"], ["aurora", "Aurora"], ["oceano", "Oceano"], ["solar", "Pôr do sol"], ["floresta", "Floresta"], ["noite", "Noite"], ["grafite", "Grafite"], ["neon", "Neon"], ["ouro", "Ouro"]];
-  // Boneco do escritório: p pele, c cabelo, k corte, b barba, l calça, o óculos (ex.: p1c0k1b0l0o0)
+  // Boneco do escritório: p pele, c cabelo, k corte, b barba, l calça, o óculos, a altura, w corpo, r roupa, e calça/bermuda, s tênis (ex.: p1c0k1b0l0o0a2w2r0e0s0)
   const BONECO = {
-    p: ["#F6D3B3", "#F2C3A0", "#D9A27A", "#B07850", "#7A4E33", "#4F3123"], c: ["#2B1B12", "#3B261B", "#6B4226", "#A86B3C", "#D9B26A", "#8E8E8E", "#B33A2A"],
-    k: ["Topete", "Curto", "Raspado", "Comprido", "Cacheado"], b: ["Sem barba", "Cavanhaque", "Barba cheia"], l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB"], o: ["Sem óculos", "Óculos"],
+    p: ["#F6D3B3", "#F2C3A0", "#D9A27A", "#B07850", "#7A4E33", "#4F3123"], c: ["#2B1B12", "#3B261B", "#6B4226", "#A86B3C", "#D9B26A", "#EFDDB0", "#8E8E8E", "#B33A2A", "#2F4FC0", "#D9568E"],
+    k: ["Topete", "Curto", "Raspado", "Comprido", "Cacheado", "Black power", "Coque", "Moicano", "Rabo de cavalo", "Careca"], b: ["Sem barba", "Cavanhaque", "Barba cheia", "Bigode"],
+    l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB", "#6F86B5"], o: ["Sem óculos", "Óculos"],
+    a: ["Bem baixo", "Baixo", "Médio", "Alto", "Bem alto"], w: ["Magro", "Esguio", "Médio", "Forte", "Grandão"],
+    r: ["Polo", "Camiseta", "Moletom", "Social", "Jaqueta", "Regata"], e: ["Calça", "Bermuda"], s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB"],
   };
-  const bonecoLer = (v) => { const r = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0 }; String(v || "").replace(/([pckblo])(\d)/g, (_, k, d) => { if (BONECO[k][+d] != null) r[k] = +d; }); return r; };
-  const bonecoTxt = (o) => "pckblo".split("").map((k) => k + (o[k] || 0)).join("");
+  const BN_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0 };
+  const bonecoLer = (v) => { const r = { ...BN_PAD }; String(v || "").replace(/([pckbloawres])(\d)/g, (_, k, d) => { if (BONECO[k][+d] != null) r[k] = +d; }); return r; };
+  const bonecoTxt = (o) => "pckbloawres".split("").map((k) => k + (o[k] ?? BN_PAD[k])).join("");
   const bonecoLocal = () => { try { return localStorage.getItem("radar-boneco") || ""; } catch (_) { return ""; } };
   const CATS = [["rentabilidade", "Rentabilidade", "resultado sobre o preço médio", "chart-line-up"], ["dividendos", "Dividendos", "dividend yield de 12 meses", "coins"], ["hoje", "Hoje", "variação do dia", "lightning"], ["diversificacao", "Diversificação", "nota de 0 a 100", "chart-pie-slice"], ["proventos", "Proventos", "proventos em reais, só de quem mostra valores", "hand-coins"], ["patrimonio", "Patrimônio", "só de quem mostra valores", "bank"]];
   const ESCOPOS = [["cidade", "Minha cidade"], ["estado", "Meu estado"], ["brasil", "Brasil"], ["mundo", "Mundo"]];
@@ -1816,7 +1866,7 @@
     const acDe = (n) => ITENS.find((i) => i.t === "a" && i.n === n);
     const conqs = ITENS.filter((i) => i.g === "conq");
     const nConq = conqs.filter((i) => lib.has(i.id)).length;
-    const sw = (k, cor, i) => `<button type="button" class="bn-sw" data-bn="${k}" data-v="${i}" style="--c:${cor}" aria-pressed="${pend.boneco[k] === i}" aria-label="${k === "p" ? "Tom de pele" : k === "c" ? "Cor do cabelo" : "Cor da calça"} ${i + 1}"></button>`;
+    const sw = (k, cor, i) => `<button type="button" class="bn-sw" data-bn="${k}" data-v="${i}" style="--c:${cor}" aria-pressed="${pend.boneco[k] === i}" aria-label="${{ p: "Tom de pele", c: "Cor do cabelo", l: "Cor da calça", s: "Cor do tênis" }[k]} ${i + 1}"></button>`;
     const seg = (k) => BONECO[k].map((n, i) => `<button type="button" data-bn="${k}" data-v="${i}" aria-pressed="${pend.boneco[k] === i}">${esc(n)}</button>`).join("");
     $("#pf-body").innerHTML = `<form id="pf-form" class="pf-ed" autocomplete="off" novalidate>
       <div class="pf-hero" id="pf-hero"></div>
@@ -1834,12 +1884,16 @@
           <div class="pf-bn-3d" id="pf-bn-3d" aria-label="Prévia do boneco"></div>
           <div class="pf-bn-op">
             <span class="label">Pele</span><div class="bn-sws">${BONECO.p.map((c, i) => sw("p", c, i)).join("")}</div>
+            <span class="label">Altura</span><div class="bn-seg">${seg("a")}</div>
+            <span class="label">Corpo</span><div class="bn-seg">${seg("w")}</div>
             <span class="label">Cabelo</span><div class="bn-sws">${BONECO.c.map((c, i) => sw("c", c, i)).join("")}</div>
             <span class="label">Corte</span><div class="bn-seg">${seg("k")}</div>
             <span class="label">Barba</span><div class="bn-seg">${seg("b")}</div>
-            <span class="label">Calça</span><div class="bn-sws">${BONECO.l.map((c, i) => sw("l", c, i)).join("")}</div>
-            <span class="label">Acessório</span><div class="bn-seg">${seg("o")}</div>
-            <p class="hint" style="margin:6px 0 0">A camisa usa a cor do perfil e o ícone vai estampado nela.</p>
+            <span class="label">Roupa</span><div class="bn-seg">${seg("r")}</div>
+            <span class="label">Calça ou bermuda</span><div class="bn-seg">${seg("e")}</div><div class="bn-sws">${BONECO.l.map((c, i) => sw("l", c, i)).join("")}</div>
+            <span class="label">Tênis</span><div class="bn-sws">${BONECO.s.map((c, i) => sw("s", c, i)).join("")}</div>
+            <span class="label">Óculos</span><div class="bn-seg">${seg("o")}</div>
+            <p class="hint" style="margin:6px 0 0">A roupa usa a cor do perfil (na social, é a gravata) e o ícone vai estampado no peito.</p>
           </div>
         </div>
       </section>

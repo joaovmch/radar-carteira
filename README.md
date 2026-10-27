@@ -4,8 +4,8 @@ Painel para acompanhar, num lugar só, ações, FIIs, ETFs e BDRs da B3, ações
 
 ## O que tem
 
-- **Resumo**: patrimônio total em reais (ativos em dólar convertidos pelo câmbio do momento), ganho ou perda do dia, resultado sobre o preço médio, proventos estimados em 12 meses, divisão por classe e gráfico da evolução da carteira no último ano.
-- **Seu escritório**: sala isométrica animada (sofá, videogame, mesa com computador, sinuca, janela, TV) com um boneco na cor do seu perfil cujo humor segue o resultado do dia: triste no sofá com nuvem de chuva (queda de 2% ou mais), preocupado no computador (queda), tranquilo jogando videogame (estável ou mercado fechado), feliz na sinuca (alta) e comemorando com confete (alta de 2% ou mais). A TV, o monitor, a janela e a luz mudam junto. Dá para ver os outros humores pelos botões abaixo da sala.
+- **Resumo**: patrimônio total em reais (ativos em dólar convertidos pelo câmbio do momento), ganho ou perda do dia, resultado sobre o preço médio, proventos estimados em 12 meses, divisão por classe e gráfico da evolução da carteira no último ano (com a renda fixa incluída).
+- **Seu escritório**: sala 3D animada (sofá, videogame, mesa com computador, sinuca, janela, TV) com um boneco em estilo desenho animado, personalizável no perfil (pele, altura, corpo, 10 cortes e 10 cores de cabelo, barba, roupa, calça ou bermuda, tênis e óculos), cujo humor segue o resultado do dia: triste no sofá com nuvem de chuva (queda de 2% ou mais), preocupado no computador (queda), tranquilo jogando videogame (estável ou mercado fechado), feliz na sinuca (alta) e comemorando com confete (alta de 2% ou mais). A TV, o monitor, a janela e a luz mudam junto. Dá para ver os outros humores pelos botões abaixo da sala. No modo **Arrumar**, os móveis são arrastados e girados (o boneco recalcula o caminho e desvia de tudo); a arrumação fica salva no perfil. Cada item liberado nas recompensas aparece no escritório com uma animação de descoberta e ganha uma animação própria (carinho no cachorro, ração no aquário, partida no fliperama, moeda no porquinho, dardos, troféu erguido, cofre aberto...), e pode ser guardado ou colocado de volta tocando no nome dele abaixo da sala.
 - **Resumo do dia**: quanto o patrimônio subiu ou caiu hoje (ativos mais o rendimento da renda fixa), Ibovespa, IFIX, S&P 500, dólar e Bitcoin, os ativos que mais mexeram, o que pede atenção (sinais, quedas fortes, notícias sensíveis, IOF, limite e ciclo das caixinhas), as notícias dos seus ativos e a agenda (proventos com o valor da sua posição, data com, vencimentos, Copom).
 - **Criptomoedas**: as 100 maiores pela CoinGecko (código no formato BTC-BRL; no formulário basta digitar BTC), preço em reais a cada 10 minutos, todos os dias, variação em 24 h, histórico, notícias, sinal e perfil com ranking, máxima histórica e oferta.
 - **Classes de ativos**: ações, FIIs, ETFs e BDRs da B3, e ações e ETFs dos EUA (as 150 maiores e os 70 maiores ETFs, mais qualquer outro código digitado na carteira). Ativos dos EUA aceitam frações (ex.: 0,42 de VOO) e preço médio em dólar.
@@ -50,7 +50,7 @@ Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e log
 1. **Authentication → Sign In / Providers → Email**: se o site é só para você, desligue *Allow new users to sign up*.
 2. **Authentication → Passwords** (ou *Policies*): ligue *Leaked password protection* e use senha mínima de 8 caracteres com letras e números.
 3. **Edge Functions**: apague as funções antigas `chat`, `cotacoes` e `sonda` (estão desativadas) e, em *Secrets*, apague `GEMINI_API_KEY` e `ANTHROPIC_API_KEY`.
-4. **SQL Editor**: rode `supabase/migrations/20261027_comunidade.sql` e depois `20261028_perfil_visual.sql` para ativar o perfil, o ranking, a foto e as recompensas (enquanto isso, o site mostra "Ranking ainda não ativado").
+4. **SQL Editor**: rode `supabase/migrations/20261027_comunidade.sql`, `20261028_perfil_visual.sql`, `20261029_renda_fixa_recompensas.sql` e `20261030_escritorio_layout.sql`, nessa ordem, para ativar o perfil, o ranking, a foto, as recompensas (com renda fixa) e a arrumação do escritório.
 5. **SQL Editor**: rode o bloco PENDENTE no fim de `supabase/migrations/20261022_sem_ia_empresas_seguranca.sql`.
 
 ## Publicar
@@ -66,6 +66,6 @@ Depois de publicar, no Supabase vá em **Authentication → URL Configuration** 
 A seção "Seu escritório" é uma cena 3D (Three.js) carregada sob demanda:
 
 - `escritorio.js`: carregador leve e API usada pelo app (`RadarEscritorio.render`). Também registra o que você faz no site (cliques, seção aberta) para aparecer na tela do computador do escritório.
-- `src/escritorio3d.src.js`: código-fonte da cena (sala, boneco articulado, rotinas por humor, monitor com seus ativos ao vivo, TV, janela com dia/noite, relógio com a hora real).
-- `escritorio3d.js`: arquivo gerado (minificado, com o Three.js embutido). Para regerar: `npm install && npm run build`.
+- `src/partes/`: código-fonte da cena, em partes: base e cabelo em mechas (`1-base`), boneco com IK nos braços (`2-boneco`), poses e filtro de mola que suaviza as transições (`3-poses`), cachorro e navegação com A* (`4-cao-nav`), sala com móveis arrastáveis (`5-sala`), rotinas de cada humor e animações das recompensas (`6-roteiros`), quadro a quadro, taco de sinuca e modo de arrumar (`7-escritorio`), telas desenhadas (`8-texturas`), diretor que monta a fila de passos (`7b-diretor`) e a prévia do perfil (`9-vitrine`).
+- `escritorio3d.js`: arquivo gerado (minificado, com o Three.js embutido). Para regerar: `npm install && npm run build` (junta as partes em `src/escritorio3d.src.js` e minifica).
 - `escritorio-2d.js`: versão anterior em SVG, usada só quando o navegador não tem WebGL.
