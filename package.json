@@ -1,0 +1,7 @@
+{
+  "name": "radar-carteira",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node src/build.mjs" },
+  "devDependencies": { "esbuild": "^0.28.2", "three": "0.186.1" }
+}

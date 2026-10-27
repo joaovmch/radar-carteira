@@ -60,3 +60,12 @@ Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e log
 **Vercel:** Add New → Project → importe este repositório → Framework Preset: *Other* → Deploy.
 
 Depois de publicar, no Supabase vá em **Authentication → URL Configuration** e coloque o endereço do site em *Site URL* e em *Redirect URLs*, para os links de confirmação de e-mail e de troca de senha voltarem para o site.
+
+## Escritório 3D
+
+A seção "Seu escritório" é uma cena 3D (Three.js) carregada sob demanda:
+
+- `escritorio.js`: carregador leve e API usada pelo app (`RadarEscritorio.render`). Também registra o que você faz no site (cliques, seção aberta) para aparecer na tela do computador do escritório.
+- `src/escritorio3d.src.js`: código-fonte da cena (sala, boneco articulado, rotinas por humor, monitor com seus ativos ao vivo, TV, janela com dia/noite, relógio com a hora real).
+- `escritorio3d.js`: arquivo gerado (minificado, com o Three.js embutido). Para regerar: `npm install && npm run build`.
+- `escritorio-2d.js`: versão anterior em SVG, usada só quando o navegador não tem WebGL.

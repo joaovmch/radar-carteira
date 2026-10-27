@@ -500,7 +500,9 @@
     const p = S.perfil || {};
     if (S.conq === undefined && S.perfil && S.perfilOk) { S.conq = null; carregarConquistas().then(() => { if (S.conq) renderEscritorio(); }); }
     const itens = (S.conq && S.conq.itens) || [];
-    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", emoji: p.avatar || "", fechado: !sim && !ehUtil(hojeISO()), itens, tudo: S.escTudo });
+    let ativos = [];
+    try { if (S.carteira.length) ativos = linhas().rows.slice(0, 8).map((r) => ({ t: r.t, preco: r.preco, vd: r.vd, moeda: r.moeda })); } catch (_) { /* sem cotações ainda */ }
+    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", emoji: p.avatar || "", fechado: !sim && !ehUtil(hojeISO()), itens, tudo: S.escTudo, sim, ativos });
     const lib = new Set(itens);
     $("#esc-deco").innerHTML = `<span class="hint" style="border:0;background:none;padding-left:0">Decoração (libera com as recompensas do perfil):</span>` + window.RadarEscritorio.DECOR.map((x) => {
       const ok = lib.has(x.item);

@@ -913,6 +913,19 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .of-confete{animation:ofConfete var(--t) linear infinite;animation-delay:var(--d);transform-box:fill-box!important;transform-origin:center}
 .of-holofote{transform:rotate(var(--a));animation:ofHolofote 3s ease-in-out infinite alternate;animation-delay:var(--d)}
 .of-pausa *{animation-play-state:paused!important}
+.of-palco3d{background:radial-gradient(130% 100% at 30% 0%,#EEF2FF,#F8FAFC 65%)}
+.of-palco3d.of-h-feliz{background:radial-gradient(130% 100% at 30% 0%,#DCFCE7,#F8FAFC 65%)}.of-palco3d.of-h-euforico{background:radial-gradient(130% 100% at 30% 0%,#FEF3C7,#FDF2F8 65%)}
+.of-palco3d.of-h-preocupado{background:radial-gradient(130% 100% at 30% 0%,#FFEDD5,#F8FAFC 65%)}.of-palco3d.of-h-triste{background:radial-gradient(130% 100% at 30% 0%,#CBD5E1,#E2E8F0 65%)}
+[data-theme="dark"] .of-palco3d{background:radial-gradient(130% 100% at 30% 0%,#1E293B,#0B1220 70%);filter:none}
+.of-3d{position:relative;min-height:300px}
+.of-canvas{display:block;width:100%;cursor:grab;opacity:0;transition:opacity .7s var(--ease)}.pronto .of-canvas{opacity:1}.of-canvas:active{cursor:grabbing}
+.of-load{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:12px;color:var(--muted);font-size:13.5px;min-height:360px}
+.of-load i{width:34px;height:34px;border-radius:50%;border:3px solid var(--line-2);border-top-color:var(--accent);animation:sweep .9s linear infinite}
+.of-cams{position:absolute;right:12px;top:12px;display:flex;gap:6px;z-index:3}
+.of-cams button{border:1px solid var(--line);background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--fg);cursor:pointer;box-shadow:var(--shadow);transition:transform .2s var(--ease),border-color .2s}
+.of-cams button:hover{transform:translateY(-2px);border-color:var(--accent)}.of-cams button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
+.of-dica{position:absolute;right:14px;bottom:10px;font-size:11.5px;color:var(--muted);pointer-events:none;opacity:.85}
+@media (max-width:760px){.of-cams{left:10px;right:auto;top:10px}.of-dica{display:none}}
 @keyframes ofPisca{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
 @keyframes ofRespira{50%{transform:translateY(-.8px)}}
 @keyframes ofPula{from{transform:translateY(0) scale(1.03,.97)}to{transform:translateY(-18px) scale(.98,1.03)}}
@@ -1260,7 +1273,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
-<script src="escritorio.js"></script>
+<script src="escritorio.js?v=3d1"></script>
 <script src="app.js"></script>
 </body>
 </html>
