@@ -1700,7 +1700,7 @@
   ];
   const ITEM = Object.fromEntries(ITENS.map((i) => [i.id, i]));
   S.perfil = null; S.perfilOk = true; S.v2 = true; S.conq = undefined; S.rk = { escopo: "brasil", cat: "rentabilidade", dados: null, carregando: false };
-  const fotoOk = (f) => typeof f === "string" && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(f);
+  const fotoOk = (f) => typeof f === "string" && (/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(f) || /^https:\/\/[^\s"'<>]+$/i.test(f));
   // Avatar com foto ou emoji, moldura e acessório. tam: px (true = 48)
   const avHtml = (p, tam, o = {}) => {
     const s = tam === true ? 48 : tam || 34;
@@ -1844,12 +1844,25 @@
       if (S.v2) Object.assign(row, { foto: pend.foto, moldura: pend.moldura, acessorio: pend.acessorio });
       if (row.visibilidade !== "privado" && (!row.cidade || !row.uf) && row.pais === "BR") return m("Para entrar no ranking da sua cidade e do seu estado, informe a cidade e o estado.", false);
       $("#pf-salvar").disabled = true;
-      const { error } = await sb.from("perfis").upsert(row, { onConflict: "user_id" });
-      $("#pf-salvar").disabled = false;
-      if (error) return m(/perfis_apelido_idx|duplicate/i.test(error.message || "") ? "Esse apelido já está em uso. Escolha outro." : /item_bloqueado/.test(error.message || "") ? "Esse item ainda não está liberado para você." : /foto/i.test(error.message || "") ? "A foto ficou grande demais. Tente outra imagem." : "Não foi possível salvar agora.", false);
-      await carregarPerfil(); m("✓ Perfil salvo." + (row.visibilidade !== "privado" ? " Você entra no ranking na próxima atualização (a cada 15 minutos)." : ""), true);
-      $("#pf-titulo").textContent = "@" + apelido; hero();
-      S.rk.dados = null; renderRanking();
+      try {
+        const { error } = await sb.from("perfis").upsert(row, { onConflict: "user_id" });
+        if (error) {
+          const msg = error.message || "";
+          if (/perfis_apelido_idx|duplicate|unique constraint/i.test(msg)) return m("Esse apelido já está em uso. Escolha outro.", false);
+          if (/item_bloqueado/i.test(msg)) return m("Esse item ainda não está liberado para você.", false);
+          if (/foto/i.test(msg)) return m("A foto não passou pela validação. Escolha outra imagem menor.", false);
+          if (/check constraint|violates check/i.test(msg)) return m("Um dos campos contém um valor inválido. Confira apelido, cidade, estado e opções selecionadas.", false);
+          return m("Não foi possível salvar: " + msg.slice(0, 180), false);
+        }
+        await carregarPerfil();
+        m("✓ Perfil salvo." + (row.visibilidade !== "privado" ? " Você entra no ranking na próxima atualização (a cada 15 minutos)." : ""), true);
+        $("#pf-titulo").textContent = "@" + apelido; hero();
+        S.rk.dados = null; renderRanking();
+      } catch (err) {
+        m("Falha de conexão ao salvar. Confira a internet e tente novamente.", false);
+      } finally {
+        $("#pf-salvar").disabled = false;
+      }
     });
   }
   // Reduz a foto para 128x128 (recorte central), em WebP ou JPEG, para caber no perfil
