@@ -11,6 +11,8 @@ Painel para acompanhar, num lugar só, ações, FIIs, ETFs e BDRs da B3, ações
 - **Renda fixa**: CDBs, caixinhas, cofrinhos, LCIs e LCAs, com modelos prontos de cada banco (Caixinha Turbo do Nubank, Cofrinho Meli+ do Mercado Pago, Cofrinho Turbinado do PicPay, CDB 130% do PagBank, Porquinhos do Inter, CDBs de liquidez diária de C6, Itaú, Bradesco, Santander, BB, BTG, Sofisa e Daycoval) e suas regras (limite, movimentação mínima, renovação). O rendimento é calculado com o CDI diário do Banco Central desde a data da aplicação; mostra o valor hoje, o líquido se resgatar (IR regressivo e IOF), quanto rende por mês, avisos (limite estourado, IOF, ciclo da Turbo) e um comparativo de onde o mesmo valor renderia mais. Entra no patrimônio total e na divisão por classe.
 - **Carteira**: filtro por classe, alertas do que pede atenção e detalhes de cada posição.
 - **Conversor de moedas**: dólar (comercial e turismo), euro, libra, peso argentino e outras 10 moedas, além de Bitcoin, Ethereum e Solana, com cotação em tempo real (AwesomeAPI, atualizada a cada minuto com a página aberta), compra e venda, variação do dia e opção de somar o IOF de 3,5% do cartão internacional.
+- **Perfil e ranking de investidores**: perfil com apelido, avatar, cor, bio, cidade/estado/país e estilo. Rankings da cidade, do estado, do Brasil e do mundo por rentabilidade, dividend yield, variação do dia, diversificação, proventos e patrimônio. Clicando em alguém dá para ver a carteira (ativos, peso e resultado). Tudo é opcional: o perfil começa privado; "só no ranking" mostra apenas percentuais; "carteira aberta" deixa ver os ativos, mas só para quem também abre a sua. Valores em reais aparecem só se a pessoa marcar.
+- **Anti-troll**: o ranking é calculado pelo servidor a cada 15 minutos a partir da carteira e das cotações reais (ninguém digita a própria rentabilidade). Preço médio impossível (fora de 1/4 da mínima a 4× a máxima de 52 semanas) não conta. Compras feitas ou alteradas hoje não contam no ranking do dia, e as datas são gravadas pelo servidor, então não dá para antedatar. Ficam fora: perfis com menos de 7 dias, menos de 2 ativos ou R$ 100, acima de R$ 50 milhões, rentabilidade acima de 500%, mais de 30 alterações em 24 h ou 3 denúncias. Renda fixa não entra.
 - **Fita de cotações**: Ibovespa, IFIX, S&P 500, Nasdaq, dólar e seus ativos rolando no topo.
 - **Cotações** de ações, FIIs, ETFs e BDRs da B3 (brapi.dev, com atraso de até ~30 min no plano gratuito) e dos EUA (TradingView), atualizadas a cada 2 minutos durante o pregão.
 - **Termômetro do mercado**: nota de 0 a 100 recalculada a cada 5 minutos no pregão, com Ibovespa, dólar, Selic, amplitude (quantas ações sobem) e o tom das manchetes.
@@ -46,7 +48,8 @@ Fontes: brapi.dev (cotações da B3), TradingView (cotações, fundamentos e log
 1. **Authentication → Sign In / Providers → Email**: se o site é só para você, desligue *Allow new users to sign up*.
 2. **Authentication → Passwords** (ou *Policies*): ligue *Leaked password protection* e use senha mínima de 8 caracteres com letras e números.
 3. **Edge Functions**: apague as funções antigas `chat`, `cotacoes` e `sonda` (estão desativadas) e, em *Secrets*, apague `GEMINI_API_KEY` e `ANTHROPIC_API_KEY`.
-4. **SQL Editor**: rode o bloco PENDENTE no fim de `supabase/migrations/20261022_sem_ia_empresas_seguranca.sql`.
+4. **SQL Editor**: rode `supabase/migrations/20261027_comunidade.sql` inteiro para ativar o perfil e o ranking (enquanto isso, o site mostra "Ranking ainda não ativado").
+5. **SQL Editor**: rode o bloco PENDENTE no fim de `supabase/migrations/20261022_sem_ia_empresas_seguranca.sql`.
 
 ## Publicar
 

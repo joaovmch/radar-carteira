@@ -31,7 +31,9 @@ create index if not exists carteira_eventos_idx on public.carteira_eventos(user_
 alter table public.carteira_eventos enable row level security;  -- sem políticas: só o servidor lê
 create or replace function public.carteira_mexeu() returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if tg_op = 'UPDATE' then new.atualizado_em := now(); end if;
+  -- Datas sempre do servidor: não dá para "antedatar" uma compra e pegar a alta do dia
+  if tg_op = 'INSERT' then new.criado_em := now(); else new.criado_em := old.criado_em; end if;
+  new.atualizado_em := now();
   insert into public.carteira_eventos(user_id) values (coalesce(new.user_id, old.user_id));
   delete from public.carteira_eventos where em < now() - interval '3 days';
   return coalesce(new, old);
@@ -61,6 +63,15 @@ create unique index if not exists perfis_apelido_idx on public.perfis(lower(apel
 alter table public.perfis enable row level security;
 drop policy if exists "perfil dono" on public.perfis;
 create policy "perfil dono" on public.perfis for all to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+-- Datas do perfil sempre do servidor (anti-troll: ninguém "envelhece" a conta para fugir da regra dos 7 dias)
+create or replace function public.perfis_datas() returns trigger language plpgsql set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then new.criado_em := now(); else new.criado_em := old.criado_em; new.user_id := old.user_id; end if;
+  new.atualizado_em := now();
+  return new;
+end $$;
+drop trigger if exists perfis_datas on public.perfis;
+create trigger perfis_datas before insert or update on public.perfis for each row execute function public.perfis_datas();
 -- Os outros só enxergam perfis pelas funções abaixo (que respeitam a privacidade)
 
 -- Denúncias de valores falsos ou perfil ofensivo
