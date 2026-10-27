@@ -315,24 +315,6 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .f-hint{grid-column:1 / -1;font-size:12px;color:var(--muted);margin:-2px 0 0}
 
 /* Conversor de moedas */
-.cb-box{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:center}
-@media (max-width:760px){.cb-box{grid-template-columns:1fr}}
-.cb-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto minmax(0,1.3fr);gap:8px;align-items:end}
-@media (max-width:560px){.cb-form{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}.cb-form label:first-child{grid-column:1 / -1}}
-.cb-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
-.cb-form input,.cb-form select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px;font-size:16px;width:100%;min-width:0;color:var(--fg)}
-.cb-form input{font-family:var(--mono)}
-.cb-troca{border:1px solid var(--line);background:var(--surface);border-radius:10px;width:42px;height:42px;font-size:18px;transition:transform .3s var(--ease),border-color .2s}
-.cb-troca:hover{border-color:var(--accent);transform:rotate(180deg)}
-.cb-res{background:var(--accent-bg);border-radius:14px;padding:14px 16px;min-width:0}
-.cb-val{font-family:var(--mono);font-weight:600;font-size:clamp(22px,4.4vw,32px);line-height:1.15;word-break:break-all}
-.cb-res .hint{margin-top:4px}
-.cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:14px}
-.cb-it{border:1px solid var(--line-2);background:var(--bg);border-radius:10px;padding:8px 10px;text-align:left;display:flex;flex-direction:column;gap:2px;transition:border-color .2s,transform .2s}
-.cb-it:hover{border-color:var(--accent);transform:translateY(-1px)}
-.cb-it span{font-size:12px;color:var(--muted)}
-.cb-it b{font-family:var(--mono);font-size:14px;font-weight:600}
-.cb-it small{font-family:var(--mono);font-size:11.5px}
 
 /* Conversor */
 .conv{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:end}
@@ -357,6 +339,55 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .conv-tx .c{font-size:12px;color:var(--muted)}
 .conv-tx b{font-family:var(--mono);font-size:14.5px;font-weight:600}
 .conv-tx small{font-family:var(--mono);font-size:11.5px}
+
+/* Perfil e ranking */
+.av{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--avc,var(--accent));color:#fff;font-weight:700;font-size:15px;flex:none;line-height:1}
+.av.emoji{font-size:19px}
+.av.big{width:48px;height:48px;font-size:20px}.av.big.emoji{font-size:26px}
+.pf-btn{border:0;background:none;padding:0;border-radius:50%;transition:transform .2s}
+.pf-btn:hover{transform:scale(1.06)}
+.pf-panel{width:min(640px,100%)}
+.pf-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.pf-form{grid-template-columns:1fr}}
+.pf-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
+.pf-form input,.pf-form select,.pf-form textarea{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px;font-size:16px;width:100%;color:var(--fg);font-family:inherit}
+.pf-form textarea{resize:vertical;min-height:62px}
+.pf-form .w{grid-column:1 / -1}
+.pf-emojis{display:flex;flex-wrap:wrap;gap:6px}
+.pf-emojis button{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:19px}
+.pf-emojis button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
+.pf-cores{display:flex;gap:6px;flex-wrap:wrap}
+.pf-cores button{width:28px;height:28px;border-radius:50%;border:2px solid transparent;background:var(--c)}
+.pf-cores button[aria-pressed="true"]{border-color:var(--fg)}
+.pf-vis{display:flex;flex-direction:column;gap:8px}
+.pf-vis label{flex-direction:row;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;color:var(--fg);font-weight:400;font-size:13.5px}
+.pf-vis label:has(input:checked){border-color:var(--accent);background:var(--accent-bg)}
+.pf-vis input{width:18px;height:18px;margin-top:2px;flex:none}
+.pf-vis b{display:block;font-size:14.5px}
+.pf-chk{flex-direction:row !important;align-items:center;gap:8px !important;color:var(--fg) !important;font-weight:400 !important;font-size:13.5px !important}
+.pf-chk input{width:18px;height:18px}
+.rk-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.rk-list{display:flex;flex-direction:column;gap:6px}
+.rk{display:grid;grid-template-columns:34px 34px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;background:var(--surface);text-align:left;width:100%;transition:transform .2s,border-color .2s}
+.rk:hover{transform:translateY(-1px);border-color:var(--accent)}
+.rk.eu{border-color:var(--accent);background:var(--accent-bg)}
+.rk .ps{font-family:var(--mono);font-weight:700;font-size:15px;text-align:center;color:var(--muted)}
+.rk .ps.p1{color:#D4A017}.rk .ps.p2{color:#9CA3AF}.rk .ps.p3{color:#B87333}
+.rk .nm b{display:block;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk .nm span{font-size:12px;color:var(--muted)}
+.rk .vl{font-family:var(--mono);font-weight:600;font-size:15px;text-align:right;white-space:nowrap}
+.rk .vl small{display:block;font-size:11px;font-weight:400;color:var(--muted)}
+.rk-meu{margin-top:10px;font-size:13px}
+.rk-pv{border:1px dashed var(--line);border-radius:14px;padding:18px;text-align:center}
+.rk-pv p{margin:6px 0 12px;color:var(--muted);font-size:14px}
+.pp-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.pp-cart{display:flex;flex-direction:column;gap:6px}
+.pp-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;border-bottom:1px solid var(--line-2);padding:6px 0;font-size:13.5px}
+.pp-row:last-child{border-bottom:0}
+.pp-row .pc{font-family:var(--mono);font-weight:600;text-align:right;min-width:56px}
+.pp-row .bar{height:4px;background:var(--sunk);border-radius:4px;margin-top:4px;overflow:hidden}.pp-row .bar i{display:block;height:100%;background:var(--cc,var(--accent))}
+.selo{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;border-radius:999px;padding:2px 8px;background:var(--up-bg);color:var(--up)}
+.selo.nv{background:var(--warn-bg);color:var(--warn)}
 
 /* Resumo do dia */
 .dia-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
@@ -702,6 +733,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
         <span id="last-upd"></span>
         <button class="icon-btn" id="btn-refresh" type="button" hidden aria-label="Atualizar cotações" title="Atualizar cotações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
         <button class="icon-btn" id="btn-tema" type="button" aria-label="Trocar tema claro/escuro" title="Tema claro/escuro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        <button class="pf-btn" id="btn-perfil" type="button" hidden aria-label="Meu perfil" title="Meu perfil"><span class="av" id="pf-av-top">?</span></button>
         <button class="btn ghost sm" id="btn-sair" type="button" hidden>Sair</button>
       </div>
     </div>
@@ -710,7 +742,6 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <a href="#sec-resumo">Resumo</a>
       <a href="#sec-dia">Hoje</a>
       <a href="#sec-mercado">Mercado</a>
-      <a href="#sec-cambio">Câmbio</a>
       <a href="#sec-conv">Câmbio</a>
       <a href="#sec-carteira">Carteira</a>
       <a href="#sec-rf">Renda fixa</a>
@@ -718,6 +749,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <a href="#sec-empresas">Ativos</a>
       <a href="#sec-analistas">Analistas</a>
       <a href="#sec-div">Diversificação</a>
+      <a href="#sec-rank">Ranking</a>
       <a href="#todas">Explorar</a>
     </nav>
   </div>
@@ -796,21 +828,6 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       </div>
     </section>
 
-    <!-- 1b. Conversor de moedas -->
-    <section class="band panel" id="sec-cambio" aria-labelledby="h-cambio">
-      <div class="panel-head"><h2 id="h-cambio">Conversor de moedas</h2><span class="when" id="cb-when"></span></div>
-      <div class="cb-box">
-        <div class="cb-form">
-          <label>Valor<input id="cb-valor" type="number" min="0" step="any" inputmode="decimal" value="100"></label>
-          <label>De<select id="cb-de"></select></label>
-          <button type="button" class="cb-troca" id="cb-troca" aria-label="Inverter moedas" title="Inverter">⇄</button>
-          <label>Para<select id="cb-para"></select></label>
-        </div>
-        <div class="cb-res" aria-live="polite"><div class="cb-val" id="cb-res">—</div><div class="hint" id="cb-taxa"></div></div>
-      </div>
-      <div class="cb-grid" id="cb-grid"></div>
-      <p class="rec-src" id="cb-nota">Câmbio comercial, atualizado a cada minuto com a página aberta. Na casa de câmbio ou no cartão internacional o valor sai mais caro: há o spread do banco e IOF (3,5% nas compras no cartão e na compra de moeda em espécie, pela regra atual).</p>
-    </section>
 
     <!-- 1b. Conversor de moedas -->
     <section class="band panel" id="sec-conv" aria-labelledby="h-conv">
@@ -938,6 +955,12 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <div id="div-body"><p class="skel">Cadastre seus ativos para ver como a carteira está distribuída.</p></div>
     </section>
 
+    <!-- 5b. Comunidade -->
+    <section class="band panel" aria-labelledby="h-rank" id="sec-rank">
+      <div class="panel-head"><h2 id="h-rank">Ranking de investidores</h2><span class="when" id="rank-when"></span></div>
+      <div id="rank-body"><p class="skel">Carregando…</p></div>
+    </section>
+
     <!-- 6. Explorar -->
     <section class="band panel" aria-labelledby="h-all" id="todas">
       <div class="panel-head"><h2 id="h-all">Explorar ativos</h2><span class="when" id="all-when"></span></div>
@@ -964,6 +987,15 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 
     <p class="foot">Cotações de ações, FIIs, ETFs e BDRs da B3 pela brapi.dev, atualizadas a cada 2 minutos durante o pregão (com atraso de até cerca de 30 minutos da fonte gratuita). Ações e ETFs dos EUA pelo TradingView, convertidos para reais pelo dólar do momento. Criptomoedas pela CoinGecko, a cada 10 minutos, todos os dias (variação em 24 horas). Renda fixa calculada com o CDI diário do Banco Central. O termômetro, os destaques, o sinal de cada ativo e a opinião dos analistas são recalculados a cada 5 minutos no pregão e a cada 3 horas fora dele, com histórico de preços do Yahoo Finance, consenso de analistas e leitura técnica do TradingView, Selic do Banco Central, notícias do Google Notícias e indicadores do StatusInvest. O perfil das empresas vem da Wikipedia, Wikidata, StatusInvest e TradingView. Os sinais seguem regras fixas e transparentes, não são recomendação individual de investimento: confira antes de comprar ou vender.</p>
   </main>
+</div>
+
+<!-- Perfil do investidor (o meu, para editar, ou o de outra pessoa) -->
+<div class="drawer" id="pf-drawer" hidden>
+  <div class="drawer-bg" data-pf-close></div>
+  <section class="drawer-panel pf-panel" role="dialog" aria-modal="true" aria-labelledby="pf-titulo">
+    <div class="dr-head"><span class="av big" id="pf-av" aria-hidden="true">?</span><div class="ttl"><h2 id="pf-titulo">Perfil</h2><p id="pf-sub"></p></div><button class="btn ghost sm" type="button" data-pf-close aria-label="Fechar">✕</button></div>
+    <div class="dr-body" id="pf-body"></div>
+  </section>
 </div>
 
 <!-- Perfil do ativo -->
