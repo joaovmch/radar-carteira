@@ -1631,12 +1631,50 @@
   const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
   const PAISES = [["BR", "Brasil"], ["PT", "Portugal"], ["US", "Estados Unidos"], ["AR", "Argentina"], ["UY", "Uruguai"], ["PY", "Paraguai"], ["CL", "Chile"], ["CA", "Canadá"], ["GB", "Reino Unido"], ["DE", "Alemanha"], ["JP", "Japão"], ["OU", "Outro"]];
   const ESTILOS = { dividendos: "Caçador de dividendos", crescimento: "Crescimento", valor: "Valor (ações baratas)", indices: "ETFs e índices", cripto: "Cripto", equilibrado: "Equilibrado", iniciante: "Começando agora" };
-  const EMOJIS = ["🦉", "🐂", "🐻", "🦈", "🦁", "🐢", "🚀", "💎", "🌱", "🔥", "⚡", "🎯", "🧠", "🏦", "🌎", "☕", "🎲", "🛡️"];
-  const CORES = ["#2457F5", "#7C3AED", "#DB2777", "#E11D48", "#EA580C", "#CA8A04", "#16A34A", "#0F9D8A", "#0891B2", "#475569"];
-  const CATS = [["rentabilidade", "Rentabilidade", "resultado sobre o preço médio"], ["dividendos", "Dividendos", "dividend yield de 12 meses"], ["hoje", "Hoje", "variação do dia"], ["diversificacao", "Diversificação", "nota de 0 a 100"], ["proventos", "Proventos em R$", "só quem mostra valores"], ["patrimonio", "Patrimônio", "só quem mostra valores"]];
+  const EMOJIS = ["🦉", "🐂", "🐻", "🦈", "🦁", "🐢", "🐺", "🦊", "🐼", "🐧", "🚀", "💎", "🌱", "🔥", "⚡", "🎯", "🧠", "🏦", "🌎", "☕", "🎲", "🛡️", "👾", "🤖"];
+  const CORES = ["#2457F5", "#7C3AED", "#DB2777", "#E11D48", "#EA580C", "#CA8A04", "#16A34A", "#0F9D8A", "#0891B2", "#475569", "#111827", "#9333EA"];
+  const CATS = [["rentabilidade", "Rentabilidade", "resultado sobre o preço médio", "📈"], ["dividendos", "Dividendos", "dividend yield de 12 meses", "💰"], ["hoje", "Hoje", "variação do dia", "⚡"], ["diversificacao", "Diversificação", "nota de 0 a 100", "🧩"], ["proventos", "Proventos", "proventos em reais, só de quem mostra valores", "💵"], ["patrimonio", "Patrimônio", "só de quem mostra valores", "🏦"]];
   const ESCOPOS = [["cidade", "Minha cidade"], ["estado", "Meu estado"], ["brasil", "Brasil"], ["mundo", "Mundo"]];
-  S.perfil = null; S.perfilOk = true; S.rk = { escopo: "brasil", cat: "rentabilidade", dados: null, carregando: false };
-  const avHtml = (p, big) => { const e = p && p.avatar; const ini = p ? String(p.nome || p.apelido || "?").trim().slice(0, 1).toUpperCase() : "?"; return `<span class="av${big ? " big" : ""}${e ? " emoji" : ""}" style="--avc:${esc((p && p.cor) || "#2457F5")}" aria-hidden="true">${esc(e || ini)}</span>`; };
+  // Recompensas: faixas de patrimônio (ativos com cotação; renda fixa não conta) e conquistas. Quem libera é o servidor.
+  const NIVEIS = [["Iniciante", 0], ["Bronze", 1e3], ["Prata", 1e4], ["Ouro", 5e4], ["Platina", 1e5], ["Diamante", 5e5], ["Lenda", 1e6]];
+  const ITENS = [
+    { id: "m_basica", t: "m", nome: "Clássica", req: "Livre", g: "livre" },
+    { id: "m_bronze", t: "m", nome: "Bronze", req: "R$ 1 mil investidos", g: "nivel", n: 1 },
+    { id: "m_prata", t: "m", nome: "Prata", req: "R$ 10 mil investidos", g: "nivel", n: 2 },
+    { id: "m_ouro", t: "m", nome: "Ouro", req: "R$ 50 mil investidos", g: "nivel", n: 3 },
+    { id: "m_platina", t: "m", nome: "Platina", req: "R$ 100 mil investidos", g: "nivel", n: 4 },
+    { id: "m_diamante", t: "m", nome: "Diamante", req: "R$ 500 mil investidos", g: "nivel", n: 5 },
+    { id: "m_lenda", t: "m", nome: "Lenda", req: "R$ 1 milhão investido", g: "nivel", n: 6 },
+    { id: "a_bone", t: "a", nome: "Boné", e: "🧢", pos: "topo", req: "Livre", g: "livre" },
+    { id: "a_broto", t: "a", nome: "Brotinho", e: "🌱", pos: "topo", req: "Livre", g: "livre" },
+    { id: "a_cafe", t: "a", nome: "Cafezinho", e: "☕", pos: "canto", req: "Livre", g: "livre" },
+    { id: "a_formatura", t: "a", nome: "Capelo", e: "🎓", pos: "topo", req: "R$ 1 mil investidos", g: "nivel", n: 1 },
+    { id: "a_oculos", t: "a", nome: "Óculos escuros", e: "🕶️", pos: "canto", req: "R$ 10 mil investidos", g: "nivel", n: 2 },
+    { id: "a_cartola", t: "a", nome: "Cartola", e: "🎩", pos: "topo", req: "R$ 50 mil investidos", g: "nivel", n: 3 },
+    { id: "a_maleta", t: "a", nome: "Maleta", e: "💼", pos: "canto", req: "R$ 100 mil investidos", g: "nivel", n: 4 },
+    { id: "a_diamante", t: "a", nome: "Diamante", e: "💎", pos: "canto", req: "R$ 500 mil investidos", g: "nivel", n: 5 },
+    { id: "a_dragao", t: "a", nome: "Dragão", e: "🐉", pos: "canto", req: "R$ 1 milhão investido", g: "nivel", n: 6 },
+    { id: "a_saco", t: "a", nome: "Saco de dividendos", e: "💰", pos: "canto", req: "Dividend yield de 6% ou mais", g: "conq" },
+    { id: "a_arcoiris", t: "a", nome: "Arco-íris", e: "🌈", pos: "canto", req: "Diversificação 70 ou mais", g: "conq" },
+    { id: "a_foguete", t: "a", nome: "Foguete", e: "🚀", pos: "canto", req: "Ter cripto na carteira", g: "conq" },
+    { id: "a_alvo", t: "a", nome: "Alvo", e: "🎯", pos: "canto", req: "10 ativos ou mais", g: "conq" },
+    { id: "a_touro", t: "a", nome: "Touro", e: "🐂", pos: "canto", req: "Rentabilidade de 20% ou mais", g: "conq" },
+    { id: "a_estrela", t: "a", nome: "Estrela", e: "⭐", pos: "canto", req: "30 dias no Radar", g: "conq" },
+    { id: "a_medalha", t: "a", nome: "Medalha", e: "🏅", pos: "canto", req: "1 ano no Radar", g: "conq" },
+  ];
+  const ITEM = Object.fromEntries(ITENS.map((i) => [i.id, i]));
+  S.perfil = null; S.perfilOk = true; S.v2 = true; S.conq = null; S.rk = { escopo: "brasil", cat: "rentabilidade", dados: null, carregando: false };
+  const fotoOk = (f) => typeof f === "string" && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(f);
+  // Avatar com foto ou emoji, moldura e acessório. tam: px (true = 48)
+  const avHtml = (p, tam, o = {}) => {
+    const s = tam === true ? 48 : tam || 34;
+    const e = p && p.avatar, foto = p && fotoOk(p.foto) ? p.foto : null;
+    const ini = p ? String(p.nome || p.apelido || "?").trim().slice(0, 1).toUpperCase() : "?";
+    const mol = p && p.moldura && ITEM[p.moldura] ? p.moldura.slice(2) : "";
+    const ac = p && p.acessorio && ITEM[p.acessorio]; const mostraAc = ac && !(o.semTopo && ac.pos === "topo");
+    return `<span class="avw${mol ? " mol mol-" + mol : ""}" style="--s:${s}px;--avc:${esc((p && p.cor) || "#2457F5")}" aria-hidden="true"><span class="av${e && !foto ? " emoji" : ""}">${foto ? `<img src="${esc(foto)}" alt="" decoding="async">` : esc(e || ini)}</span>${mostraAc ? `<span class="acc ${ac.pos}">${ac.e}</span>` : ""}</span>`;
+  };
+  const COROA = `<span class="coroa" aria-hidden="true"><svg viewBox="0 0 64 50"><defs><linearGradient id="cg-coroa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1A8"/><stop offset=".5" stop-color="#FFC21A"/><stop offset="1" stop-color="#D98A00"/></linearGradient></defs><path d="M7 40 3 13l14 11L32 4l15 20 14-11-4 27Z" fill="url(#cg-coroa)" stroke="#B26F00" stroke-width="2.2" stroke-linejoin="round"/><rect x="6" y="38" width="52" height="8" rx="2.5" fill="url(#cg-coroa)" stroke="#B26F00" stroke-width="2.2"/><circle cx="32" cy="28" r="4.2" fill="#E11D48" stroke="#fff" stroke-width="1.2"/><circle cx="19" cy="31" r="3" fill="#2457F5" stroke="#fff" stroke-width="1"/><circle cx="45" cy="31" r="3" fill="#16A34A" stroke="#fff" stroke-width="1"/><circle cx="3" cy="13" r="3" fill="#FFE27A" stroke="#B26F00" stroke-width="1.4"/><circle cx="32" cy="4" r="3.4" fill="#FFE27A" stroke="#B26F00" stroke-width="1.4"/><circle cx="61" cy="13" r="3" fill="#FFE27A" stroke="#B26F00" stroke-width="1.4"/></svg><i class="lustre"></i><i class="sp s1">✦</i><i class="sp s2">✦</i><i class="sp s3">✦</i></span>`;
   const ondeTxt = (p) => [p.cidade, p.uf, p.pais && p.pais !== "BR" ? (PAISES.find((x) => x[0] === p.pais) || [, p.pais])[1] : null].filter(Boolean).join(" · ");
   const fmtCat = (cat, v) => v == null ? "—" : cat === "proventos" || cat === "patrimonio" ? brl(v) : cat === "diversificacao" ? num(v, 0) : (v > 0 && cat !== "dividendos" ? "+" : "") + num(v, 2) + "%";
 
@@ -1647,62 +1685,152 @@
     const t = $("#pf-av-top"); t.outerHTML = avHtml(S.perfil).replace('class="av', 'id="pf-av-top" class="av');
     $("#btn-perfil").hidden = !S.user;
   }
-  function abrirDrawerPf() { const d = $("#pf-drawer"); if (d.hidden) { d.hidden = false; document.body.classList.add("no-scroll"); } }
+  function abrirDrawerPf() { const d = $("#pf-drawer"); if (d.hidden) { d.hidden = false; document.body.classList.add("no-scroll"); } $("#pf-body").scrollTop = 0; }
   function fecharPf() { const d = $("#pf-drawer"); if (d.hidden) return; d.hidden = true; if ($("#emp-drawer").hidden) document.body.classList.remove("no-scroll"); }
   document.addEventListener("click", (e) => { if (e.target.closest("[data-pf-close]")) fecharPf(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#pf-drawer").hidden && $("#emp-drawer").hidden) fecharPf(); });
   $("#btn-perfil").addEventListener("click", () => abrirMeuPerfil());
 
   // Edição do meu perfil
-  function abrirMeuPerfil() {
+  async function carregarConquistas() {
+    const { data, error } = await sb.rpc("minhas_conquistas");
+    if (error) { S.v2 = !/minhas_conquistas|function|schema cache|does not exist/i.test(error.message || ""); S.conq = null; }
+    else { S.v2 = true; S.conq = data || {}; }
+  }
+  function nivelDe(patr) { let n = 0; NIVEIS.forEach(([, min], i) => { if (patr >= min) n = i; }); return n; }
+  async function abrirMeuPerfil() {
     abrirDrawerPf();
-    const p = S.perfil || {}; const pend = { avatar: p.avatar || "", cor: p.cor || CORES[0] };
+    const p = S.perfil || {};
+    const pend = { avatar: p.avatar || "", cor: p.cor || CORES[0], foto: fotoOk(p.foto) ? p.foto : null, moldura: p.moldura || null, acessorio: p.acessorio || null, aba: "m" };
     $("#pf-av").outerHTML = avHtml(S.perfil, true).replace('class="av', 'id="pf-av" class="av');
     $("#pf-titulo").textContent = S.perfil ? "@" + S.perfil.apelido : "Criar meu perfil";
     $("#pf-sub").textContent = "Como você aparece no ranking de investidores";
     if (!S.perfilOk) { $("#pf-body").innerHTML = `<div class="empty"><strong>Ranking ainda não ativado</strong>Falta criar as tabelas no banco (supabase/migrations/20261027_comunidade.sql).</div>`; return; }
-    $("#pf-body").innerHTML = `<form class="pf-form panel" id="pf-form" autocomplete="off" novalidate>
-      <label>Apelido (único)<input id="pf-apelido" maxlength="20" placeholder="joao.invest" value="${esc(p.apelido || "")}" required></label>
-      <label>Nome que aparece<input id="pf-nome" maxlength="40" placeholder="opcional" value="${esc(p.nome || "")}"></label>
-      <div class="w"><span class="label">Avatar</span><div class="pf-emojis" id="pf-emojis"><button type="button" data-emo="" aria-pressed="${!pend.avatar}" title="Inicial do nome">Aa</button>${EMOJIS.map((x) => `<button type="button" data-emo="${x}" aria-pressed="${pend.avatar === x}">${x}</button>`).join("")}</div></div>
-      <div class="w"><span class="label">Cor</span><div class="pf-cores" id="pf-cores">${CORES.map((c) => `<button type="button" data-cor="${c}" style="--c:${c}" aria-pressed="${pend.cor === c}" aria-label="Cor ${c}"></button>`).join("")}</div></div>
-      <label class="w">Sobre você<textarea id="pf-bio" maxlength="160" placeholder="Ex.: foco em dividendos e FIIs, investindo desde 2024">${esc(p.bio || "")}</textarea></label>
-      <label>Cidade<input id="pf-cidade" maxlength="60" placeholder="Dois Vizinhos" value="${esc(p.cidade || "")}"></label>
-      <label>Estado<select id="pf-uf"><option value="">—</option>${UFS.map((u) => `<option${p.uf === u ? " selected" : ""}>${u}</option>`).join("")}</select></label>
-      <label>País<select id="pf-pais">${PAISES.map(([c, n]) => `<option value="${c}"${(p.pais || "BR") === c ? " selected" : ""}>${n}</option>`).join("")}</select></label>
-      <label>Estilo de investidor<select id="pf-estilo"><option value="">—</option>${Object.entries(ESTILOS).map(([k, n]) => `<option value="${k}"${p.estilo === k ? " selected" : ""}>${n}</option>`).join("")}</select></label>
-      <div class="w"><span class="label">Privacidade</span><div class="pf-vis">
-        <label><input type="radio" name="pf-vis" value="privado"${!p.visibilidade || p.visibilidade === "privado" ? " checked" : ""}><span><b>Privado</b>Ninguém vê nada seu. Você também não vê o ranking.</span></label>
-        <label><input type="radio" name="pf-vis" value="ranking"${p.visibilidade === "ranking" ? " checked" : ""}><span><b>Só no ranking</b>Aparece nos rankings com percentuais (rentabilidade, dividendos, diversificação). Sua carteira continua fechada.</span></label>
-        <label><input type="radio" name="pf-vis" value="publico"${p.visibilidade === "publico" ? " checked" : ""}><span><b>Carteira aberta</b>Além do ranking, quem também tem a carteira aberta pode ver seus ativos e o peso de cada um.</span></label>
-      </div></div>
-      <label class="w pf-chk"><input type="checkbox" id="pf-valores"${p.mostrar_valores ? " checked" : ""}> Mostrar valores em reais (patrimônio, proventos e quantidades). Sem isso, só aparecem percentuais.</label>
-      <p class="hint w" style="margin:0">Renda fixa nunca aparece. Os números do ranking são calculados pelo Radar com as cotações reais, e perfis com valores suspeitos ficam de fora (veja as regras em “Como funciona” no ranking).</p>
-      <div class="w" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="pf-salvar">Salvar perfil</button>${S.perfil ? `<button class="btn" type="button" data-ver-perfil="${esc(S.perfil.apelido)}">Ver como os outros veem</button>` : ""}</div>
-      <p class="form-msg w" id="pf-msg" role="status"></p>
+    $("#pf-body").innerHTML = `<div class="carregando"><i></i><i style="width:80%"></i></div>`;
+    await carregarConquistas();
+    const lib = new Set((S.conq && S.conq.itens) || ["m_basica", "a_bone", "a_broto", "a_cafe"]);
+    const patr = S.carteira.length ? linhas().patr : 0; const nv = nivelDe(patr);
+    const prox = NIVEIS[nv + 1]; const ini = NIVEIS[nv][1];
+    const pct = prox ? Math.max(0, Math.min(100, (patr - ini) / (prox[1] - ini) * 100)) : 100;
+    const nvServ = S.conq && S.conq.nivel != null ? S.conq.nivel : null;
+    const aviso = !S.v2 ? "" : !S.conq || nvServ == null ? "As recompensas de patrimônio e as conquistas aparecem depois que você entra no ranking (o Radar confere a carteira a cada 15 minutos)."
+      : S.conq.verificado || (S.conq.motivos || []).every((x) => /7 dias/.test(x)) ? (nvServ < nv ? `A faixa ${NIVEIS[nv][0]} libera depois de 7 dias seguidos com esse valor na carteira (regra anti-troll: vale o menor valor da semana).` : "")
+      : "Recompensas de patrimônio e conquistas pausadas: " + (S.conq.motivos || []).filter((x) => !/7 dias/.test(x)).join("; ") + ".";
+    $("#pf-body").innerHTML = `<form id="pf-form" class="pf-ed" autocomplete="off" novalidate>
+      <div class="pf-hero" id="pf-hero"></div>
+      <section class="panel pf-sec"><h3>Foto e avatar</h3>
+        <div class="pf-foto">${S.v2 ? `<button type="button" class="btn sm" id="pf-foto-btn">📷 ${pend.foto ? "Trocar foto" : "Enviar foto"}</button><button type="button" class="btn ghost sm" id="pf-foto-rm"${pend.foto ? "" : " hidden"}>Remover foto</button><input type="file" id="pf-file" accept="image/*" hidden>` : `<p class="hint" style="margin:0">Foto de perfil e recompensas: falta rodar supabase/migrations/20261028_perfil_visual.sql no banco.</p>`}</div>
+        <span class="label">Emoji${pend.foto ? " (aparece se tirar a foto)" : ""}</span>
+        <div class="pf-emojis" id="pf-emojis"><button type="button" data-emo="" aria-pressed="${!pend.avatar}" title="Inicial do nome">Aa</button>${EMOJIS.map((x) => `<button type="button" data-emo="${x}" aria-pressed="${pend.avatar === x}">${x}</button>`).join("")}</div>
+        <span class="label">Cor</span>
+        <div class="pf-cores" id="pf-cores">${CORES.map((c) => `<button type="button" data-cor="${c}" style="--c:${c}" aria-pressed="${pend.cor === c}" aria-label="Cor ${c}"></button>`).join("")}</div>
+      </section>
+      ${S.v2 ? `<section class="panel pf-sec"><h3>Recompensas</h3>
+        <div class="pf-nivel nv-${nv}">
+          <div class="pf-nv-top"><span class="pf-nv-tag">${NIVEIS[nv][0]}</span><span class="hint">${brl(patr)} em ativos</span></div>
+          <div class="pf-nv-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+          <p class="hint" style="margin:6px 0 0">${prox ? `Faltam <b>${brl(prox[1] - patr)}</b> para <b>${prox[0]}</b>, que libera a moldura e um acessório novos.` : "Faixa máxima. Lenda!"} Renda fixa não conta, porque o Radar não consegue conferir.</p>
+          ${aviso ? `<p class="hint pf-nv-aviso">${esc(aviso)}</p>` : ""}
+        </div>
+        <div class="seg pf-abas" role="tablist" aria-label="Tipo"><button type="button" role="tab" data-aba="m" aria-selected="true">Molduras</button><button type="button" role="tab" data-aba="a" aria-selected="false">Acessórios</button></div>
+        <div class="pf-itens" id="pf-itens"></div>
+      </section>` : ""}
+      <section class="panel pf-sec"><h3>Sobre você</h3><div class="pf-form">
+        <label>Apelido (único)<input id="pf-apelido" maxlength="20" placeholder="joao.invest" value="${esc(p.apelido || "")}" required></label>
+        <label>Nome que aparece<input id="pf-nome" maxlength="40" placeholder="opcional" value="${esc(p.nome || "")}"></label>
+        <label class="w">Bio<textarea id="pf-bio" maxlength="160" placeholder="Ex.: foco em dividendos e FIIs, investindo desde 2024">${esc(p.bio || "")}</textarea></label>
+        <label>Cidade<input id="pf-cidade" maxlength="60" placeholder="Dois Vizinhos" value="${esc(p.cidade || "")}"></label>
+        <label>Estado<select id="pf-uf"><option value="">—</option>${UFS.map((u) => `<option${p.uf === u ? " selected" : ""}>${u}</option>`).join("")}</select></label>
+        <label>País<select id="pf-pais">${PAISES.map(([c, n]) => `<option value="${c}"${(p.pais || "BR") === c ? " selected" : ""}>${n}</option>`).join("")}</select></label>
+        <label>Estilo de investidor<select id="pf-estilo"><option value="">—</option>${Object.entries(ESTILOS).map(([k, n]) => `<option value="${k}"${p.estilo === k ? " selected" : ""}>${n}</option>`).join("")}</select></label>
+      </div></section>
+      <section class="panel pf-sec"><h3>Privacidade</h3><div class="pf-form">
+        <div class="w pf-vis">
+          <label><input type="radio" name="pf-vis" value="privado"${!p.visibilidade || p.visibilidade === "privado" ? " checked" : ""}><span><b>🔒 Privado</b>Ninguém vê nada seu. Você também não vê o ranking.</span></label>
+          <label><input type="radio" name="pf-vis" value="ranking"${p.visibilidade === "ranking" ? " checked" : ""}><span><b>🏆 Só no ranking</b>Aparece nos rankings com percentuais. Sua carteira continua fechada.</span></label>
+          <label><input type="radio" name="pf-vis" value="publico"${p.visibilidade === "publico" ? " checked" : ""}><span><b>👀 Carteira aberta</b>Além do ranking, quem também abre a carteira vê seus ativos e o peso de cada um.</span></label>
+        </div>
+        <label class="w pf-chk"><input type="checkbox" id="pf-valores"${p.mostrar_valores ? " checked" : ""}> Mostrar valores em reais (patrimônio, proventos e quantidades)</label>
+        <p class="hint w" style="margin:0">Renda fixa nunca aparece. Os números do ranking são calculados pelo Radar com as cotações reais.</p>
+      </div></section>
+      <div class="pf-save"><button class="btn primary" type="submit" id="pf-salvar">Salvar perfil</button>${S.perfil ? `<button class="btn" type="button" data-ver-perfil="${esc(S.perfil.apelido)}">Ver como os outros veem</button>` : ""}<p class="form-msg" id="pf-msg" role="status"></p></div>
     </form>`;
-    $("#pf-emojis").addEventListener("click", (e) => { const b = e.target.closest("[data-emo]"); if (!b) return; pend.avatar = b.dataset.emo; $("#pf-emojis").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); });
-    $("#pf-cores").addEventListener("click", (e) => { const b = e.target.closest("[data-cor]"); if (!b) return; pend.cor = b.dataset.cor; $("#pf-cores").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); });
+    const atual = () => ({ ...p, apelido: $("#pf-apelido").value.trim().toLowerCase().replace(/^@/, "") || p.apelido || "voce", nome: $("#pf-nome").value.trim() || null, cidade: $("#pf-cidade").value.trim() || null, uf: $("#pf-uf").value || null, pais: $("#pf-pais").value || "BR", estilo: $("#pf-estilo").value || null, avatar: pend.avatar || null, cor: pend.cor, foto: pend.foto, moldura: pend.moldura, acessorio: pend.acessorio });
+    const hero = () => {
+      const a = atual(); const m = a.moldura && ITEM[a.moldura]; const ac = a.acessorio && ITEM[a.acessorio];
+      $("#pf-hero").style.setProperty("--c", a.cor);
+      $("#pf-hero").innerHTML = `<div class="pf-hero-av">${avHtml(a, 96)}</div><div class="pf-hero-tx"><b>${esc(a.nome || "@" + a.apelido)}</b><span>@${esc(a.apelido)}${ondeTxt(a) ? " · " + esc(ondeTxt(a)) : ""}</span>
+        <div class="pf-chips">${a.estilo ? `<span>${esc(ESTILOS[a.estilo])}</span>` : ""}${m && a.moldura !== "m_basica" ? `<span class="mc-${a.moldura.slice(2)}">Moldura ${esc(m.nome)}</span>` : ""}${ac ? `<span>${ac.e} ${esc(ac.nome)}</span>` : ""}</div></div>`;
+      $("#pf-av").outerHTML = avHtml(a, true).replace('class="av', 'id="pf-av" class="av');
+    };
+    const itens = () => {
+      const box = $("#pf-itens"); if (!box) return;
+      const a = atual(); const lista = ITENS.filter((i) => i.t === pend.aba);
+      const nenhum = `<button type="button" class="it" data-it="" aria-pressed="${!(pend.aba === "m" ? pend.moldura : pend.acessorio)}"><span class="it-av">${avHtml({ ...a, [pend.aba === "m" ? "moldura" : "acessorio"]: null }, 52)}</span><b>Nenhum</b><small>Sem ${pend.aba === "m" ? "moldura" : "acessório"}</small></button>`;
+      const grupos = [["livre", "Livres"], ["nivel", "Por patrimônio"], ["conq", "Conquistas"]];
+      box.innerHTML = nenhum + grupos.map(([g, n]) => { const l = lista.filter((i) => i.g === g); return l.length ? `<p class="label pf-it-g">${n}</p>` + l.map((i) => {
+        const ok = lib.has(i.id); const sel = (i.t === "m" ? pend.moldura : pend.acessorio) === i.id;
+        return `<button type="button" class="it${ok ? "" : " lock"}" data-it="${i.id}" aria-pressed="${sel}"${ok ? "" : ` aria-disabled="true" title="${esc(i.req)}"`}><span class="it-av">${avHtml({ ...a, [i.t === "m" ? "moldura" : "acessorio"]: i.id }, 52)}${ok ? "" : `<span class="it-lk">🔒</span>`}</span><b>${esc(i.nome)}</b><small>${ok ? (i.g === "livre" ? "Livre" : "✓ Liberado") : esc(i.req)}</small></button>`;
+      }).join("") : ""; }).join("");
+    };
+    hero(); itens();
+    $("#pf-form").addEventListener("input", (e) => { if (e.target.matches("#pf-apelido,#pf-nome,#pf-cidade")) hero(); });
+    $("#pf-form").addEventListener("change", (e) => { if (e.target.matches("select")) hero(); });
+    $("#pf-emojis").addEventListener("click", (e) => { const b = e.target.closest("[data-emo]"); if (!b) return; pend.avatar = b.dataset.emo; $("#pf-emojis").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); hero(); itens(); });
+    $("#pf-cores").addEventListener("click", (e) => { const b = e.target.closest("[data-cor]"); if (!b) return; pend.cor = b.dataset.cor; $("#pf-cores").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); hero(); itens(); });
+    if (S.v2) {
+      document.querySelector(".pf-abas").addEventListener("click", (e) => { const b = e.target.closest("[data-aba]"); if (!b) return; pend.aba = b.dataset.aba; document.querySelectorAll(".pf-abas button").forEach((x) => x.setAttribute("aria-selected", String(x === b))); itens(); });
+      $("#pf-itens").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-it]"); if (!b) return;
+        if (b.classList.contains("lock")) { toast("🔒 " + ITEM[b.dataset.it].nome + ": " + ITEM[b.dataset.it].req + "."); return; }
+        const id = b.dataset.it || null; if (pend.aba === "m") pend.moldura = id; else pend.acessorio = id;
+        hero(); itens();
+      });
+      $("#pf-foto-btn").addEventListener("click", () => $("#pf-file").click());
+      $("#pf-foto-rm").addEventListener("click", () => { pend.foto = null; $("#pf-foto-rm").hidden = true; $("#pf-foto-btn").textContent = "📷 Enviar foto"; hero(); itens(); });
+      $("#pf-file").addEventListener("change", async (e) => {
+        const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+        if (!/^image\//.test(f.type) || f.size > 20e6) { toast("Escolha uma imagem de até 20 MB."); return; }
+        try { pend.foto = await reduzirFoto(f); $("#pf-foto-rm").hidden = false; $("#pf-foto-btn").textContent = "📷 Trocar foto"; hero(); itens(); }
+        catch (_) { toast("Não foi possível ler essa imagem."); }
+      });
+    }
     $("#pf-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const m = (t, ok) => { const o = $("#pf-msg"); o.textContent = t; o.className = "form-msg w " + (ok ? "up" : "down"); };
+      const m = (t, ok) => { const o = $("#pf-msg"); o.textContent = t; o.className = "form-msg " + (ok ? "up" : "down"); };
       const apelido = $("#pf-apelido").value.trim().toLowerCase().replace(/^@/, "");
-      if (!/^[a-z0-9_.]{3,20}$/.test(apelido)) return m("O apelido precisa ter de 3 a 20 letras minúsculas, números, ponto ou _ (sem espaço nem acento).", false);
+      if (!/^[a-z0-9_.]{3,20}$/.test(apelido)) { $("#pf-apelido").focus(); return m("O apelido precisa ter de 3 a 20 letras minúsculas, números, ponto ou _ (sem espaço nem acento).", false); }
       const row = {
         apelido, nome: $("#pf-nome").value.trim() || null, bio: $("#pf-bio").value.trim() || null, avatar: pend.avatar || null, cor: pend.cor,
         cidade: $("#pf-cidade").value.trim() || null, uf: $("#pf-uf").value || null, pais: $("#pf-pais").value || "BR", estilo: $("#pf-estilo").value || null,
-        visibilidade: (document.querySelector('input[name="pf-vis"]:checked') || {}).value || "privado", mostrar_valores: $("#pf-valores").checked,
-        atualizado_em: new Date().toISOString(), user_id: S.user.id,
+        visibilidade: (document.querySelector('input[name="pf-vis"]:checked') || {}).value || "privado", mostrar_valores: $("#pf-valores").checked, user_id: S.user.id,
       };
+      if (S.v2) Object.assign(row, { foto: pend.foto, moldura: pend.moldura, acessorio: pend.acessorio });
       if (row.visibilidade !== "privado" && (!row.cidade || !row.uf) && row.pais === "BR") return m("Para entrar no ranking da sua cidade e do seu estado, informe a cidade e o estado.", false);
       $("#pf-salvar").disabled = true;
       const { error } = await sb.from("perfis").upsert(row, { onConflict: "user_id" });
       $("#pf-salvar").disabled = false;
-      if (error) return m(/perfis_apelido_idx|duplicate/i.test(error.message || "") ? "Esse apelido já está em uso. Escolha outro." : "Não foi possível salvar agora.", false);
-      await carregarPerfil(); m("Perfil salvo." + (row.visibilidade !== "privado" ? " Você entra no ranking na próxima atualização (a cada 15 minutos)." : ""), true);
-      $("#pf-titulo").textContent = "@" + apelido; $("#pf-av").outerHTML = avHtml(S.perfil, true).replace('class="av', 'id="pf-av" class="av');
+      if (error) return m(/perfis_apelido_idx|duplicate/i.test(error.message || "") ? "Esse apelido já está em uso. Escolha outro." : /item_bloqueado/.test(error.message || "") ? "Esse item ainda não está liberado para você." : /foto/i.test(error.message || "") ? "A foto ficou grande demais. Tente outra imagem." : "Não foi possível salvar agora.", false);
+      await carregarPerfil(); m("✓ Perfil salvo." + (row.visibilidade !== "privado" ? " Você entra no ranking na próxima atualização (a cada 15 minutos)." : ""), true);
+      $("#pf-titulo").textContent = "@" + apelido; hero();
       S.rk.dados = null; renderRanking();
     });
+  }
+  // Reduz a foto para 128x128 (recorte central), em WebP ou JPEG, para caber no perfil
+  async function reduzirFoto(f) {
+    // FileReader (data:) porque a política de segurança da página não libera blob:
+    const src = await new Promise((ok, err) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = err; r.readAsDataURL(f); });
+    {
+      const img = await new Promise((ok, err) => { const i = new Image(); i.onload = () => ok(i); i.onerror = err; i.src = src; });
+      const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d");
+      const l = Math.min(img.naturalWidth, img.naturalHeight); g.imageSmoothingQuality = "high";
+      g.drawImage(img, (img.naturalWidth - l) / 2, (img.naturalHeight - l) / 2, l, l, 0, 0, 128, 128);
+      for (const q of [0.82, 0.7, 0.55, 0.4]) {
+        let d = c.toDataURL("image/webp", q); if (!/^data:image\/webp/.test(d)) d = c.toDataURL("image/jpeg", q);
+        if (d.length <= 38000) return d;
+      }
+      throw new Error("grande");
+    }
   }
 
   // Perfil de outra pessoa (ou o meu, como os outros veem)
@@ -1719,7 +1847,9 @@
     const cls2 = r.classes ? Object.entries(r.classes).sort((a, b) => b[1] - a[1]) : [];
     const cart = p.carteira || [];
     $("#pf-body").innerHTML = `
-      ${p.bio ? `<section class="panel"><p style="margin:0">${esc(p.bio)}</p></section>` : ""}
+      <div class="pf-hero vis" style="--c:${esc(p.cor || "#2457F5")}"><div class="pf-hero-av">${avHtml(p, 96)}</div><div class="pf-hero-tx"><b>${esc(p.nome || "@" + p.apelido)}</b><span>@${esc(p.apelido)}${ondeTxt(p) ? " · " + esc(ondeTxt(p)) : ""}</span>
+        <div class="pf-chips">${p.estilo ? `<span>${esc(ESTILOS[p.estilo] || "")}</span>` : ""}${p.moldura && ITEM[p.moldura] && p.moldura !== "m_basica" ? `<span class="mc-${esc(p.moldura.slice(2))}">Moldura ${esc(ITEM[p.moldura].nome)}</span>` : ""}${p.acessorio && ITEM[p.acessorio] ? `<span>${ITEM[p.acessorio].e} ${esc(ITEM[p.acessorio].nome)}</span>` : ""}</div>
+        ${p.bio ? `<p class="pf-bio">${esc(p.bio)}</p>` : ""}</div></div>
       <section class="panel"><h3>Números <span class="selo${r.verificado === false ? " nv" : ""}">${r.verificado === false ? "não verificado" : r.n_ativos ? "✓ verificado" : "aguardando cálculo"}</span></h3>
         ${r.n_ativos ? `<div class="pp-stats">${st("Rentabilidade", `<span class="${cls(r.rent_pct)}">${fmtCat("rentabilidade", r.rent_pct)}</span>`)}${st("Dividend yield", fmtCat("dividendos", r.dy_pct))}${st("Hoje", `<span class="${cls(r.dia_pct)}">${fmtCat("hoje", r.dia_pct)}</span>`)}${st("Diversificação", fmtCat("diversificacao", r.div_score) + "/100")}${st("Ativos", num(r.n_ativos, 0))}${r.patrimonio != null ? st("Patrimônio", brl(r.patrimonio)) : ""}${r.proventos12m != null ? st("Proventos 12m", brl(r.proventos12m)) : ""}</div>
         ${r.motivos && r.motivos.length ? `<p class="hint" style="margin:10px 0 0">Fora do ranking por enquanto: ${esc(r.motivos.join("; "))}.</p>` : ""}
@@ -1761,29 +1891,55 @@
     const box = $("#rank-body"); if (!box) return;
     if (!S.perfilOk) { box.innerHTML = `<div class="empty"><strong>Ranking ainda não ativado</strong>Falta criar as tabelas no banco (supabase/migrations/20261027_comunidade.sql).</div>`; return; }
     if (!S.perfil || S.perfil.visibilidade === "privado") {
-      box.innerHTML = `<div class="rk-pv"><strong>Compare sua carteira com investidores da sua cidade, do seu estado, do Brasil e do mundo</strong>
-        <p>Rankings de rentabilidade, dividendos, diversificação e do dia, além de carteiras abertas para você ver no que cada um investe. Para ver, você também participa: escolha no seu perfil o quanto quer mostrar. Por padrão aparecem só percentuais, nunca quanto você tem.</p>
+      const fake = (c, e) => ({ avatar: e, cor: c });
+      box.innerHTML = `<div class="rk-pv">
+        <div class="podio demo" aria-hidden="true">${[[2, fake("#94A3B8", "🦊")], [1, fake("#F5B400", "🦁")], [3, fake("#C2773C", "🐢")]].map(([n, p]) => `<div class="pd pd-${n}" style="--d:${[0, .15, 0, .3][n]}s"><div class="pd-av">${n === 1 ? COROA : ""}${avHtml(p, n === 1 ? 72 : 56)}</div><div class="pd-base"><span>${n}</span></div></div>`).join("")}</div>
+        <strong>Compare sua carteira com investidores da sua cidade, do seu estado, do Brasil e do mundo</strong>
+        <p>Rankings de rentabilidade, dividendos, diversificação e do dia, carteiras abertas para ver no que cada um investe, foto, molduras e acessórios que você libera investindo. Para ver, você também participa: escolha no perfil o quanto quer mostrar. Por padrão aparecem só percentuais, nunca valores em reais.</p>
         <button type="button" class="btn primary" data-meu-perfil="1">${S.perfil ? "Entrar no ranking" : "Criar meu perfil"}</button></div>`;
       $("#rank-when").textContent = ""; return;
     }
     const d = S.rk.dados;
-    if (!d) { box.innerHTML = `<div class="carregando"><i></i><i style="width:80%"></i></div>`; carregarRanking(); return; }
+    const topo = `<div class="rk-top"><div class="seg" role="tablist" aria-label="Onde" style="margin:0;flex:1;min-width:260px">${ESCOPOS.map(([k, n]) => `<button type="button" role="tab" aria-selected="${S.rk.escopo === k}" data-rk-esc="${k}">${n}</button>`).join("")}</div>
+        <button type="button" class="btn ghost sm rk-eu-btn" data-meu-perfil="1">${avHtml(S.perfil, 26)} Meu perfil</button></div>
+      <div class="rk-cats" role="group" aria-label="Categoria">${CATS.map(([k, n, , ic]) => `<button type="button" class="rk-cat" aria-pressed="${S.rk.cat === k}" data-rk-cat="${k}"><span aria-hidden="true">${ic}</span>${n}</button>`).join("")}</div>`;
+    if (!d) {
+      box.innerHTML = topo + `<div class="podio carregando-pd" aria-hidden="true">${[2, 1, 3].map((n) => `<div class="pd pd-${n}"><div class="pd-av"><span class="sk-av"></span></div><span class="sk-ln"></span><div class="pd-base"></div></div>`).join("")}</div>`;
+      carregarRanking(); return;
+    }
     const cat = CATS.find((c) => c[0] === S.rk.cat);
     const semLocal = (S.rk.escopo === "cidade" && !S.perfil.cidade) || (S.rk.escopo === "estado" && !S.perfil.uf);
-    const itens = (d.itens || []);
+    const itens = d.itens || [];
+    const corV = S.rk.cat === "rentabilidade" || S.rk.cat === "hoje";
     $("#rank-when").textContent = d.atualizado_em ? "Atualizado " + ago(d.atualizado_em) : "";
-    box.innerHTML = `
-      <div class="rk-top"><div class="seg" role="tablist" aria-label="Onde" style="margin:0;flex:1;min-width:260px">${ESCOPOS.map(([k, n]) => `<button type="button" role="tab" aria-selected="${S.rk.escopo === k}" data-rk-esc="${k}">${n}</button>`).join("")}</div>
-        <button type="button" class="btn ghost sm" data-meu-perfil="1">${avHtml(S.perfil)} Meu perfil</button></div>
-      <div class="fchips" role="group" aria-label="Categoria">${CATS.map(([k, n]) => `<button type="button" class="fchip" aria-pressed="${S.rk.cat === k}" data-rk-cat="${k}">${n}</button>`).join("")}</div>
-      <p class="hint" style="margin:0 0 10px">${esc(cat[2][0].toUpperCase() + cat[2].slice(1))}${S.rk.escopo === "cidade" && S.perfil.cidade ? " · " + esc(S.perfil.cidade) : S.rk.escopo === "estado" && S.perfil.uf ? " · " + esc(S.perfil.uf) : ""}. Só perfis verificados.</p>
-      ${d.erro ? `<p class="skel">Não foi possível carregar o ranking agora.</p>` : semLocal ? `<p class="skel">Informe sua ${S.rk.escopo === "cidade" ? "cidade" : "UF"} no perfil para ver este ranking.</p>` : itens.length ? `<div class="rk-list">${itens.map((x) => `<button type="button" class="rk${x.eu ? " eu" : ""}" data-ver-perfil="${esc(x.apelido)}"><span class="ps p${x.posicao}">${x.posicao <= 3 ? ["🥇", "🥈", "🥉"][x.posicao - 1] : x.posicao + "º"}</span>${avHtml(x)}<span class="nm"><b>${esc(x.nome || "@" + x.apelido)}${x.eu ? " (você)" : ""}</b><span>@${esc(x.apelido)}${ondeTxt(x) ? " · " + esc(ondeTxt(x)) : ""}${x.publico ? " · carteira aberta" : ""}${x.verificado ? "" : " · não verificado"}</span></span><span class="vl ${S.rk.cat === "rentabilidade" || S.rk.cat === "hoje" ? cls(x.valor) : ""}">${esc(fmtCat(S.rk.cat, x.valor))}<small>${num(x.n_ativos, 0)} ativos</small></span></button>`).join("")}</div>` : `<p class="skel">Ninguém neste ranking ainda${S.rk.cat === "proventos" || S.rk.cat === "patrimonio" ? " (aqui só entra quem escolhe mostrar valores em reais)" : ""}. Convide amigos para o Radar!</p>`}
-      ${d.meu && !itens.some((x) => x.eu) ? `<p class="rk-meu">Você está em <b>${d.meu.posicao}º de ${d.meu.total}</b> (${esc(fmtCat(S.rk.cat, d.meu.valor))}).</p>` : !d.meu && !semLocal && !d.erro ? `<p class="hint rk-meu">Você ainda não aparece aqui${S.rk.cat === "proventos" || S.rk.cat === "patrimonio" ? " (ative “mostrar valores em reais” no perfil)" : ""}. O ranking é recalculado a cada 15 minutos.</p>` : ""}
-      <details class="fat" style="margin-top:12px"><summary>Como funciona e regras anti-troll</summary><ul class="fatores">
+    const local = S.rk.escopo === "cidade" && S.perfil.cidade ? S.perfil.cidade : S.rk.escopo === "estado" && S.perfil.uf ? S.perfil.uf : "";
+    const sub = (x) => `@${esc(x.apelido)}${ondeTxt(x) ? " · " + esc(ondeTxt(x)) : ""}`;
+    const pd = (x, n) => x ? `<button type="button" class="pd pd-${n}${x.eu ? " eu" : ""}" data-ver-perfil="${esc(x.apelido)}" style="--d:${[0, .15, 0, .3][n]}s">
+        <div class="pd-av">${n === 1 ? COROA : ""}${avHtml(x, n === 1 ? 84 : 64, { semTopo: n === 1 })}</div>
+        <b class="pd-nm">${esc(x.nome || "@" + x.apelido)}${x.eu ? " (você)" : ""}</b><span class="pd-h">${sub(x)}</span>
+        <span class="pd-vl ${corV ? cls(x.valor) : ""}">${esc(fmtCat(S.rk.cat, x.valor))}</span>
+        <div class="pd-base"><span>${n}</span></div></button>`
+      : `<div class="pd pd-${n} vazio" style="--d:${[0, .15, 0, .3][n]}s"><div class="pd-av"><span class="sk-av"></span></div><span class="pd-h">vaga aberta</span><div class="pd-base"><span>${n}</span></div></div>`;
+    const resto = itens.slice(3);
+    const maxAbs = Math.max(...itens.map((x) => Math.abs(Number(x.valor) || 0)), 1e-9);
+    let corpo;
+    if (d.erro) corpo = `<p class="skel">Não foi possível carregar o ranking agora.</p>`;
+    else if (semLocal) corpo = `<div class="rk-vazio"><span>📍</span><p>Informe sua ${S.rk.escopo === "cidade" ? "cidade" : "UF"} no perfil para ver este ranking.</p><button type="button" class="btn sm" data-meu-perfil="1">Editar perfil</button></div>`;
+    else if (!itens.length) corpo = `<div class="rk-vazio"><span>🌱</span><p>Ainda não há ninguém verificado aqui${local ? " em " + esc(local) : ""}. Chame os amigos que investem!</p></div>`;
+    else {
+      const meu = d.meu; const noPodio = itens.slice(0, 3).some((x) => x.eu);
+      corpo = `<div class="podio">${pd(itens[1], 2)}${pd(itens[0], 1)}${pd(itens[2], 3)}</div>
+        ${meu ? `<div class="rk-voce${noPodio ? " top" : ""}">${avHtml(S.perfil, 40)}<div><b>${noPodio ? "Você está no pódio! 🎉" : `Você está em ${meu.posicao}º de ${meu.total}`}</b><span>${meu.verificado === false ? "Ainda não verificado: só você vê a sua posição." : meu.total > 1 ? `Melhor que ${Math.round((meu.total - meu.posicao) / (meu.total - 1) * 100)}% ${local ? "de " + esc(local) : "do ranking"}` : "Por enquanto, só você aqui."}</span></div><span class="rk-voce-v ${corV ? cls(meu.valor) : ""}">${esc(fmtCat(S.rk.cat, meu.valor))}</span></div>`
+          : `<p class="hint rk-meu">Você ainda não aparece aqui${S.rk.cat === "proventos" || S.rk.cat === "patrimonio" ? " (marque “mostrar valores” no perfil)" : " (o ranking é recalculado a cada 15 minutos)"}.</p>`}
+        ${resto.length ? `<div class="rk-list">${resto.map((x, i) => `<button type="button" class="rk${x.eu ? " eu" : ""}" data-ver-perfil="${esc(x.apelido)}" style="--i:${i}"><span class="ps">${x.posicao}º</span>${avHtml(x, 40)}<span class="nm"><b>${esc(x.nome || "@" + x.apelido)}${x.eu ? " (você)" : ""}</b><span>${sub(x)}${x.publico ? ` · <i class="tag-ab">carteira aberta</i>` : ""}${x.verificado ? "" : " · não verificado"}</span></span><span class="vl ${corV ? cls(x.valor) : ""}">${esc(fmtCat(S.rk.cat, x.valor))}<small>${num(x.n_ativos, 0)} ativos</small></span><i class="rk-bar" style="--w:${(Math.abs(Number(x.valor) || 0) / maxAbs * 100).toFixed(1)}%"></i></button>`).join("")}</div>` : ""}`;
+    }
+    box.innerHTML = topo + `<p class="hint rk-desc">${esc(cat[2][0].toUpperCase() + cat[2].slice(1))}${local ? " · " + esc(local) : ""}. Só perfis verificados pelo Radar.</p>` + corpo + `
+      <details class="fat rk-regras"><summary>Como funciona e regras anti-troll</summary><ul class="fatores">
         <li><span class="mark neutro">·</span><span>Os números são calculados pelo Radar a partir da carteira e das cotações reais. Ninguém digita a própria rentabilidade.</span></li>
         <li><span class="mark neutro">·</span><span>Preço médio fora do possível (menos de 1/4 da mínima ou mais de 4 vezes a máxima de 52 semanas) não conta na rentabilidade.</span></li>
-        <li><span class="mark neutro">·</span><span>Posições criadas ou alteradas hoje não contam no ranking do dia: não dá para “comprar” a alta depois que ela aconteceu.</span></li>
-        <li><span class="mark neutro">·</span><span>Ficam de fora: perfis com menos de 7 dias, menos de 2 ativos ou R$ 100, patrimônio acima de R$ 50 milhões, rentabilidade acima de 500%, mais de 30 alterações na carteira em 24 horas ou 3 denúncias de pessoas diferentes.</span></li>
+        <li><span class="mark neutro">·</span><span>Posições criadas ou alteradas hoje não contam no ranking do dia, e as datas são gravadas pelo servidor: não dá para “comprar” a alta depois que ela aconteceu.</span></li>
+        <li><span class="mark neutro">·</span><span>Ficam de fora: perfis com menos de 7 dias, menos de 2 ativos ou R$ 100, patrimônio acima de R$ 50 milhões, rentabilidade acima de 500%, mais de 30 alterações na carteira em 24 horas ou 3 denúncias de pessoas diferentes (a foto também some).</span></li>
+        <li><span class="mark neutro">·</span><span>Molduras e acessórios são liberados pelo servidor. A faixa de patrimônio só sobe depois de 7 dias seguidos com o valor na carteira (vale o menor da semana), e o que deixar de valer sai sozinho.</span></li>
         <li><span class="mark neutro">·</span><span>Renda fixa nunca entra (não dá para conferir). Valores em reais só aparecem para quem escolhe mostrar.</span></li>
       </ul></details>`;
   }
