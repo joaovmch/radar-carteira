@@ -6,31 +6,33 @@
 (function () {
   "use strict";
   const HUMORES = {
-    triste: { titulo: "Dia difícil", frase: "Respira. Queda de um dia não muda uma boa carteira.", emoji: "😢" },
-    preocupado: { titulo: "De olho nos números", frase: "Mercado no vermelho. Nada de decisão no impulso.", emoji: "😟" },
-    tranquilo: { titulo: "Dia tranquilo", frase: "Tudo calmo. Hora de uma partida no videogame.", emoji: "😌" },
-    feliz: { titulo: "Dia bom!", frase: "Carteira no verde. Bora uma sinuca para comemorar.", emoji: "😄" },
-    euforico: { titulo: "Que dia!", frase: "Alta forte! Comemora, mas lembra: longo prazo.", emoji: "🤩" },
+    triste: { titulo: "Dia difícil", frase: "Respira. Queda de um dia não muda uma boa carteira.", ic: "smiley-sad" },
+    preocupado: { titulo: "De olho nos números", frase: "Mercado no vermelho. Nada de decisão no impulso.", ic: "smiley-nervous" },
+    tranquilo: { titulo: "Dia tranquilo", frase: "Tudo calmo. Hora de uma partida no videogame.", ic: "smiley-meh" },
+    feliz: { titulo: "Dia bom!", frase: "Carteira no verde. Bora uma sinuca para comemorar.", ic: "smiley" },
+    euforico: { titulo: "Que dia!", frase: "Alta forte! Comemora, mas lembra: longo prazo.", ic: "confetti" },
   };
   function humorDe(pct, fechado) {
     if (fechado || pct == null || !isFinite(pct)) return "tranquilo";
     if (pct <= -2) return "triste"; if (pct < -0.3) return "preocupado"; if (pct <= 0.3) return "tranquilo"; if (pct < 2) return "feliz"; return "euforico";
   }
   const DECOR = [
-    { id: "cachorro", nome: "Cachorro", e: "🐶", item: "m_bronze", req: "R$ 1 mil investidos" },
-    { id: "aquario", nome: "Aquário", e: "🐠", item: "m_prata", req: "R$ 10 mil investidos" },
-    { id: "fliperama", nome: "Fliperama", e: "🕹️", item: "m_ouro", req: "R$ 50 mil investidos" },
-    { id: "touro", nome: "Touro de ouro", e: "🐂", item: "m_platina", req: "R$ 100 mil investidos" },
-    { id: "globo", nome: "Globo de festa", e: "🪩", item: "m_diamante", req: "R$ 500 mil investidos" },
-    { id: "cofre", nome: "Cofre de ouro", e: "💰", item: "m_lenda", req: "R$ 1 milhão investido" },
-    { id: "porquinho", nome: "Porquinho", e: "🐷", item: "a_saco", req: "Dividend yield de 6% ou mais" },
-    { id: "neon", nome: "Neon ₿", e: "🟠", item: "a_foguete", req: "Ter cripto na carteira" },
-    { id: "arcoiris", nome: "Neon arco-íris", e: "🌈", item: "a_arcoiris", req: "Diversificação 70 ou mais" },
-    { id: "dardos", nome: "Alvo de dardos", e: "🎯", item: "a_alvo", req: "10 ativos ou mais" },
-    { id: "trofeu", nome: "Troféu", e: "🏆", item: "a_estrela", req: "30 dias no Radar" },
+    { id: "cachorro", nome: "Cachorro", ic: "dog", item: "m_bronze", req: "R$ 1 mil investidos" },
+    { id: "aquario", nome: "Aquário", ic: "fish", item: "m_prata", req: "R$ 10 mil investidos" },
+    { id: "fliperama", nome: "Fliperama", ic: "joystick", item: "m_ouro", req: "R$ 50 mil investidos" },
+    { id: "touro", nome: "Touro de ouro", ic: "cow", item: "m_platina", req: "R$ 100 mil investidos" },
+    { id: "globo", nome: "Globo de festa", ic: "disco-ball", item: "m_diamante", req: "R$ 500 mil investidos" },
+    { id: "cofre", nome: "Cofre de ouro", ic: "vault", item: "m_lenda", req: "R$ 1 milhão investido" },
+    { id: "porquinho", nome: "Porquinho", ic: "piggy-bank", item: "a_saco", req: "Dividend yield de 6% ou mais" },
+    { id: "neon", nome: "Neon ₿", ic: "currency-btc", item: "a_foguete", req: "Ter cripto na carteira" },
+    { id: "arcoiris", nome: "Neon arco-íris", ic: "rainbow", item: "a_arcoiris", req: "Diversificação 70 ou mais" },
+    { id: "dardos", nome: "Alvo de dardos", ic: "target", item: "a_alvo", req: "10 ativos ou mais" },
+    { id: "trofeu", nome: "Troféu", ic: "trophy", item: "a_estrela", req: "30 dias no Radar" },
   ];
+  const IC = (n, o) => (window.RI ? window.RI.svg(n, o) : "");
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  const MOD = "./escritorio3d.js?v=20261027-5";
   let mod = null, carregando = null, inst = null, modo = null, ultimo = null, render2d = null, el0 = null;
   const pendentes = []; let secao = "";
   function temWebGL() {
@@ -94,7 +96,7 @@
     if (!palco) {
       el.innerHTML = `<div class="of-palco of-palco3d">
         <div class="of-3d"><div class="of-load"><i></i>Montando o escritório…</div>
-          <div class="of-cams" role="group" aria-label="Câmera"><button type="button" data-cam="sala" aria-pressed="true" title="Visão da sala">🏠 Sala</button><button type="button" data-cam="tela" aria-pressed="false" title="Chegar perto da tela do computador">🖥️ Tela</button><button type="button" data-cam="seguir" aria-pressed="false" title="Câmera seguindo o boneco">🎯 Seguir</button></div>
+          <div class="of-cams" role="group" aria-label="Câmera"><button type="button" data-cam="sala" aria-pressed="true" title="Visão da sala">${IC("house")} Sala</button><button type="button" data-cam="tela" aria-pressed="false" title="Chegar perto da tela do computador">${IC("monitor")} Tela</button><button type="button" data-cam="seguir" aria-pressed="false" title="Câmera seguindo o boneco">${IC("crosshair")} Seguir</button></div>
           <span class="of-dica">arraste para girar · toque duplo para centralizar</span></div>
         <div class="of-card"><span class="of-emo"></span><div><b></b><span></span></div><strong></strong></div>
       </div>`;
@@ -106,14 +108,14 @@
       });
     }
     palco.className = `of-palco of-palco3d of-h-${h}${inst ? " pronto" : ""}`;
-    palco.querySelector(".of-emo").textContent = info.emoji;
+    palco.querySelector(".of-emo").innerHTML = IC(info.ic);
     palco.querySelector(".of-card b").textContent = info.titulo + (d.fechado ? " · mercado fechado" : "");
     palco.querySelector(".of-card span:not(.of-emo)").textContent = d.fechado ? "Bolsa fechada hoje. Dia de videogame." : info.frase;
     const st = palco.querySelector(".of-card strong"); st.textContent = v; st.className = d.pct > 0 ? "up" : d.pct < 0 ? "down" : ""; st.hidden = !v;
-    ultimo = { humor: h, titulo: info.titulo, pct: d.pct, cor: d.cor, emoji: d.emoji, fechado: !!d.fechado, sim: !!d.sim, ativos: d.ativos || [], tem };
+    ultimo = { humor: h, titulo: info.titulo, pct: d.pct, cor: d.cor, icone: d.icone || "", boneco: d.boneco || "", acessorio: d.acessorio || "", fechado: !!d.fechado, sim: !!d.sim, ativos: d.ativos || [], tem };
     if (inst && inst.el.isConnected) { inst.atualizar(ultimo); return h; }
     if (!temWebGL()) { usar2d(el, d); return h; }
-    if (!carregando) carregando = import("./escritorio3d.js?v=20261027-3").then((m) => (mod = m));
+    if (!carregando) carregando = import(MOD).then((m) => (mod = m));
     carregando.then(() => {
       const box = el.querySelector(".of-3d"); if (!box) return;
       if (inst && inst.el.isConnected) { inst.atualizar(ultimo); return; }
@@ -124,5 +126,10 @@
     }).catch((err) => { console.warn("Escritório 3D indisponível:", err); usar2d(el, d); });
     return h;
   }
-  window.RadarEscritorio = { render, humorDe, HUMORES, DECOR, acao, esc };
+  // Prévia do boneco (perfil): gira sozinho, arrasta para girar
+  async function vitrine(el, d) {
+    if (!el || !temWebGL()) return null;
+    try { if (!carregando) carregando = import(MOD).then((m) => (mod = m)); await carregando; return mod.vitrine ? mod.vitrine(el, d) : null; } catch (err) { console.warn("Prévia do boneco indisponível:", err); return null; }
+  }
+  window.RadarEscritorio = { render, humorDe, HUMORES, DECOR, acao, esc, vitrine };
 })();

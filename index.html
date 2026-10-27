@@ -968,6 +968,105 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 @media (max-width:760px){.of-svg{padding-top:0}.of-card{position:static;margin:8px;max-width:none;border-radius:12px}}
 @media (max-width:560px){.of-card strong{font-size:15px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}.reveal{opacity:1;transform:none}.logo path{stroke-dashoffset:0}#arcs path,.chart .ln{stroke-dashoffset:0}.tape-track{flex-wrap:wrap}html{scroll-behavior:auto}}
+
+/* Ícones (Phosphor) */
+.ic{width:1.15em;height:1.15em;flex:none;vertical-align:-.2em;display:inline-block}
+button .ic,.btn .ic{margin:0}
+.btn .ic{width:1.1em;height:1.1em}
+.of-sim button .ic{width:18px;height:18px;vertical-align:-4px}
+.of-emo .ic{width:30px;height:30px}
+.of-cams button .ic{width:15px;height:15px;vertical-align:-3px}
+.of-deco span .ic{width:15px;height:15px;color:var(--accent)}
+.of-deco span.ok .ic:last-child{color:var(--up)}
+.rk-cat .ic{width:16px;height:16px}
+.rk-vazio>span .ic{width:34px;height:34px;color:var(--accent)}
+.have .ic{width:14px;height:14px;vertical-align:-2px}
+.selo .ic{width:13px;height:13px;vertical-align:-2px}
+.coroa .sp .ic{width:12px;height:12px}
+.pf-sec h3 .ic{width:19px;height:19px;color:var(--accent);vertical-align:-3px;margin-right:2px}
+.pf-vis b .ic{width:15px;height:15px;vertical-align:-2px;margin-right:2px}
+.it-lk .ic{width:20px;height:20px;color:var(--fg);filter:drop-shadow(0 1px 2px rgba(255,255,255,.8))}
+/* Avatar com ícone */
+.avw .av.icone{background:radial-gradient(circle at 30% 25%,color-mix(in srgb,var(--avc) 70%,#fff),var(--avc) 60%,color-mix(in srgb,var(--avc) 75%,#000));color:#fff}
+.avw .av.icone .ic{width:58%;height:58%;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25))}
+.avw .acc .ic{width:100%;height:100%;color:var(--acc)}
+.avw .acc.topo{width:calc(var(--s) * .52);height:calc(var(--s) * .52)}
+.avw .acc.canto .ic{width:72%;height:72%}
+.pf-chips span .ic{width:14px;height:14px;vertical-align:-2px;color:var(--acc,var(--accent))}
+/* Ícone do perfil */
+.pf-icones{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:6px}
+.pf-icones button{height:42px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font-weight:700;display:grid;place-items:center;transition:transform .15s,border-color .2s,background .2s}
+.pf-icones button .ic{width:24px;height:24px;color:var(--accent)}
+.pf-icones button:hover{transform:translateY(-2px) scale(1.06)}
+.pf-icones button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg);box-shadow:0 0 0 2px var(--accent-bg)}
+.pf-cor-livre{position:relative;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#EF4444,#F59E0B,#EAB308,#22C55E,#06B6D4,#3B82F6,#8B5CF6,#EC4899,#EF4444);color:#fff;cursor:pointer;box-shadow:0 0 0 1px var(--line)}
+.pf-cor-livre .ic{width:15px;height:15px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))}
+.pf-cor-livre input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+/* Capas do cartão */
+.pf-capas{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
+.pf-capas button{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:5px;display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--fg);transition:transform .15s,border-color .2s}
+.pf-capas button i{display:block;height:30px;border-radius:8px;background:var(--capa)}
+.pf-capas button:hover{transform:translateY(-2px)}
+.pf-capas button[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.capa-cor{--capa:linear-gradient(120deg,var(--c,var(--accent)),color-mix(in srgb,var(--c,var(--accent)) 45%,#fff) 60%,color-mix(in srgb,var(--c,var(--accent)) 70%,#000))}
+.capa-aurora{--capa:linear-gradient(120deg,#22D3EE,#818CF8 45%,#E879F9 75%,#F0ABFC)}
+.capa-oceano{--capa:linear-gradient(120deg,#0EA5E9,#2563EB 50%,#1E3A8A)}
+.capa-solar{--capa:linear-gradient(120deg,#F97316,#F43F5E 50%,#A855F7)}
+.capa-floresta{--capa:linear-gradient(120deg,#84CC16,#16A34A 50%,#14532D)}
+.capa-noite{--capa:radial-gradient(circle at 80% 30%,rgba(255,255,255,.5) 0 1px,transparent 2px),radial-gradient(circle at 30% 60%,rgba(255,255,255,.4) 0 1px,transparent 2px),linear-gradient(120deg,#0F172A,#312E81 60%,#1E1B4B)}
+.capa-grafite{--capa:linear-gradient(120deg,#334155,#64748B 55%,#1E293B)}
+.capa-neon{--capa:linear-gradient(120deg,#22C55E,#06B6D4 35%,#A855F7 70%,#EC4899)}
+.capa-ouro{--capa:linear-gradient(120deg,#FDE68A,#F59E0B 45%,#B45309 80%,#FCD34D)}
+.pf-hero[class*="capa-"]::before{background:var(--capa);background-size:200% 100%}
+/* Boneco */
+.pf-bn{display:grid;grid-template-columns:minmax(150px,200px) 1fr;gap:14px;align-items:start}
+.pf-bn-3d{position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:radial-gradient(circle at 50% 30%,var(--surface),var(--sunk));box-shadow:inset 0 0 0 1px var(--line)}
+.pf-bn-3d canvas{width:100%!important;height:100%!important;display:block;touch-action:none;cursor:grab}
+.pf-bn-op{display:flex;flex-direction:column;gap:4px}
+.bn-sws{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:4px}
+.bn-sw{width:28px;height:28px;border-radius:50%;border:3px solid var(--surface);background:var(--c);box-shadow:0 0 0 1px var(--line);transition:transform .15s}
+.bn-sw:hover{transform:scale(1.12)}.bn-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--fg);transform:scale(1.08)}
+.bn-seg{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+.bn-seg button{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600}
+.bn-seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+@media (max-width:560px){.pf-bn{grid-template-columns:1fr}.pf-bn-3d{max-width:220px;margin:0 auto;width:100%}}
+/* Recompensas */
+.pf-nv-tag .ic{width:15px;height:15px;vertical-align:-2px}
+.pf-nv-tot{font-size:13px;color:var(--muted)}.pf-nv-tot b{color:var(--fg);font-size:15px}
+.pf-nv-mix{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
+.pf-nv-mix i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}
+.pf-nv-mix b{color:var(--fg)}
+.pf-trilha{list-style:none;margin:0 0 14px;padding:0;display:grid;grid-template-columns:repeat(6,1fr);gap:4px;position:relative}
+.pf-trilha::before{content:"";position:absolute;left:8%;right:8%;top:17px;height:3px;border-radius:2px;background:var(--line)}
+.pf-trilha li{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px;font-size:11px}
+.pf-trilha .tr-dot{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--sunk);color:var(--muted);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line);z-index:1}
+.pf-trilha .tr-dot .ic{width:15px;height:15px}
+.pf-trilha b{font-size:11.5px;margin-top:2px}.pf-trilha small{color:var(--muted);font-size:10.5px}
+.pf-trilha li.ok .tr-dot,.pf-trilha li.quase .tr-dot{color:#fff;box-shadow:none}
+.pf-trilha li.quase .tr-dot{opacity:.75}
+.pf-trilha li.prox .tr-dot{box-shadow:0 0 0 2px var(--accent);animation:pulso 2s ease-in-out infinite}
+.pf-trilha .nv-1.ok .tr-dot,.pf-trilha .nv-1.quase .tr-dot{background:linear-gradient(135deg,#8C5A2B,#D9955A)}
+.pf-trilha .nv-2.ok .tr-dot,.pf-trilha .nv-2.quase .tr-dot{background:linear-gradient(135deg,#7D8796,#B9C2CE)}
+.pf-trilha .nv-3.ok .tr-dot,.pf-trilha .nv-3.quase .tr-dot{background:linear-gradient(135deg,#C98A00,#F5C02E)}
+.pf-trilha .nv-4.ok .tr-dot,.pf-trilha .nv-4.quase .tr-dot{background:linear-gradient(135deg,#5F8FC2,#9AA7FF)}
+.pf-trilha .nv-5.ok .tr-dot,.pf-trilha .nv-5.quase .tr-dot{background:linear-gradient(135deg,#3BC9DB,#9C7CFF,#E879F9)}
+.pf-trilha .nv-6.ok .tr-dot,.pf-trilha .nv-6.quase .tr-dot{background:linear-gradient(135deg,#F43F5E,#F59E0B,#22C55E,#3B82F6,#A855F7)}
+@keyframes pulso{50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 25%,transparent)}}
+.pf-sub{display:flex;align-items:center;justify-content:space-between;font-family:var(--display);font-size:14px;margin:14px 0 8px}
+.pf-sub span{font-size:12px;color:var(--muted);font-family:var(--sans,inherit);font-weight:600}
+.pf-conqs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.cq{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface);position:relative}
+.cq.ok{border-color:color-mix(in srgb,var(--up) 45%,var(--line));background:color-mix(in srgb,var(--up) 6%,var(--surface))}
+.cq-ic{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:color-mix(in srgb,var(--acc) 14%,var(--surface));color:var(--acc)}
+.cq-ic .ic{width:24px;height:24px}
+.cq:not(.ok) .cq-ic{filter:saturate(.55)}
+.cq-tx{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.cq-tx b{font-size:13px;line-height:1.2}.cq-tx small{font-size:11.5px;color:var(--muted);line-height:1.3}
+.cq-bar{height:6px;border-radius:99px;background:var(--sunk);overflow:hidden;margin-top:4px}
+.cq-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#8B5CF6);transform-origin:left;animation:growx .9s var(--ease) both}
+.cq-v{font-weight:600}.cq-v.up{color:var(--up)}
+.cq-ok{position:absolute;top:8px;right:8px;color:var(--up)}.cq-ok .ic{width:18px;height:18px}
+:root{--c-renda_fixa:var(--c-rf)}[data-cl="renda_fixa"]{--cc:var(--c-rf)}
 </style>
 </head>
 <body>
@@ -1059,7 +1158,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
     <section class="band panel" id="sec-escritorio" aria-labelledby="h-esc">
       <div class="panel-head"><h2 id="h-esc">Seu escritório</h2><span class="when" id="esc-when">o humor segue o seu dia</span></div>
       <div id="esc-body"></div>
-      <div class="of-sim" id="esc-sim" role="group" aria-label="Ver outros humores"><span class="hint">Ver como fica:</span><button type="button" data-humor="" aria-pressed="true" title="Hoje de verdade">📍 Hoje</button><button type="button" data-humor="-3" title="Queda forte">😢</button><button type="button" data-humor="-1" title="Queda">😟</button><button type="button" data-humor="0" title="Estável">😌</button><button type="button" data-humor="1" title="Alta">😄</button><button type="button" data-humor="3" title="Alta forte">🤩</button><button type="button" data-tudo aria-pressed="false" title="Mostrar toda a decoração">✨ Ver tudo liberado</button></div>
+      <div class="of-sim" id="esc-sim" role="group" aria-label="Ver outros humores"><span class="hint">Ver como fica:</span><button type="button" data-humor="" aria-pressed="true" title="Hoje de verdade"><i data-ic="map-pin"></i> Hoje</button><button type="button" data-humor="-3" title="Queda forte" aria-label="Queda forte"><i data-ic="smiley-sad"></i></button><button type="button" data-humor="-1" title="Queda" aria-label="Queda"><i data-ic="smiley-nervous"></i></button><button type="button" data-humor="0" title="Estável" aria-label="Estável"><i data-ic="smiley-meh"></i></button><button type="button" data-humor="1" title="Alta" aria-label="Alta"><i data-ic="smiley"></i></button><button type="button" data-humor="3" title="Alta forte" aria-label="Alta forte"><i data-ic="confetti"></i></button><button type="button" data-tudo aria-pressed="false" title="Mostrar toda a decoração"><i data-ic="sparkle"></i> Ver tudo liberado</button></div>
       <div class="of-deco" id="esc-deco"></div>
     </section>
 
@@ -1094,7 +1193,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <form class="conv" id="conv-form"  autocomplete="off">
         <label class="conv-v">Valor<input id="conv-valor" type="text" inputmode="decimal" value="100" aria-label="Valor a converter"></label>
         <label>De<select id="conv-de"></select></label>
-        <button type="button" class="conv-troca" id="conv-troca" aria-label="Inverter moedas" title="Inverter">⇄</button>
+        <button type="button" class="conv-troca" id="conv-troca" aria-label="Inverter moedas" title="Inverter"><i data-ic="arrows-left-right"></i></button>
         <label>Para<select id="conv-para"></select></label>
       </form>
       <div class="conv-res" id="conv-res" aria-live="polite"></div>
@@ -1252,7 +1351,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 <div class="drawer" id="pf-drawer" hidden>
   <div class="drawer-bg" data-pf-close></div>
   <section class="drawer-panel pf-panel" role="dialog" aria-modal="true" aria-labelledby="pf-titulo">
-    <div class="dr-head"><span class="avw" id="pf-av" style="--s:48px" aria-hidden="true"><span class="av">?</span></span><div class="ttl"><h2 id="pf-titulo">Perfil</h2><p id="pf-sub"></p></div><button class="btn ghost sm" type="button" data-pf-close aria-label="Fechar">✕</button></div>
+    <div class="dr-head"><span class="avw" id="pf-av" style="--s:48px" aria-hidden="true"><span class="av">?</span></span><div class="ttl"><h2 id="pf-titulo">Perfil</h2><p id="pf-sub"></p></div><button class="btn ghost sm" type="button" data-pf-close aria-label="Fechar"><i data-ic="x"></i></button></div>
     <div class="dr-body" id="pf-body"></div>
   </section>
 </div>
@@ -1265,7 +1364,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <span class="lg big lg-x" aria-hidden="true"></span>
       <div class="ttl"><h2 id="emp-titulo">Ativo</h2><p id="emp-sub"></p></div>
       <div class="dr-px" id="emp-px"></div>
-      <button class="btn ghost sm" type="button" data-emp-close aria-label="Fechar">✕</button>
+      <button class="btn ghost sm" type="button" data-emp-close aria-label="Fechar"><i data-ic="x"></i></button>
     </div>
     <div class="dr-body" id="emp-body"></div>
   </section>
@@ -1273,7 +1372,8 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
-<script src="escritorio.js?v=3d2"></script>
-<script src="app.js"></script>
+<script src="icones.js?v=2"></script>
+<script src="escritorio.js?v=3d5"></script>
+<script src="app.js?v=20261027c"></script>
 </body>
 </html>

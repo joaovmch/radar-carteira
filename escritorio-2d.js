@@ -3,6 +3,8 @@
    Uso: RadarEscritorio.render(elemento, { pct, valor, cor, emoji, nome, fechado }) */
 (function () {
   "use strict";
+  const ICG = (n, x, y, t, c) => (window.RI ? window.RI.g(n, x, y, t, c) : "");
+  const ICS = (n) => (window.RI ? window.RI.svg(n) : "");
   const S = 30, C = 0.866, ZK = 0.9;          // escala, cos 30°, achatamento da altura
   const X = 12, Y = 10, H = 6.6;               // tamanho da sala (unidades)
   const P = (x, y, z = 0) => [(x - y) * C * S, (x + y) * 0.5 * S - z * S * ZK];
@@ -27,11 +29,11 @@
   const em = (x, y, z, conteudo, cls = "") => { const p = P(x, y, z); return `<g transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="${cls}">${conteudo}</g></g>`; };
 
   const HUMORES = {
-    triste: { titulo: "Dia difícil", frase: "Respira. Queda de um dia não muda uma boa carteira.", emoji: "😢" },
-    preocupado: { titulo: "De olho nos números", frase: "Mercado no vermelho. Nada de decisão no impulso.", emoji: "😟" },
-    tranquilo: { titulo: "Dia tranquilo", frase: "Tudo calmo. Hora de uma partida no videogame.", emoji: "😌" },
-    feliz: { titulo: "Dia bom!", frase: "Carteira no verde. Bora uma sinuca para comemorar.", emoji: "😄" },
-    euforico: { titulo: "Que dia!", frase: "Alta forte! Comemora, mas lembra: longo prazo.", emoji: "🤩" },
+    triste: { titulo: "Dia difícil", frase: "Respira. Queda de um dia não muda uma boa carteira.", ic: "smiley-sad" },
+    preocupado: { titulo: "De olho nos números", frase: "Mercado no vermelho. Nada de decisão no impulso.", ic: "smiley-nervous" },
+    tranquilo: { titulo: "Dia tranquilo", frase: "Tudo calmo. Hora de uma partida no videogame.", ic: "smiley-meh" },
+    feliz: { titulo: "Dia bom!", frase: "Carteira no verde. Bora uma sinuca para comemorar.", ic: "smiley" },
+    euforico: { titulo: "Que dia!", frase: "Alta forte! Comemora, mas lembra: longo prazo.", ic: "confetti" },
   };
   function humorDe(pct, fechado) {
     if (fechado || pct == null || !isFinite(pct)) return "tranquilo";
@@ -65,7 +67,7 @@
       <g class="of-moeda"><circle cx="1.15" cy=".85" r=".07" fill="#FACC15"/></g><g class="of-pulo"><rect x=".35" y="1.18" width=".2" height=".27" rx=".03" fill="#EF4444"/><rect x=".35" y="1.18" width=".2" height=".08" fill="#1D4ED8"/></g>
       <g class="of-inimigo"><ellipse cx="2.4" cy="1.38" rx=".12" ry=".08" fill="#92400E"/></g>`;
     else if (h === "feliz" || h === "euforico") tela = `<rect width="3" height="1.7" fill="#052E16"/><path class="of-tela-linha" d="M.2 1.4 L.7 1.1 L1.1 1.25 L1.6 .8 L2 .95 L2.75 .3" stroke="#4ADE80" stroke-width=".07" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x=".2" y=".42" font-size=".3" font-weight="800" fill="#4ADE80" font-family="system-ui,sans-serif">${h === "euforico" ? "🚀 ALTA FORTE" : "📈 EM ALTA"}</text>`;
+      <text x=".2" y=".42" font-size=".3" font-weight="800" fill="#4ADE80" font-family="system-ui,sans-serif">${h === "euforico" ? "ALTA FORTE" : "EM ALTA"}</text>`;
     else tela = `<rect width="3" height="1.7" fill="#2A0A0A"/><path class="of-tela-linha" d="M.2 .35 L.7 .6 L1.1 .5 L1.6 1 L2 .9 L2.75 1.4" stroke="#F87171" stroke-width=".07" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       <rect y="1.42" width="3" height=".28" fill="#7F1D1D"/><g class="of-letreiro"><text x="3" y="1.63" font-size=".2" fill="#FECACA" font-family="system-ui,sans-serif" font-weight="700">MERCADO EM QUEDA · IBOV ▼ · DÓLAR ▲ · CALMA, É LONGO PRAZO ·</text></g>`;
     return `<g transform="${planoY(2.6, 0.08, 4.5)}">
@@ -91,7 +93,7 @@
   function quadro() {
     return `<g transform="${planoX(0.03, 6.6, 5.0)}">
       <rect x="-.08" y="-.08" width="3.16" height="1.56" rx=".05" fill="#B45309"/><rect width="3" height="1.4" fill="#FEF3C7"/>
-      <text x="1.5" y=".72" font-size=".62" text-anchor="middle">🐂</text>
+      ${ICG("cow:f", 1.5, .5, .6, "#B45309")}
       <text x="1.5" y="1.18" font-size=".2" text-anchor="middle" font-weight="800" fill="#92400E" font-family="system-ui,sans-serif" letter-spacing=".02">BUY &amp; HOLD</text>
     </g>`;
   }
@@ -136,20 +138,20 @@
     const livros = [["#EF4444", 0.22], ["#2457F5", 0.18], ["#F59E0B", 0.25], ["#10B981", 0.2], ["#8B5CF6", 0.22]];
     let x = 10.45; let s = "";
     livros.forEach(([c, w], i) => { s += caixa(x, 0.1, 3.35, w, 0.45, 0.55 + (i % 2) * 0.1, c); x += w + 0.03; });
-    return caixa(10.3, 0.05, 3.2, 1.55, 0.6, 0.12, "#A16207") + s + (trofeu ? em(11.55, 0.35, 3.32, `<text font-size="13" text-anchor="middle">🏆</text>`) : "");
+    return caixa(10.3, 0.05, 3.2, 1.55, 0.6, 0.12, "#A16207") + s + (trofeu ? em(11.55, 0.35, 3.32, ICG("trophy:f", 0, -5, 13, "#F5B400")) : "");
   }
   const DECOR = [
-    { id: "cachorro", nome: "Cachorro", e: "🐶", item: "m_bronze", req: "R$ 1 mil investidos" },
-    { id: "aquario", nome: "Aquário", e: "🐠", item: "m_prata", req: "R$ 10 mil investidos" },
-    { id: "fliperama", nome: "Fliperama", e: "🕹️", item: "m_ouro", req: "R$ 50 mil investidos" },
-    { id: "touro", nome: "Touro de ouro", e: "🐂", item: "m_platina", req: "R$ 100 mil investidos" },
-    { id: "globo", nome: "Globo de festa", e: "🪩", item: "m_diamante", req: "R$ 500 mil investidos" },
-    { id: "cofre", nome: "Cofre de ouro", e: "💰", item: "m_lenda", req: "R$ 1 milhão investido" },
-    { id: "porquinho", nome: "Porquinho", e: "🐷", item: "a_saco", req: "Dividend yield de 6% ou mais" },
-    { id: "neon", nome: "Neon ₿", e: "🟠", item: "a_foguete", req: "Ter cripto na carteira" },
-    { id: "arcoiris", nome: "Neon arco-íris", e: "🌈", item: "a_arcoiris", req: "Diversificação 70 ou mais" },
-    { id: "dardos", nome: "Alvo de dardos", e: "🎯", item: "a_alvo", req: "10 ativos ou mais" },
-    { id: "trofeu", nome: "Troféu", e: "🏆", item: "a_estrela", req: "30 dias no Radar" },
+    { id: "cachorro", nome: "Cachorro", ic: "dog", item: "m_bronze", req: "R$ 1 mil investidos" },
+    { id: "aquario", nome: "Aquário", ic: "fish", item: "m_prata", req: "R$ 10 mil investidos" },
+    { id: "fliperama", nome: "Fliperama", ic: "joystick", item: "m_ouro", req: "R$ 50 mil investidos" },
+    { id: "touro", nome: "Touro de ouro", ic: "cow", item: "m_platina", req: "R$ 100 mil investidos" },
+    { id: "globo", nome: "Globo de festa", ic: "disco-ball", item: "m_diamante", req: "R$ 500 mil investidos" },
+    { id: "cofre", nome: "Cofre de ouro", ic: "vault", item: "m_lenda", req: "R$ 1 milhão investido" },
+    { id: "porquinho", nome: "Porquinho", ic: "piggy-bank", item: "a_saco", req: "Dividend yield de 6% ou mais" },
+    { id: "neon", nome: "Neon ₿", ic: "currency-btc", item: "a_foguete", req: "Ter cripto na carteira" },
+    { id: "arcoiris", nome: "Neon arco-íris", ic: "rainbow", item: "a_arcoiris", req: "Diversificação 70 ou mais" },
+    { id: "dardos", nome: "Alvo de dardos", ic: "target", item: "a_alvo", req: "10 ativos ou mais" },
+    { id: "trofeu", nome: "Troféu", ic: "trophy", item: "a_estrela", req: "30 dias no Radar" },
   ];
   function cachorro(h) {
     const pos = CAO[h];
@@ -173,7 +175,7 @@
       + `<g transform="${planoY(10.85, 2.2, 2.45)}"><rect width=".85" height=".7" rx=".04" fill="#111827"/><g class="of-arcade"><rect x=".1" y=".45" width=".14" height=".14" fill="#22C55E"/><circle cx=".55" cy=".25" r=".07" fill="#FACC15"/><rect x=".6" y=".5" width=".12" height=".08" fill="#F43F5E"/></g><rect y="-.35" width=".85" height=".25" fill="#F472B6"/><text x=".42" y="-.17" font-size=".14" text-anchor="middle" font-weight="900" fill="#FFF" font-family="system-ui,sans-serif">ARCADE</text></g>`;
   }
   function touro() {
-    return caixa(11.0, 8.6, 0, 0.8, 0.8, 0.9, "#E5E7EB") + em(11.4, 9.0, 0.9, `<text class="of-ouro" y="0" font-size="24" text-anchor="middle">🐂</text>`);
+    return caixa(11.0, 8.6, 0, 0.8, 0.8, 0.9, "#E5E7EB") + em(11.4, 9.0, 0.9, `<g class="of-ouro">${ICG("cow:f", 0, -8, 24, "#E0A100")}</g>`);
   }
   function globo(h) {
     const c = P(6, 5, H); const spots = h === "euforico" ? Array.from({ length: 9 }, (_, i) => `<ellipse class="of-spot" cx="${f1(P(2.5 + (i * 2.3) % 7, 3 + (i * 1.7) % 5.5)[0])}" cy="${f1(P(2.5 + (i * 2.3) % 7, 3 + (i * 1.7) % 5.5)[1])}" rx="12" ry="7" fill="${["#F43F5E", "#22D3EE", "#FACC15", "#A855F7"][i % 4]}" style="--d:${(i * 0.3).toFixed(1)}s"/>`).join("") : "";
@@ -208,7 +210,7 @@
     if (h !== "euforico") return "";
     const cores = ["#F43F5E", "#F59E0B", "#22C55E", "#3B82F6", "#A855F7", "#FACC15"];
     return Array.from({ length: 36 }, (_, i) => `<rect class="of-confete" x="${(-270 + ((i * 97) % 560)).toFixed(0)}" y="-200" width="${5 + (i % 3) * 2}" height="${3 + (i % 2) * 3}" rx="1" fill="${cores[i % cores.length]}" style="--d:${((i * 0.29) % 3).toFixed(2)}s;--t:${(2.6 + (i % 5) * 0.4).toFixed(1)}s;--r:${(i % 2 ? 1 : -1) * (200 + (i * 37) % 400)}deg"/>`).join("")
-      + Array.from({ length: 6 }, (_, i) => `<text class="of-confete" x="${-220 + i * 85}" y="-200" font-size="17" style="--d:${(i * 0.6).toFixed(2)}s;--t:${(3.8 + (i % 3) * 0.5).toFixed(1)}s;--r:${(i % 2 ? 1 : -1) * 90}deg">💸</text>`).join("");
+      + Array.from({ length: 6 }, (_, i) => `<g class="of-confete" style="--d:${(i * 0.6).toFixed(2)}s;--t:${(3.8 + (i % 3) * 0.5).toFixed(1)}s;--r:${(i % 2 ? 1 : -1) * 90}deg">${ICG("money:f", -220 + i * 85, -206, 17, "#16A34A")}</g>`).join("");
   }
 
   const LUGAR = { feliz: [7.4, 8.95, 0], euforico: [5.2, 5.6, 0], tranquilo: [1.3, 5.7, 0.86], triste: [1.3, 5.0, 0.86], preocupado: [8.05, 2.55, 0.92] };
@@ -268,7 +270,7 @@
         <g data-r="bracosAtras"></g>
         <g data-r="tronco"><path d="M-11.5 2 Q-12.6 -9 -13.4 -19 Q-13.6 -27.5 -6 -28.5 H6 Q13.6 -27.5 13.4 -19 Q12.6 -9 11.5 2 Q0 5 -11.5 2Z" fill="var(--of-camisa)"/>
           <path d="M-11.5 2 Q0 5 11.5 2 L11.4 -1 Q0 2 -11.4 -1Z" fill="#000" opacity=".12"/>
-          <g data-r="peito"><path d="M-5 -28 q5 5 10 0" stroke="#000" stroke-opacity=".2" stroke-width="1.6" fill="none"/>${o.emoji ? `<text x="0" y="-11" font-size="9.5" text-anchor="middle">${o.emoji}</text>` : ""}</g>
+          <g data-r="peito"><path d="M-5 -28 q5 5 10 0" stroke="#000" stroke-opacity=".2" stroke-width="1.6" fill="none"/>${o.icone ? ICG(o.icone + ":f", 0, -14.5, 9, "rgba(255,255,255,.92)") : ""}</g>
           <path data-r="costasT" d="M0 -27 V0" stroke="#000" stroke-opacity=".08" stroke-width="1.4"/></g>
         <g data-r="cab"><circle cx="-13" cy="1" r="3.1" fill="${PELE2}"/><circle cx="13" cy="1" r="3.1" fill="${PELE2}"/><circle r="13.6" fill="${PELE}"/>
           <g data-r="rosto"><path d="M-14.2 -1 q-.8 -15.5 14.2 -15.5 q15 0 14.2 15.5 q-3 -7.4 -9.6 -8.4 q-3.6 3.8 -11.6 3.2 q-5.8 1 -7.2 5.2z" fill="${CABELO}"/><path d="M-4 -13 q5 -2 9 1" stroke="${CABELO2}" stroke-width="1.6" fill="none" stroke-linecap="round"/>
@@ -289,7 +291,7 @@
       </g></g>
       <g data-r="nuvem"><g class="of-nuvemcab"><ellipse cx="0" cy="0" rx="20" ry="9" fill="#94A3B8"/><ellipse cx="-9" cy="-5" rx="11" ry="9" fill="#94A3B8"/><ellipse cx="8" cy="-6" rx="12" ry="10" fill="#A8B5C7"/>
         ${[-12, -4, 4, 12].map((dx, i) => `<line class="of-chuvinha" x1="${dx}" y1="9" x2="${dx - 2}" y2="16" stroke="#60A5FA" stroke-width="2" stroke-linecap="round" style="--d:${i * 0.18}s"/>`).join("")}</g></g>
-      <g data-r="balao"><path d="M-17 -30 h34 a8 8 0 0 1 8 8 v8 a8 8 0 0 1 -8 8 h-20 l-9 8 l1 -8 h-6 a8 8 0 0 1 -8 -8 v-8 a8 8 0 0 1 8 -8z" fill="#FFF" stroke="#CBD5E1"/><text data-r="balaoT" x="0" y="-12.5" font-size="15" text-anchor="middle">😰</text></g>
+      <g data-r="balao"><path d="M-17 -30 h34 a8 8 0 0 1 8 8 v8 a8 8 0 0 1 -8 8 h-20 l-9 8 l1 -8 h-6 a8 8 0 0 1 -8 -8 v-8 a8 8 0 0 1 8 -8z" fill="#FFF" stroke="#CBD5E1"/><g data-r="balaoT"></g></g>
     </g>`;
   }
 
@@ -359,7 +361,7 @@
     const fl = p.flip || 1, topo = add(add(cabC, base), [0, -34]);
     R.nuvem.style.display = p.nuvem ? "" : "none"; if (p.nuvem) R.nuvem.setAttribute("transform", `translate(${f1(topo[0] * fl)} ${f1(topo[1])})`);
     const b = p.balao || 0; R.balao.style.display = b > 0.01 ? "" : "none";
-    if (b > 0.01) { R.balao.setAttribute("transform", `translate(${f1(cabC[0] * fl + 30)} ${f1(cabC[1] - 6 + 6 * (1 - b))})`); R.balao.setAttribute("opacity", b.toFixed(2)); if (p.balaoT && R.balaoT.textContent !== p.balaoT) R.balaoT.textContent = p.balaoT; }
+    if (b > 0.01) { R.balao.setAttribute("transform", `translate(${f1(cabC[0] * fl + 30)} ${f1(cabC[1] - 6 + 6 * (1 - b))})`); R.balao.setAttribute("opacity", b.toFixed(2)); if (p.balaoT && R.balaoT.dataset.ic !== p.balaoT) { R.balaoT.dataset.ic = p.balaoT; R.balaoT.innerHTML = ICG(p.balaoT, 0, -18, 14, p.balaoT === "chart-line-down" ? "#DC2626" : "#F59E0B"); } }
   }
 
   /* ---------- Poses ---------- */
@@ -460,11 +462,11 @@
         const d = lerpV([29, -31 - tD], [10, -60 + 2 * Math.sin(T * 14)], coca);
         return sentCostas(T, { lean: 0.12 + 0.12 * perto, tilt: 0.06 * perto + 0.05 * Math.sin(tl * 1.7), maos: { e: lerpV([17, -27 - tE], [15, -25], perto), d: lerpV(d, [31, -29], perto * (1 - coca)) } }); }, { vista: "costas", apos: "cadeiraA" }),
       F(3.6, (k, tl, T) => { const cab = janelaT(tl, 0.0, 3.6, 0.45); const sh = Math.sin(T * 9) * 0.12 * cab;
-        return sentCostas(T, { lean: 0.12 - 0.16 * cab, tilt: sh, maos: { e: lerpV([17, -27], [-13, -56], cab), d: lerpV([29, -31], [13, -56], cab) }, balao: janelaT(tl, 0.3, 3.4, 0.3), balaoT: "😰" }); }, { vista: "costas", apos: "cadeiraA" }),
+        return sentCostas(T, { lean: 0.12 - 0.16 * cab, tilt: sh, maos: { e: lerpV([17, -27], [-13, -56], cab), d: lerpV([29, -31], [13, -56], cab) }, balao: janelaT(tl, 0.3, 3.4, 0.3), balaoT: "smiley-nervous" }); }, { vista: "costas", apos: "cadeiraA" }),
       F(1.1, levantarDe((T) => emPe(T), (T) => sentCostas(T)), { ate: CAD_P, vista: "costas", apos: "cadeiraA" }),
       A(0.95, [[6.75, 3.55], [9.5, 3.55], [6.75, 3.55], [8.05, 3.55]], { pensativo: true }),
       F(3.2, (k, tl, T) => { const w = janelaT(tl, 0.1, 3.1, 0.4); const sus = Math.sin(Math.PI * fase(tl, 0.8, 2.2));
-        return emPe(T, { maos: { e: [-13.5, -31], d: lerpV([13.5, -31], [6, -64], w) }, hip: [0, -31 - 1.6 * sus], tilt: 0.14 * w, olhos: sus > 0.6 ? "Z" : "A", boca: BOCA.triste(), sob: "triste", balao: janelaT(tl, 0.6, 2.8), balaoT: "📉" }); }, { vista: "frente" }),
+        return emPe(T, { maos: { e: [-13.5, -31], d: lerpV([13.5, -31], [6, -64], w) }, hip: [0, -31 - 1.6 * sus], tilt: 0.14 * w, olhos: sus > 0.6 ? "Z" : "A", boca: BOCA.triste(), sob: "triste", balao: janelaT(tl, 0.6, 2.8), balaoT: "chart-line-down" }); }, { vista: "frente" }),
       F(1.1, sentarDe(CAD_S, (T) => emPe(T), (T) => sentCostas(T)), { ate: CAD_S, vista: "costas", apos: "cadeiraA" }),
     ] },
     triste: { inicio: POL_S, padrao: { sob: "triste", boca: BOCA.triste(), nuvem: true, lagrima: true }, passos: [
@@ -653,7 +655,7 @@
     const h = humorDe(d.pct, d.fechado); const info = HUMORES[h];
     const v = d.pct == null || !isFinite(d.pct) ? "" : (d.pct > 0 ? "+" : "") + d.pct.toFixed(2).replace(".", ",") + "%";
     const lib = new Set(d.itens || []); const tem = {}; DECOR.forEach((x) => { tem[x.id] = d.tudo || lib.has(x.item); });
-    const chave = [h, d.cor, d.emoji, new Date().getMinutes(), Object.values(tem).join("")].join("|");
+    const chave = [h, d.cor, d.icone, new Date().getMinutes(), Object.values(tem).join("")].join("|");
     if (el.dataset.chave === chave) { const s = el.querySelector(".of-card strong"); if (s && v) s.textContent = v; return h; }
     el.dataset.chave = chave;
     const c = montar(h, d, tem);
@@ -662,9 +664,9 @@
         <defs><radialGradient id="of-luzg"><stop offset="0" stop-color="#FEF3C7" stop-opacity=".55"/><stop offset="1" stop-color="#FEF3C7" stop-opacity="0"/></radialGradient>
         ${["roxo:#818CF8", "verde:#22C55E", "verm:#EF4444"].map((x) => { const [n, c] = x.split(":"); return `<radialGradient id="of-g-${n}"><stop offset="0" stop-color="${c}" stop-opacity=".55"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`; }).join("")}
         <linearGradient id="of-brilho" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF" stop-opacity=".14"/><stop offset=".45" stop-color="#FFF" stop-opacity="0"/></linearGradient></defs>
-        ${c.fundo}${c.objs.map((o) => `<g data-o="${o.id}">${o.svg}</g>`).join("")}<g data-fim></g><g data-rigw>${bonecoSvg({ cor: d.cor, emoji: d.emoji })}</g>${c.topo}
+        ${c.fundo}${c.objs.map((o) => `<g data-o="${o.id}">${o.svg}</g>`).join("")}<g data-fim></g><g data-rigw>${bonecoSvg({ cor: d.cor, icone: d.icone })}</g>${c.topo}
       </svg>
-      <div class="of-card"><span class="of-emo">${info.emoji}</span><div><b>${info.titulo}${d.fechado ? " · mercado fechado" : ""}</b><span>${d.fechado ? "Bolsa fechada hoje. Dia de videogame." : info.frase}</span></div>${v ? `<strong class="${d.pct > 0 ? "up" : d.pct < 0 ? "down" : ""}">${v}</strong>` : ""}</div>
+      <div class="of-card"><span class="of-emo">${ICS(info.ic)}</span><div><b>${info.titulo}${d.fechado ? " · mercado fechado" : ""}</b><span>${d.fechado ? "Bolsa fechada hoje. Dia de videogame." : info.frase}</span></div>${v ? `<strong class="${d.pct > 0 ? "up" : d.pct < 0 ? "down" : ""}">${v}</strong>` : ""}</div>
     </div>`;
     const svg = el.querySelector("svg");
     const objs = c.objs.map((o) => ({ ...o, el: svg.querySelector(`[data-o="${o.id}"]`) }));
