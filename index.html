@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://icons.brapi.dev https://s3-symbol-logo.tradingview.com https://upload.wikimedia.org https://commons.wikimedia.org https://coin-images.coingecko.com https://assets.coingecko.com; connect-src https://urdtzrquiypewetklwxm.supabase.co wss://urdtzrquiypewetklwxm.supabase.co; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://icons.brapi.dev https://s3-symbol-logo.tradingview.com https://upload.wikimedia.org https://commons.wikimedia.org https://coin-images.coingecko.com https://assets.coingecko.com; connect-src https://urdtzrquiypewetklwxm.supabase.co wss://urdtzrquiypewetklwxm.supabase.co https://economia.awesomeapi.com.br; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex,nofollow">
 <title>Radar da Carteira</title>
@@ -313,6 +313,50 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 #f-ticker{text-transform:uppercase;font-family:var(--mono)}
 .form-msg{grid-column:1 / -1;font-size:13px;min-height:1em;margin:0}
 .f-hint{grid-column:1 / -1;font-size:12px;color:var(--muted);margin:-2px 0 0}
+
+/* Conversor de moedas */
+.cb-box{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:center}
+@media (max-width:760px){.cb-box{grid-template-columns:1fr}}
+.cb-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto minmax(0,1.3fr);gap:8px;align-items:end}
+@media (max-width:560px){.cb-form{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}.cb-form label:first-child{grid-column:1 / -1}}
+.cb-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
+.cb-form input,.cb-form select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px;font-size:16px;width:100%;min-width:0;color:var(--fg)}
+.cb-form input{font-family:var(--mono)}
+.cb-troca{border:1px solid var(--line);background:var(--surface);border-radius:10px;width:42px;height:42px;font-size:18px;transition:transform .3s var(--ease),border-color .2s}
+.cb-troca:hover{border-color:var(--accent);transform:rotate(180deg)}
+.cb-res{background:var(--accent-bg);border-radius:14px;padding:14px 16px;min-width:0}
+.cb-val{font-family:var(--mono);font-weight:600;font-size:clamp(22px,4.4vw,32px);line-height:1.15;word-break:break-all}
+.cb-res .hint{margin-top:4px}
+.cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:14px}
+.cb-it{border:1px solid var(--line-2);background:var(--bg);border-radius:10px;padding:8px 10px;text-align:left;display:flex;flex-direction:column;gap:2px;transition:border-color .2s,transform .2s}
+.cb-it:hover{border-color:var(--accent);transform:translateY(-1px)}
+.cb-it span{font-size:12px;color:var(--muted)}
+.cb-it b{font-family:var(--mono);font-size:14px;font-weight:600}
+.cb-it small{font-family:var(--mono);font-size:11.5px}
+
+/* Conversor */
+.conv{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:end}
+@media (max-width:640px){.conv{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}.conv .conv-v{grid-column:1 / -1}}
+.conv label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
+.conv input,.conv select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px;font-size:16px;width:100%;min-width:0;color:var(--fg)}
+.conv input{font-family:var(--mono);font-size:18px;font-weight:600}
+.conv input:focus,.conv select:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-bg);outline:none}
+.conv-troca{border:1px solid var(--line);background:var(--surface);border-radius:999px;width:42px;height:42px;font-size:18px;font-weight:700;color:var(--accent);transition:transform .3s var(--ease),border-color .2s}
+.conv-troca:hover{transform:rotate(180deg);border-color:var(--accent)}
+.conv-res{margin:16px 0 6px}
+.conv-res .de{font-size:14px;color:var(--muted)}
+.conv-res .para{font-family:var(--mono);font-weight:600;font-size:clamp(26px,5vw,38px);line-height:1.15;word-break:break-all}
+.conv-res .tx{font-size:13px;color:var(--muted);margin-top:4px}
+.conv-res .tx b{font-family:var(--mono);color:var(--fg)}
+.conv-iof{display:inline-flex;align-items:center;gap:8px;font-size:13px;margin:4px 0 12px;cursor:pointer}
+.conv-iof input{width:17px;height:17px}
+.conv-tx{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.conv-tx button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:9px 11px;text-align:left;transition:transform .2s,border-color .2s}
+.conv-tx button:hover{transform:translateY(-1px);border-color:var(--accent)}
+.conv-tx button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
+.conv-tx .c{font-size:12px;color:var(--muted)}
+.conv-tx b{font-family:var(--mono);font-size:14.5px;font-weight:600}
+.conv-tx small{font-family:var(--mono);font-size:11.5px}
 
 /* Resumo do dia */
 .dia-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
@@ -666,6 +710,8 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
       <a href="#sec-resumo">Resumo</a>
       <a href="#sec-dia">Hoje</a>
       <a href="#sec-mercado">Mercado</a>
+      <a href="#sec-cambio">Câmbio</a>
+      <a href="#sec-conv">Câmbio</a>
       <a href="#sec-carteira">Carteira</a>
       <a href="#sec-rf">Renda fixa</a>
       <a href="#sec-noticias">Notícias</a>
@@ -748,6 +794,37 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
         </div>
         <div class="kpis" id="kpis"></div>
       </div>
+    </section>
+
+    <!-- 1b. Conversor de moedas -->
+    <section class="band panel" id="sec-cambio" aria-labelledby="h-cambio">
+      <div class="panel-head"><h2 id="h-cambio">Conversor de moedas</h2><span class="when" id="cb-when"></span></div>
+      <div class="cb-box">
+        <div class="cb-form">
+          <label>Valor<input id="cb-valor" type="number" min="0" step="any" inputmode="decimal" value="100"></label>
+          <label>De<select id="cb-de"></select></label>
+          <button type="button" class="cb-troca" id="cb-troca" aria-label="Inverter moedas" title="Inverter">⇄</button>
+          <label>Para<select id="cb-para"></select></label>
+        </div>
+        <div class="cb-res" aria-live="polite"><div class="cb-val" id="cb-res">—</div><div class="hint" id="cb-taxa"></div></div>
+      </div>
+      <div class="cb-grid" id="cb-grid"></div>
+      <p class="rec-src" id="cb-nota">Câmbio comercial, atualizado a cada minuto com a página aberta. Na casa de câmbio ou no cartão internacional o valor sai mais caro: há o spread do banco e IOF (3,5% nas compras no cartão e na compra de moeda em espécie, pela regra atual).</p>
+    </section>
+
+    <!-- 1b. Conversor de moedas -->
+    <section class="band panel" id="sec-conv" aria-labelledby="h-conv">
+      <div class="panel-head"><h2 id="h-conv">Conversor de moedas</h2><span class="when" id="conv-when"></span></div>
+      <form class="conv" id="conv-form"  autocomplete="off">
+        <label class="conv-v">Valor<input id="conv-valor" type="text" inputmode="decimal" value="100" aria-label="Valor a converter"></label>
+        <label>De<select id="conv-de"></select></label>
+        <button type="button" class="conv-troca" id="conv-troca" aria-label="Inverter moedas" title="Inverter">⇄</button>
+        <label>Para<select id="conv-para"></select></label>
+      </form>
+      <div class="conv-res" id="conv-res" aria-live="polite"></div>
+      <label class="conv-iof"><input type="checkbox" id="conv-iof"> Somar o IOF de compras no cartão internacional (3,5%)</label>
+      <div class="conv-tx" id="conv-tx"></div>
+      <p class="rec-src" id="conv-fonte">Câmbio comercial, atualizado a cada minuto com a página aberta (AwesomeAPI). Casas de câmbio e cartões cobram mais: use o dólar turismo como referência para viagem.</p>
     </section>
 
     <!-- 2. Carteira + notícias -->

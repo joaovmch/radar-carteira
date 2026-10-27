@@ -229,18 +229,19 @@
   async function iniciar() {
     prepararEntrada(); prepararAbas();
     await Promise.all([carregarCarteira().then(carregarEmpresas), carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarRF()]);
-    renderAll();
+    renderAll(); atualizarCambio(true);
     if (canal) sb.removeChannel(canal);
     let tCot = null, tAn = null, tEmp = null;
     canal = sb.channel("radar")
       .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes" }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoes(); renderAll(); if (S.emp) cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); }, 2500); })
       .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderDia(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
       .on("postgres_changes", { event: "*", schema: "public", table: "empresas" }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderDia(); renderEmpresas(); }, 4000); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); renderDia(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); renderDia(); renderCambio(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "carteira" }, async () => { await carregarCarteira(); await carregarEmpresas(); renderAll(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "renda_fixa" }, async () => { await carregarRF(); aposRF(); })
       .subscribe();
     abrirPeloEndereco();
+    carregarCambio(true);
   }
   function parar() { if (canal) { sb.removeChannel(canal); canal = null; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
   async function carregarCarteira() {
@@ -297,7 +298,7 @@
     finally { b.disabled = false; b.classList.remove("spin"); }
   });
 
-  function renderAll() { renderStatus(); renderMercado(); renderHero(); renderDia(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); }
+  function renderAll() { renderStatus(); renderMercado(); renderConv(); renderCambio(); renderHero(); renderDia(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); }
   function renderStatus() { $("#last-upd").textContent = S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
 
   /* ---------- Logos ---------- */
@@ -481,6 +482,54 @@
     box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff" }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
     ligarGrafico("hero");
   }
+
+  /* ---------- Conversor de moedas ---------- */
+  const BANDEIRA = { BRL: "🇧🇷", USD: "🇺🇸", EUR: "🇪🇺", GBP: "🇬🇧", ARS: "🇦🇷", CLP: "🇨🇱", UYU: "🇺🇾", PYG: "🇵🇾", MXN: "🇲🇽", CAD: "🇨🇦", AUD: "🇦🇺", CHF: "🇨🇭", JPY: "🇯🇵", CNY: "🇨🇳" };
+  const SIMB = { BRL: "R$", USD: "US$", EUR: "€", GBP: "£", JPY: "¥", CNY: "¥", CHF: "CHF", CAD: "C$", AUD: "A$", ARS: "$", CLP: "$", UYU: "$U", PYG: "₲", MXN: "$" };
+  let cbTs = 0, cbPedindo = false;
+  function cbDados() { return S.painel.cambio || null; }
+  // Valor de 1 unidade em reais
+  function cbReais(c) { const d = cbDados(); if (c === "BRL") return 1; const m = d && ((d.moedas && d.moedas[c]) || (d.cripto && d.cripto[c])); if (m) return Number(m.valor); if (c === "USD" && fx()) return fx(); return null; }
+  // taxa = true: cotação de 1 unidade, com 4 casas (R$ 5,3716)
+  function cbFmt(v, c, taxa) {
+    if (v == null || !isFinite(v)) return "—";
+    const casas = Math.abs(v) >= 1000 ? 2 : Math.abs(v) >= 1 ? (c === "BTC" || c === "ETH" ? 6 : taxa ? 4 : 2) : Math.abs(v) >= 0.01 ? 4 : 8;
+    const n = v.toLocaleString("pt-BR", { minimumFractionDigits: Math.min(2, casas), maximumFractionDigits: casas });
+    return SIMB[c] ? SIMB[c] + " " + n : n + " " + c;
+  }
+  function cbOpcoes() {
+    const d = cbDados() || {}; const sel = [$("#cb-de").value, $("#cb-para").value];
+    const fiat = ["BRL", ...Object.keys(d.moedas || { USD: 1 })], cr = Object.keys(d.cripto || {});
+    const nome = (c) => c === "BRL" ? "Real" : (d.moedas && d.moedas[c] && d.moedas[c].nome) || (d.cripto && d.cripto[c] && d.cripto[c].nome) || c;
+    const html = `<optgroup label="Moedas">${fiat.map((c) => `<option value="${c}">${BANDEIRA[c] || ""} ${c} · ${esc(nome(c))}</option>`).join("")}</optgroup>${cr.length ? `<optgroup label="Criptomoedas">${cr.map((c) => `<option value="${c}">${c} · ${esc(nome(c))}</option>`).join("")}</optgroup>` : ""}`;
+    if ($("#cb-de").dataset.h === html) return;
+    ["#cb-de", "#cb-para"].forEach((id, i) => { const el = $(id); el.innerHTML = html; el.dataset.h = html; el.value = sel[i] && [...el.options].some((o) => o.value === sel[i]) ? sel[i] : i ? "BRL" : "USD"; });
+  }
+  function renderCambio() {
+    const d = cbDados(); cbOpcoes();
+    const de = $("#cb-de").value || "USD", para = $("#cb-para").value || "BRL";
+    const v = Number(String($("#cb-valor").value).replace(",", ".")) || 0;
+    const a = cbReais(de), b = cbReais(para);
+    if (a == null || b == null) { $("#cb-res").textContent = "—"; $("#cb-taxa").textContent = "Carregando cotações…"; return; }
+    const taxa = a / b;
+    $("#cb-res").textContent = cbFmt(v * taxa, para);
+    const info = (c) => { const x = d && ((d.moedas && d.moedas[c]) || (d.cripto && d.cripto[c])); return x && x.varDia != null ? ` (${pct(x.varDia)} ${d.cripto && d.cripto[c] ? "em 24 h" : "hoje"})` : ""; };
+    $("#cb-taxa").textContent = `${cbFmt(v, de)} = ${cbFmt(v * taxa, para)} · 1 ${de} = ${cbFmt(taxa, para, true)}${de !== "BRL" ? info(de) : info(para)}${de !== "BRL" && para !== "BRL" ? ` · 1 ${de} = ${cbFmt(a, "BRL", true)}` : ""}`;
+    const ts = d && (d.atualizadoEm || d._ts);
+    $("#cb-when").textContent = ts ? "Cotação " + ago(ts) : "";
+    const prin = ["USD", "EUR", "GBP", "ARS", "CLP", "UYU", "BTC", "ETH"].filter((c) => cbReais(c) != null);
+    $("#cb-grid").innerHTML = prin.map((c) => { const x = d && ((d.moedas && d.moedas[c]) || (d.cripto && d.cripto[c])); const vd = x && x.varDia; return `<button type="button" class="cb-it" data-cb="${c}"><span>${BANDEIRA[c] || ""} ${c} → BRL</span><b>${esc(cbFmt(cbReais(c), "BRL", true))}</b>${vd != null ? `<small class="${cls(vd)}">${esc(pct(vd))}</small>` : ""}</button>`; }).join("");
+  }
+  async function atualizarCambio(forcar) {
+    if (!S.user || cbPedindo || (!forcar && Date.now() - cbTs < 55000)) return;
+    cbPedindo = true;
+    try { const r = await radar({ acao: "cambio" }); if (r && r.ok && r.dados) { S.painel.cambio = { ...r.dados, _ts: r.dados.atualizadoEm }; cbTs = Date.now(); renderCambio(); } }
+    catch (_) { /* usa o último valor guardado */ } finally { cbPedindo = false; }
+  }
+  ["#cb-valor", "#cb-de", "#cb-para"].forEach((id) => $(id).addEventListener("input", renderCambio));
+  $("#cb-troca").addEventListener("click", () => { const a = $("#cb-de").value; $("#cb-de").value = $("#cb-para").value; $("#cb-para").value = a; renderCambio(); });
+  $("#cb-grid").addEventListener("click", (e) => { const b = e.target.closest("[data-cb]"); if (!b) return; $("#cb-de").value = b.dataset.cb; $("#cb-para").value = "BRL"; renderCambio(); });
+  setInterval(() => { if (S.user && document.visibilityState === "visible") { atualizarCambio(); renderCambio(); } }, 60000);
 
   /* ---------- Resumo do dia ---------- */
   const dataBRparse = (s) => { const m = String(s || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
@@ -1546,6 +1595,85 @@
   });
   let tRfc; $("#rf-comp-valor").addEventListener("input", () => { clearTimeout(tRfc); tRfc = setTimeout(renderRFComp, 150); });
   rfLimparForm();
+
+  /* ---------- Conversor de moedas ---------- */
+  // Cotações em reais: AwesomeAPI direto do navegador (atualiza a cada minuto); se falhar, usa o dólar do
+  // painel e as criptos da tabela de cotações
+  const MOEDAS_CONV = [
+    ["BRL", "Real brasileiro", "R$"], ["USD", "Dólar americano", "US$"], ["USDTUR", "Dólar turismo", "US$"], ["EUR", "Euro", "€"], ["GBP", "Libra esterlina", "£"],
+    ["ARS", "Peso argentino", "AR$"], ["CAD", "Dólar canadense", "C$"], ["AUD", "Dólar australiano", "A$"], ["CHF", "Franco suíço", "CHF"],
+    ["JPY", "Iene japonês", "¥"], ["CNY", "Yuan chinês", "¥"], ["MXN", "Peso mexicano", "MX$"], ["CLP", "Peso chileno", "CLP$"], ["UYU", "Peso uruguaio", "$U"], ["PYG", "Guarani paraguaio", "₲"],
+    ["BTC", "Bitcoin", "₿"], ["ETH", "Ethereum", "Ξ"], ["SOL", "Solana", "SOL"],
+  ];
+  const PAR_API = { USD: "USD-BRL", USDTUR: "USD-BRLT", EUR: "EUR-BRL", GBP: "GBP-BRL", ARS: "ARS-BRL", CAD: "CAD-BRL", AUD: "AUD-BRL", CHF: "CHF-BRL", JPY: "JPY-BRL", CNY: "CNY-BRL", MXN: "MXN-BRL", CLP: "CLP-BRL", UYU: "UYU-BRL", PYG: "PYG-BRL", BTC: "BTC-BRL", ETH: "ETH-BRL", SOL: "SOL-BRL" };
+  const CONV_INFO = Object.fromEntries(MOEDAS_CONV.map(([c, n, s]) => [c, { nome: n, simb: s }]));
+  S.cambio = { itens: {}, em: null, fonte: null };
+  let convUlt = 0, convVis = false;
+  async function carregarCambio(forcar) {
+    if (!forcar && Date.now() - convUlt < 55000) return;
+    convUlt = Date.now();
+    try {
+      const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 10000);
+      const r = await fetch("https://economia.awesomeapi.com.br/json/last/" + Object.values(PAR_API).join(","), { signal: ac.signal }).finally(() => clearTimeout(to));
+      if (!r.ok) throw new Error("http " + r.status);
+      const d = await r.json(); const it = {};
+      Object.entries(PAR_API).forEach(([c, par]) => {
+        const x = d[par.replace("-", "")]; const bid = x && Number(x.bid);
+        if (bid > 0) it[c] = { valor: bid, compra: Number(x.bid), venda: Number(x.ask) || null, varDia: x.pctChange != null ? Number(x.pctChange) : null, em: x.timestamp ? new Date(Number(x.timestamp) * 1000).toISOString() : null };
+      });
+      if (!it.USD) throw new Error("sem dólar");
+      S.cambio = { itens: it, em: new Date().toISOString(), fonte: "AwesomeAPI" };
+    } catch (_) {
+      // Reserva: dólar do painel do mercado e criptos da CoinGecko
+      const it = { ...S.cambio.itens }; const m = S.painel.mercado || {};
+      if (m.dolar && m.dolar.valor && !it.USD) it.USD = { valor: Number(m.dolar.valor), varDia: m.dolar.varDia, em: m.atualizadoEm || m._ts };
+      [["BTC", "BTC-BRL"], ["ETH", "ETH-BRL"], ["SOL", "SOL-BRL"]].forEach(([c, t]) => { const q = S.cotMap[t]; if (q && !it[c]) it[c] = { valor: Number(q.preco), varDia: Number(q.var_dia), em: q.atualizado_em }; });
+      S.cambio = { itens: it, em: S.cambio.em, fonte: S.cambio.fonte || "painel do Radar (pode estar alguns minutos atrasado)" };
+    }
+    renderConv();
+  }
+  const taxaBRL = (c) => c === "BRL" ? 1 : (S.cambio.itens[c] && S.cambio.itens[c].valor) || null;
+  const lerNum = (s) => { s = String(s || "").trim().replace(/\s/g, ""); if (/,/.test(s)) s = s.replace(/\./g, "").replace(",", "."); const n = Number(s); return isFinite(n) ? n : NaN; };
+  const fmtMoeda = (v, c) => { if (v == null || isNaN(v)) return "—"; const a = Math.abs(v); const dec = c === "BTC" || c === "ETH" ? 8 : c === "SOL" ? 6 : a !== 0 && a < 1 ? 6 : a >= 1e5 && ["JPY", "CLP", "PYG", "ARS"].includes(c) ? 0 : 2; return `${CONV_INFO[c].simb} ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: Math.min(2, dec), maximumFractionDigits: dec })}`; };
+  (function montarConv() {
+    const opts = MOEDAS_CONV.map(([c, n]) => `<option value="${c}">${c === "USDTUR" ? "USD turismo" : c} · ${esc(n)}</option>`).join("");
+    $("#conv-de").innerHTML = opts; $("#conv-para").innerHTML = opts;
+    let pref = null; try { pref = JSON.parse(localStorage.getItem("conv") || "null"); } catch (_) { /* sem storage */ }
+    $("#conv-de").value = pref && CONV_INFO[pref.de] ? pref.de : "USD"; $("#conv-para").value = pref && CONV_INFO[pref.para] ? pref.para : "BRL";
+    const salvar = () => { try { localStorage.setItem("conv", JSON.stringify({ de: $("#conv-de").value, para: $("#conv-para").value })); } catch (_) { /* sem storage */ } };
+    ["#conv-valor", "#conv-de", "#conv-para", "#conv-iof"].forEach((sel) => $(sel).addEventListener(sel === "#conv-valor" ? "input" : "change", () => { salvar(); renderConv(); }));
+    $("#conv-form").addEventListener("submit", (e) => e.preventDefault());
+    $("#conv-troca").addEventListener("click", () => { const a = $("#conv-de").value; $("#conv-de").value = $("#conv-para").value; $("#conv-para").value = a; salvar(); renderConv(); });
+    $("#conv-tx").addEventListener("click", (e) => { const b = e.target.closest("[data-moeda]"); if (!b) return; const c = b.dataset.moeda; if ($("#conv-para").value === c) $("#conv-para").value = "BRL"; $("#conv-de").value = c; salvar(); renderConv(); });
+    $("#conv-res").addEventListener("click", (e) => { if (e.target.closest("[data-conv-atualizar]")) carregarCambio(true); });
+    // Atualiza a cada minuto só enquanto o conversor está na tela e a aba está aberta
+    if ("IntersectionObserver" in window) new IntersectionObserver((es) => { convVis = es.some((x) => x.isIntersecting); if (convVis && S.user) carregarCambio(); }).observe($("#sec-conv"));
+    setInterval(() => { if (S.user && convVis && document.visibilityState === "visible") carregarCambio(); }, 60000);
+  })();
+  function renderConv() {
+    const de = $("#conv-de").value, para = $("#conv-para").value, v = lerNum($("#conv-valor").value);
+    const tDe = taxaBRL(de), tPara = taxaBRL(para), iof = $("#conv-iof").checked;
+    let res = "";
+    if (!tDe || !tPara) res = `<p class="skel">${Object.keys(S.cambio.itens).length ? "Cotação indisponível para essa moeda agora." : "Buscando cotações…"}</p>`;
+    else if (isNaN(v)) res = `<p class="skel">Digite um valor, como 100 ou 1.250,50.</p>`;
+    else {
+      let out = v * tDe / tPara;
+      // IOF do cartão: incide sobre a compra em moeda estrangeira paga em reais
+      const comIof = iof && para === "BRL" && de !== "BRL" ? out * 1.035 : iof && de === "BRL" && para !== "BRL" ? out / 1.035 : null;
+      const um = tDe / tPara;
+      const ref = de === "BRL" ? para : de; const x = S.cambio.itens[ref];
+      res = `<div class="de">${esc(fmtMoeda(v, de))} (${esc(CONV_INFO[de].nome)}) =</div>
+        <div class="para">${esc(fmtMoeda(comIof != null ? comIof : out, para))}</div>
+        ${comIof != null ? `<div class="tx">Sem IOF: <b>${esc(fmtMoeda(out, para))}</b> · IOF de 3,5%: <b>${esc(fmtMoeda(Math.abs(comIof - out), para === "BRL" ? "BRL" : para))}</b></div>` : ""}
+        <div class="tx">1 ${de === "USDTUR" ? "USD turismo" : de} = <b>${esc(um >= 0.01 && um < 1000 && !["BTC", "ETH", "SOL"].includes(para) ? CONV_INFO[para].simb + " " + num(um, 4) : fmtMoeda(um, para))}</b>${x && x.varDia != null ? ` · ${esc(CONV_INFO[ref].nome)} <span class="${cls(x.varDia)}">${esc(pct(x.varDia))}</span> hoje` : ""}${x && x.venda && x.compra && ref !== "BTC" && ref !== "ETH" && ref !== "SOL" ? ` · compra ${esc(num(x.compra, 4))} / venda ${esc(num(x.venda, 4))}` : ""}${x && x.em ? ` · cotação de ${esc(new Date(x.em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }))}` : ""} <button type="button" class="btn ghost sm" data-conv-atualizar="1" title="Atualizar agora">↻ atualizar</button></div>`;
+    }
+    $("#conv-res").innerHTML = res;
+    $("#conv-when").textContent = S.cambio.em ? "Atualizado às " + new Date(S.cambio.em).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }) : "";
+    $("#conv-iof").parentElement.hidden = !((de === "BRL") !== (para === "BRL"));
+    const chips = ["USD", "USDTUR", "EUR", "GBP", "ARS", "BTC"].filter((c) => S.cambio.itens[c]);
+    $("#conv-tx").innerHTML = chips.map((c) => { const x = S.cambio.itens[c]; return `<button type="button" data-moeda="${c}" aria-pressed="${de === c}"><span class="c">${esc(CONV_INFO[c].nome)}</span><b>${esc(c === "BTC" ? "R$ " + compacto(x.valor) : brlPx(x.valor).replace(/(,\d{2})$/, "$1"))}</b>${x.varDia != null ? `<small class="${cls(x.varDia)}">${esc(pct(x.varDia))}</small>` : ""}</button>`; }).join("");
+    $("#conv-fonte").textContent = S.cambio.fonte && S.cambio.fonte !== "AwesomeAPI" ? "A fonte em tempo real não respondeu; usando a reserva: " + S.cambio.fonte + "." : "Câmbio comercial, atualizado a cada minuto com a página aberta (AwesomeAPI). Casas de câmbio e cartões cobram mais: use o dólar turismo como referência para viagem.";
+  }
 
   /* Início */
   sb.auth.getSession().then(({ data }) => { if (!data.session && !modoNovaSenha) { $("#auth").hidden = false; setAuthMode(false); } });

@@ -422,7 +422,7 @@ export async function fundamentosTV(ticker: string, bolsa: string | null) {
     ind: { pl: n(v.price_earnings_ttm, 1), pvp: n(v.price_book_fq), dy: n(v.dividends_yield_current), roe: n(v.return_on_equity, 1), margemLiquida: n(v.net_margin, 1), valorMercado: n(v.market_cap_basic, 0) },
   };
 }
-export async function buscarTV(mercado: "america" | "brazil", corpo: unknown) {
+export async function buscarTV(mercado: "america" | "brazil" | "forex", corpo: unknown) {
   const ac = new AbortController();
   const to = setTimeout(() => ac.abort(), 12000);
   try {
