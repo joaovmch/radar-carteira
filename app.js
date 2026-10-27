@@ -484,7 +484,7 @@
   }
 
   /* ---------- Escritório animado ---------- */
-  S.escSim = null;
+  S.escSim = null; S.escTudo = false;
   function diaPct() {
     const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
     if (!S.carteira.length && !rfV) return null;
@@ -498,12 +498,20 @@
     const sim = S.escSim != null;
     const pct = sim ? S.escSim : diaPct();
     const p = S.perfil || {};
-    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", emoji: p.avatar || "", fechado: !sim && !ehUtil(hojeISO()) });
+    if (S.conq === undefined && S.perfil && S.perfilOk) { S.conq = null; carregarConquistas().then(() => { if (S.conq) renderEscritorio(); }); }
+    const itens = (S.conq && S.conq.itens) || [];
+    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", emoji: p.avatar || "", fechado: !sim && !ehUtil(hojeISO()), itens, tudo: S.escTudo });
+    const lib = new Set(itens);
+    $("#esc-deco").innerHTML = `<span class="hint" style="border:0;background:none;padding-left:0">Decoração (libera com as recompensas do perfil):</span>` + window.RadarEscritorio.DECOR.map((x) => {
+      const ok = lib.has(x.item);
+      return `<span class="${ok ? "ok" : "lock"}" title="${esc(x.req)}">${x.e} ${esc(x.nome)}${ok ? " ✓" : ` · ${esc(x.req)}`}</span>`;
+    }).join("");
   }
   $("#esc-sim").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-humor]"); if (!b) return;
+    const b = e.target.closest("[data-humor],[data-tudo]"); if (!b) return;
+    if (b.dataset.tudo != null) { S.escTudo = !S.escTudo; b.setAttribute("aria-pressed", String(S.escTudo)); renderEscritorio(); return; }
     S.escSim = b.dataset.humor === "" ? null : Number(b.dataset.humor);
-    $("#esc-sim").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    $("#esc-sim").querySelectorAll("[data-humor]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     renderEscritorio();
   });
   if ("IntersectionObserver" in window) new IntersectionObserver((es) => es.forEach((x) => $("#esc-body").classList.toggle("of-pausa", !x.isIntersecting))).observe($("#esc-body"));
@@ -1689,7 +1697,7 @@
     { id: "a_medalha", t: "a", nome: "Medalha", e: "🏅", pos: "canto", req: "1 ano no Radar", g: "conq" },
   ];
   const ITEM = Object.fromEntries(ITENS.map((i) => [i.id, i]));
-  S.perfil = null; S.perfilOk = true; S.v2 = true; S.conq = null; S.rk = { escopo: "brasil", cat: "rentabilidade", dados: null, carregando: false };
+  S.perfil = null; S.perfilOk = true; S.v2 = true; S.conq = undefined; S.rk = { escopo: "brasil", cat: "rentabilidade", dados: null, carregando: false };
   const fotoOk = (f) => typeof f === "string" && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(f);
   // Avatar com foto ou emoji, moldura e acessório. tam: px (true = 48)
   const avHtml = (p, tam, o = {}) => {
