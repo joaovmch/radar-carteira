@@ -113,7 +113,7 @@
     ultimo = { humor: h, titulo: info.titulo, pct: d.pct, cor: d.cor, emoji: d.emoji, fechado: !!d.fechado, sim: !!d.sim, ativos: d.ativos || [], tem };
     if (inst && inst.el.isConnected) { inst.atualizar(ultimo); return h; }
     if (!temWebGL()) { usar2d(el, d); return h; }
-    if (!carregando) carregando = import("./escritorio3d.js").then((m) => (mod = m));
+    if (!carregando) carregando = import("./escritorio3d.js?v=20261027-1").then((m) => (mod = m));
     carregando.then(() => {
       const box = el.querySelector(".of-3d"); if (!box) return;
       if (inst && inst.el.isConnected) { inst.atualizar(ultimo); return; }
