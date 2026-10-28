@@ -1,4 +1,4 @@
-# Radar da Carteira
+# Valoriza+ (antes Radar da Carteira)
 
 Painel para acompanhar, num lugar só, ações, FIIs, ETFs e BDRs da B3, ações e ETFs dos EUA (como VOO), criptomoedas e renda fixa, pelo celular ou computador, com login próprio. Funciona sozinho, sem IA: tudo é calculado com regras fixas a partir de fontes públicas.
 

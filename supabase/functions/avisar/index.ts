@@ -17,7 +17,7 @@ const brl = (v: number) => "R$ " + nf.format(v);
 const pct = (v: number) => (v > 0 ? "+" : v < 0 ? "−" : "") + nf.format(Math.abs(v)) + "%";
 
 function conteudo(quando: string, r: any) {
-  if (!r || !r.n) return { title: "Radar da Carteira", body: "Adicione ativos à sua carteira para receber o resumo do dia." };
+  if (!r || !r.n) return { title: "Valoriza+", body: "Adicione ativos à sua carteira para receber o resumo do dia." };
   const dp = Number(r.dia_pct) || 0, drs = Number(r.dia_rs) || 0;
   const seta = dp > 0 ? "📈" : dp < 0 ? "📉" : "➖";
   if (quando === "abre") {

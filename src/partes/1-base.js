@@ -1,4 +1,4 @@
-/* Radar da Carteira: escritório 3D (Three.js).
+/* Valoriza+: escritório 3D (Three.js).
    Fonte. O arquivo publicado (../escritorio3d.js) é gerado por:  node src/build.mjs
    Carregado sob demanda por escritorio.js. */
 import * as THREE from "three";

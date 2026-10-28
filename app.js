@@ -1,4 +1,4 @@
-/* Radar da Carteira: site estático com login e dados no Supabase.
+/* Valoriza+: site estático com login e dados no Supabase.
    Ações, FIIs, ETFs e BDRs da B3 e ações/ETFs dos EUA (convertidos para reais pelo dólar do momento). */
 (function () {
   "use strict";
@@ -252,7 +252,7 @@
       if ((u && u.id) === (S.user && S.user.id)) return;
       S.user = u;
       mostrarApp(!!u);
-      if (u) { esconderConfirmacao(); if (confirmouEmail && !avisouConfirmou) { avisouConfirmou = true; toast("E-mail confirmado. Bem-vindo ao Radar!"); } iniciar(); pushInit(); }
+      if (u) { esconderConfirmacao(); if (confirmouEmail && !avisouConfirmou) { avisouConfirmou = true; toast("E-mail confirmado. Bem-vindo ao Valoriza+!"); } iniciar(); pushInit(); }
       else { fecharEmpresa(); parar(); setAuthMode(false); }
     }, 0);
   });
@@ -1456,7 +1456,7 @@
         <p class="hint" style="margin:10px 0 0">Passe o mouse ou o dedo sobre o gráfico para ver a cotação de cada dia${fora ? " (em dólar)" : ""}. ${ds.min52 != null ? `No último ano variou de ${esc(M(ds.min52))} a ${esc(M(ds.max52))}. ` : ""}${ds.volAnual != null ? `Oscilação anual de ${esc(num(ds.volAnual, 0))}% (${ds.volAnual > 45 ? "bem arriscado" : ds.volAnual > 28 ? "risco médio" : "mais estável"}).` : ""}</p>
       </section>
 
-      ${a ? `<section class="panel" aria-labelledby="emp-sinal"><h3 id="emp-sinal">Sinal do Radar ${sn ? `<span class="pill s-${sn}" style="vertical-align:middle;margin-left:6px">${SINAL[sn]}</span>` : ""}</h3>
+      ${a ? `<section class="panel" aria-labelledby="emp-sinal"><h3 id="emp-sinal">Sinal Valoriza+ ${sn ? `<span class="pill s-${sn}" style="vertical-align:middle;margin-left:6px">${SINAL[sn]}</span>` : ""}</h3>
         <p style="margin:0 0 8px">${esc(a.motivo || "")}</p>${a.indicadores && a.indicadores.fatores ? `<ul class="fat-list">${a.indicadores.fatores.map((x) => `<li><span class="mark ${x.peso > 0 ? "positivo" : x.peso < 0 ? "negativo" : "neutro"}">${x.peso > 0 ? "+" : x.peso < 0 ? "−" : "·"}</span><span>${esc(x.t)}</span></li>`).join("")}</ul>` : ""}
         <p class="hint" style="margin:8px 0 0">Recalculado ${esc(ago(a.atualizado_em))} com o movimento de hoje, tendência de preço, ${fundo ? "" : "analistas, "}indicadores e notícias. Regras fixas, não é recomendação individual.</p></section>` : ""}
 
@@ -1469,7 +1469,7 @@
       <section class="panel" aria-labelledby="emp-rep">
         <h3 id="emp-rep">${fundo ? "Qualidade do fundo" : cripto ? "Avaliação da moeda" : "Reputação"}</h3>
         ${rep.nota != null ? `<div class="rep-top"><div class="dscore${reduz ? "" : " anim"}" style="--p:${Math.round(rep.nota)};--sc:${repCor};width:92px;height:92px"><span><b style="font-size:24px">${Math.round(rep.nota)}</b><small>de 100</small></span></div>
-          <div><div class="h3" style="color:${repCor};margin-bottom:4px">${esc(rep.rotulo || "")}</div><p class="hint" style="margin:0;font-size:13px">${cripto ? "Nota do Radar a partir do tamanho, oscilação, distância da máxima histórica e noticiário." : fundo ? (classe === "fii" ? "Nota do Radar a partir de tamanho, liquidez, preço sobre o patrimônio, rendimentos e noticiário." : "Nota do Radar a partir de tamanho, custo (taxa de administração), oscilação e noticiário.") : "Nota do Radar a partir de governança, solidez, resultados, dividendos e do tom do noticiário. Para ver reclamações de clientes, consulte o Reclame Aqui."}</p></div></div>
+          <div><div class="h3" style="color:${repCor};margin-bottom:4px">${esc(rep.rotulo || "")}</div><p class="hint" style="margin:0;font-size:13px">${cripto ? "Nota do Valoriza+ a partir do tamanho, oscilação, distância da máxima histórica e noticiário." : fundo ? (classe === "fii" ? "Nota do Valoriza+ a partir de tamanho, liquidez, preço sobre o patrimônio, rendimentos e noticiário." : "Nota do Valoriza+ a partir de tamanho, custo (taxa de administração), oscilação e noticiário.") : "Nota do Valoriza+ a partir de governança, solidez, resultados, dividendos e do tom do noticiário. Para ver reclamações de clientes, consulte o Reclame Aqui."}</p></div></div>
           <ul class="rep-it">${(rep.itens || []).map((x) => `<li><span class="mark ${esc(x.efeito)}">${x.efeito === "positivo" ? "+" : x.efeito === "negativo" ? "−" : "·"}</span><span class="ar">${esc(x.area)}</span><span>${esc(x.texto)}</span></li>`).join("")}</ul>` : `<p class="skel">Sem dados suficientes para a nota.</p>`}
         <div class="emp-acts" style="margin-top:12px">
           ${cripto && cx.id && /^[a-z0-9-]+$/.test(cx.id) ? `<a class="btn sm" href="https://www.coingecko.com/pt/moedas/${esc(cx.id)}" target="_blank" rel="noopener noreferrer">CoinGecko</a>` : ""}
@@ -1964,7 +1964,7 @@
       const it = { ...S.cambio.itens }; const m = S.painel.mercado || {};
       if (m.dolar && m.dolar.valor && !it.USD) it.USD = { valor: Number(m.dolar.valor), varDia: m.dolar.varDia, em: m.atualizadoEm || m._ts };
       [["BTC", "BTC-BRL"], ["ETH", "ETH-BRL"], ["SOL", "SOL-BRL"]].forEach(([c, t]) => { const q = S.cotMap[t]; if (q && !it[c]) it[c] = { valor: Number(q.preco), varDia: Number(q.var_dia), em: q.atualizado_em }; });
-      S.cambio = { itens: it, em: S.cambio.em, fonte: S.cambio.fonte || "painel do Radar (pode estar alguns minutos atrasado)" };
+      S.cambio = { itens: it, em: S.cambio.em, fonte: S.cambio.fonte || "painel do Valoriza+ (pode estar alguns minutos atrasado)" };
     }
     renderConv();
   }
@@ -2080,8 +2080,8 @@
     { id: "a_globo", t: "a", nome: "Internacional", ic: "globe-hemisphere-west", c: "#2563EB", pos: "canto", req: "Ter um ativo em dólar", g: "conq" },
     { id: "a_completa", t: "a", nome: "Carteira completa", ic: "puzzle-piece", c: "#7C3AED", pos: "canto", req: "4 classes de ativos, com renda fixa", g: "conq" },
     { id: "a_renda", t: "a", nome: "Renda passiva", ic: "piggy-bank", c: "#DB2777", pos: "canto", req: "R$ 1 mil de proventos em 12 meses", g: "conq" },
-    { id: "a_estrela", t: "a", nome: "Estrela", ic: "star", c: "#EAB308", pos: "canto", req: "30 dias no Radar", g: "conq" },
-    { id: "a_medalha", t: "a", nome: "Medalha", ic: "medal", c: "#CA8A04", pos: "canto", req: "1 ano no Radar", g: "conq" },
+    { id: "a_estrela", t: "a", nome: "Estrela", ic: "star", c: "#EAB308", pos: "canto", req: "30 dias no Valoriza+", g: "conq" },
+    { id: "a_medalha", t: "a", nome: "Medalha", ic: "medal", c: "#CA8A04", pos: "canto", req: "1 ano no Valoriza+", g: "conq" },
   ];
   // O que cada faixa libera também no escritório 3D
   const DECOR_NV = { 1: "Cachorro", 2: "Aquário", 3: "Fliperama", 4: "Touro de ouro", 5: "Globo de festa", 6: "Cofre de ouro" };
@@ -2169,7 +2169,7 @@
     const prox = NIVEIS[nv + 1]; const ini = NIVEIS[nv][1];
     const pctNv = prox ? Math.max(0, Math.min(100, (patr - ini) / (prox[1] - ini) * 100)) : 100;
     const nvServ = S.conq && S.conq.nivel != null ? S.conq.nivel : null;
-    const aviso = !S.v2 ? "" : !S.conq || nvServ == null ? "As recompensas aparecem depois que você entra no ranking (o Radar confere a carteira e a renda fixa a cada 15 minutos)."
+    const aviso = !S.v2 ? "" : !S.conq || nvServ == null ? "As recompensas aparecem depois que você entra no ranking (o Valoriza+ confere a carteira e a renda fixa a cada 15 minutos)."
       : S.conq.verificado || (S.conq.motivos || []).every((x) => /7 dias/.test(x)) ? (nvServ < nv ? `A faixa ${NIVEIS[nv][0]} libera depois de 7 dias seguidos com esse valor investido (regra anti-troll: vale o menor valor da semana).` : "")
       : "Recompensas pausadas: " + (S.conq.motivos || []).filter((x) => !/7 dias/.test(x)).join("; ") + ".";
     const acDe = (n) => ITENS.find((i) => i.t === "a" && i.n === n);
@@ -2250,7 +2250,7 @@
           <label><input type="radio" name="pf-vis" value="publico"${p.visibilidade === "publico" ? " checked" : ""}><span><b>${IC("eye")} Carteira aberta</b>Além do ranking, quem também abre a carteira vê seus ativos e o peso de cada um.</span></label>
         </div>
         <label class="w pf-chk"><input type="checkbox" id="pf-valores"${p.mostrar_valores ? " checked" : ""}> Mostrar valores em reais (patrimônio, proventos e quantidades)</label>
-        <p class="hint w" style="margin:0">A renda fixa entra no seu total investido e na diversificação, mas as aplicações nunca aparecem para os outros. Os números do ranking são calculados pelo Radar.</p>
+        <p class="hint w" style="margin:0">A renda fixa entra no seu total investido e na diversificação, mas as aplicações nunca aparecem para os outros. Os números do ranking são calculados pelo Valoriza+.</p>
       </div></section>
       </div>
       <div class="pf-save"><button class="btn primary" type="submit" id="pf-salvar">${IC("check")} Salvar perfil</button>${S.perfil ? `<button class="btn" type="button" data-ver-perfil="${esc(S.perfil.apelido)}">${IC("eye")} Ver como os outros veem</button>` : ""}<p class="form-msg" id="pf-msg" role="status" aria-live="polite"></p></div>
@@ -2395,7 +2395,7 @@
         ${r.n_ativos ? `<div class="pp-stats">${st("Rentabilidade", `<span class="${cls(r.rent_pct)}">${fmtCat("rentabilidade", r.rent_pct)}</span>`)}${st("Dividend yield", fmtCat("dividendos", r.dy_pct))}${st("Hoje", `<span class="${cls(r.dia_pct)}">${fmtCat("hoje", r.dia_pct)}</span>`)}${st("Diversificação", fmtCat("diversificacao", r.div_score) + "/100")}${st("Ativos", num(r.n_ativos, 0))}${r.patrimonio != null ? st("Patrimônio", brl(r.patrimonio)) : ""}${r.proventos12m != null ? st("Proventos 12m", brl(r.proventos12m)) : ""}</div>
         ${r.motivos && r.motivos.length ? `<p class="hint" style="margin:10px 0 0">Fora do ranking por enquanto: ${esc(r.motivos.join("; "))}.</p>` : ""}
         ${cls2.length ? `<div class="alloc-bar" style="margin-top:12px">${cls2.map(([c, w]) => `<i style="width:${(w * 100).toFixed(1)}%;background:var(--c-${esc(c)})"></i>`).join("")}</div><div class="alloc-leg" style="color:var(--fg)">${cls2.map(([c, w]) => `<span><i style="background:var(--c-${esc(c)})"></i>${esc((CLS[c] || { nome: c }).nome)} <b>${num(w * 100, 0)}%</b></span>`).join("")}</div>` : ""}` : `<p class="skel">Os números aparecem na próxima atualização do ranking (a cada 15 minutos).</p>`}
-        <p class="hint" style="margin:10px 0 0">No Radar desde ${esc(new Date(p.desde).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }))}.</p>
+        <p class="hint" style="margin:10px 0 0">No Valoriza+ desde ${esc(new Date(p.desde).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }))}.</p>
       </section>
       <section class="panel"><h3>Carteira</h3>
         ${cart.length ? `<div class="pp-cart">${cart.map((a) => `<div class="pp-row" data-cl="${esc(a.classe)}">${logoHtml(a.ticker)}<div style="min-width:0"><button type="button" class="tk-btn" data-emp="${esc(a.ticker)}"><span class="tk">${esc(a.ticker)}</span></button> <span class="hint">${esc(nomeBom(a.nome || ""))}</span><div class="bar"><i style="width:${(Number(a.peso) * 100).toFixed(1)}%"></i></div></div><span class="pc">${num(Number(a.peso) * 100, 1)}%</span><span class="pc ${cls(a.resultado)}" title="Resultado sobre o preço médio">${a.resultado != null ? pct(a.resultado) : "—"}</span></div>`).join("")}</div>
@@ -2474,9 +2474,9 @@
           : `<p class="hint rk-meu">Você ainda não aparece aqui${S.rk.cat === "proventos" || S.rk.cat === "patrimonio" ? " (marque “mostrar valores” no perfil)" : " (o ranking é recalculado a cada 15 minutos)"}.</p>`}
         ${resto.length ? `<div class="rk-list">${resto.map((x, i) => `<button type="button" class="rk${x.eu ? " eu" : ""}" data-ver-perfil="${esc(x.apelido)}" style="--i:${i}"><span class="ps">${x.posicao}º</span>${avHtml(x, 40)}<span class="nm"><b>${esc(x.nome || "@" + x.apelido)}${x.eu ? " (você)" : ""}</b><span>${sub(x)}${x.publico ? ` · <i class="tag-ab">carteira aberta</i>` : ""}${x.verificado ? "" : " · não verificado"}</span></span><span class="vl ${corV ? cls(x.valor) : ""}">${esc(fmtCat(S.rk.cat, x.valor))}<small>${num(x.n_ativos, 0)} ativos</small></span><i class="rk-bar" style="--w:${(Math.abs(Number(x.valor) || 0) / maxAbs * 100).toFixed(1)}%"></i></button>`).join("")}</div>` : ""}`;
     }
-    box.innerHTML = topo + `<p class="hint rk-desc">${esc(cat[2][0].toUpperCase() + cat[2].slice(1))}${local ? " · " + esc(local) : ""}. Só perfis verificados pelo Radar.</p>` + corpo + `
+    box.innerHTML = topo + `<p class="hint rk-desc">${esc(cat[2][0].toUpperCase() + cat[2].slice(1))}${local ? " · " + esc(local) : ""}. Só perfis verificados pelo Valoriza+.</p>` + corpo + `
       <details class="fat rk-regras"><summary>Como funciona e regras anti-troll</summary><ul class="fatores">
-        <li><span class="mark neutro">·</span><span>Os números são calculados pelo Radar a partir da carteira e das cotações reais. Ninguém digita a própria rentabilidade.</span></li>
+        <li><span class="mark neutro">·</span><span>Os números são calculados pelo Valoriza+ a partir da carteira e das cotações reais. Ninguém digita a própria rentabilidade.</span></li>
         <li><span class="mark neutro">·</span><span>Preço médio fora do possível (menos de 1/4 da mínima ou mais de 4 vezes a máxima de 52 semanas) não conta na rentabilidade.</span></li>
         <li><span class="mark neutro">·</span><span>Posições criadas ou alteradas hoje não contam no ranking do dia, e as datas são gravadas pelo servidor: não dá para “comprar” a alta depois que ela aconteceu.</span></li>
         <li><span class="mark neutro">·</span><span>Ficam de fora: perfis com menos de 7 dias, menos de 2 ativos ou R$ 100, patrimônio acima de R$ 50 milhões, rentabilidade acima de 500%, mais de 30 alterações na carteira em 24 horas ou 3 denúncias de pessoas diferentes (a foto também some).</span></li>
@@ -2535,7 +2535,7 @@
     const box = $("#nt-body"); if (!box) return;
     if (!pushSuportado()) {
       const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      box.innerHTML = `<div class="nt-hero"><div class="nt-ic">${IC("bell-slash", { cls: "ic" })}</div><h3>Notificações indisponíveis</h3><p class="nt-neg">${ios ? "No iPhone/iPad, toque em Compartilhar → <b>Adicionar à Tela de Início</b> e abra o Radar por lá. Aí as notificações funcionam." : "Este navegador não suporta notificações push, ou a página não está em HTTPS."}</p></div>`;
+      box.innerHTML = `<div class="nt-hero"><div class="nt-ic">${IC("bell-slash", { cls: "ic" })}</div><h3>Notificações indisponíveis</h3><p class="nt-neg">${ios ? "No iPhone/iPad, toque em Compartilhar → <b>Adicionar à Tela de Início</b> e abra o Valoriza+ por lá. Aí as notificações funcionam." : "Este navegador não suporta notificações push, ou a página não está em HTTPS."}</p></div>`;
       return;
     }
     if (Notification.permission === "denied") {

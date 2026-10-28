@@ -1,11 +1,11 @@
 {
-  "name": "Radar da Carteira",
-  "short_name": "Radar",
+  "name": "Valoriza+",
+  "short_name": "Valoriza+",
   "description": "Sua carteira de ações, FIIs, ETFs, EUA, cripto e renda fixa com cotações, notícias e notificações.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0B1220",
+  "background_color": "#0B0F14",
   "theme_color": "#2457F5",
   "lang": "pt-BR",
   "icons": [

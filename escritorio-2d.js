@@ -1,4 +1,4 @@
-/* Radar da Carteira: escritório isométrico animado.
+/* Valoriza+: escritório isométrico animado.
    O humor do boneco segue o resultado do dia da carteira.
    Uso: RadarEscritorio.render(elemento, { pct, valor, cor, emoji, nome, fechado }) */
 (function () {
@@ -151,7 +151,7 @@
     { id: "neon", nome: "Neon ₿", ic: "currency-btc", item: "a_foguete", req: "Ter cripto na carteira" },
     { id: "arcoiris", nome: "Neon arco-íris", ic: "rainbow", item: "a_arcoiris", req: "Diversificação 70 ou mais" },
     { id: "dardos", nome: "Alvo de dardos", ic: "target", item: "a_alvo", req: "10 ativos ou mais" },
-    { id: "trofeu", nome: "Troféu", ic: "trophy", item: "a_estrela", req: "30 dias no Radar" },
+    { id: "trofeu", nome: "Troféu", ic: "trophy", item: "a_estrela", req: "30 dias no Valoriza+" },
   ];
   function cachorro(h) {
     const pos = CAO[h];
