@@ -11,7 +11,7 @@ const REG = ["check", "check-circle", "x", "arrows-left-right", "arrow-clockwise
   "crosshair", "camera", "lock-simple", "lock-simple-open", "trophy", "eye", "confetti", "plant", "smiley-sad", "smiley-nervous", "smiley-meh", "smiley",
   "star", "chart-line-up", "chart-line-down", "coins", "lightning", "chart-pie-slice", "hand-coins", "bank", "globe-hemisphere-west", "shield-check",
   "puzzle-piece", "user-circle", "palette", "t-shirt", "pants", "sneaker", "scissors", "gift", "flag-checkered", "info", "rocket", "medal", "seal-check",
-  "target", "piggy-bank", "image", "trash", "eyedropper", "users-three", "calendar-check", "wallet", "vault", "timer", "currency-btc", "money", "warning", "arrows-out-cardinal", "hand-grabbing", "arrow-counter-clockwise", "ruler", "eye-slash", "barbell", "feather", "cube"];
+  "target", "piggy-bank", "image", "trash", "eyedropper", "users-three", "calendar-check", "wallet", "vault", "timer", "currency-btc", "money", "warning", "arrows-out-cardinal", "hand-grabbing", "arrow-counter-clockwise", "ruler", "eye-slash", "barbell", "feather", "cube", "envelope-simple", "envelope-simple-open", "bell", "bell-ringing", "bell-slash", "clock", "sliders-horizontal", "device-mobile"];
 const COR = ["cat", "dog", "bird", "fish", "horse", "rabbit", "butterfly", "cow", "paw-print", "rocket", "diamond", "plant", "fire", "lightning", "target",
   "brain", "bank", "globe-hemisphere-west", "coffee", "dice-five", "shield", "game-controller", "robot", "alien", "ghost", "crown", "planet", "tree",
   "sun", "moon-stars", "chart-line-up", "piggy-bank", "anchor", "mountains", "flower-lotus", "music-notes", "baseball-cap", "graduation-cap",

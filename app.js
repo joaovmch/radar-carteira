@@ -7,6 +7,11 @@
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyZHR6cnF1aXlwZXdldGtsd3htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0MzYzODksImV4cCI6MjEwODAxMjM4OX0.kd8j09OBpMrUcnKVyYqgFcBLhbOqSfPi3ccmlviAFdo";
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+  // Guarda o que veio na URL do link de e-mail antes de o Supabase limpar (confirmação, erro, recuperação)
+  const urlEntrada = (location.hash || "") + "&" + (location.search || "");
+  const confirmouEmail = /type=signup|type=email(&|$|=)/.test(urlEntrada);
+  const linkExpirado = /error_code=otp_expired|error=access_denied/.test(urlEntrada);
+
   const $ = (s) => document.querySelector(s);
   const S = { user: null, carteira: [], cot: [], cotMap: {}, cotTs: null, analises: {}, painel: {}, empresas: {}, open: null, newsTk: null, confirmDel: null, lim: 50, signup: false, emp: null, fcls: null, exCls: "acao", prevPx: {}, anim: new Set() };
   const reduz = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -151,7 +156,33 @@
     $("#a-msg").textContent = ""; $("#a-reset").hidden = signup;
   }
   const senhaFraca = (s) => s.length < 8 || !/[a-z]/i.test(s) || !/\d/.test(s);
-  let modoNovaSenha = false;
+  let modoNovaSenha = false, avisouConfirmou = false;
+  // Tela de "confira seu e-mail" depois de criar a conta
+  let emailPendente = "";
+  function mostrarConfirmacao(email) {
+    emailPendente = email;
+    $(".ac-ic").innerHTML = IC("envelope-simple-open");
+    $("#ac-email").textContent = email;
+    $("#ac-msg").textContent = "";
+    ["#auth-title", "#auth-sub", "#auth-form"].forEach((s) => { const el = $(s); if (el) el.hidden = true; });
+    const chips = $("#auth .chips-cls"); if (chips) chips.hidden = true;
+    $("#auth-confirm").hidden = false;
+    $("#auth").hidden = false; $("#app").hidden = true;
+  }
+  function esconderConfirmacao() {
+    $("#auth-confirm").hidden = true;
+    ["#auth-title", "#auth-sub", "#auth-form"].forEach((s) => { const el = $(s); if (el) el.hidden = false; });
+    const chips = $("#auth .chips-cls"); if (chips) chips.hidden = false;
+  }
+  $("#ac-back").addEventListener("click", () => { esconderConfirmacao(); setAuthMode(false); });
+  $("#ac-resend").addEventListener("click", async () => {
+    const b = $("#ac-resend"), msg = $("#ac-msg"); if (!emailPendente) return;
+    b.disabled = true; msg.className = "msg"; msg.textContent = "Reenviando…";
+    const { error } = await sb.auth.resend({ type: "signup", email: emailPendente, options: { emailRedirectTo: location.origin + location.pathname } });
+    b.disabled = false;
+    msg.className = error ? "msg down" : "msg";
+    msg.textContent = error ? (/rate|seconds|limit/i.test(error.message || "") ? "Aguarde um minuto antes de reenviar." : "Não foi possível reenviar agora.") : "E-mail reenviado. Confira a caixa de entrada e o spam.";
+  });
   $("#a-toggle").addEventListener("click", () => setAuthMode(!S.signup));
   $("#auth-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -166,7 +197,7 @@
       if (S.signup) {
         const { data, error } = await sb.auth.signUp({ email, password: senha, options: { emailRedirectTo: location.origin + location.pathname } });
         if (error) throw error;
-        if (!data.session) { setAuthMode(false); msg.className = "msg"; msg.textContent = "Conta criada. Confirme pelo link enviado para " + email + " e depois entre aqui."; }
+        if (!data.session) mostrarConfirmacao(email);
       } else {
         const { error } = await sb.auth.signInWithPassword({ email, password: senha });
         if (error) throw error;
@@ -208,7 +239,7 @@
     mostrarApp(!!S.user);
   }
   function mostrarApp(logado) {
-    ["#app", "#btn-sair", "#btn-refresh", "#tabs", "#tape", "#btn-perfil"].forEach((s) => { $(s).hidden = !logado; });
+    ["#app", "#btn-sair", "#btn-refresh", "#tabs", "#tape", "#btn-perfil", "#btn-notif"].forEach((s) => { $(s).hidden = !logado; });
     $("#auth").hidden = logado;
   }
 
@@ -221,7 +252,8 @@
       if ((u && u.id) === (S.user && S.user.id)) return;
       S.user = u;
       mostrarApp(!!u);
-      if (u) iniciar(); else { fecharEmpresa(); parar(); setAuthMode(false); }
+      if (u) { esconderConfirmacao(); if (confirmouEmail && !avisouConfirmou) { avisouConfirmou = true; toast("E-mail confirmado. Bem-vindo ao Radar!"); } iniciar(); pushInit(); }
+      else { fecharEmpresa(); parar(); setAuthMode(false); }
     }, 0);
   });
 
@@ -2457,6 +2489,106 @@
     const c = e.target.closest("[data-rk-cat]"); if (c) { S.rk.cat = c.dataset.rkCat; S.rk.dados = null; renderRanking(); }
   });
 
+  /* ---------- Notificações push ---------- */
+  const VAPID_PUB = "BFmYg43HIsjq5R857GS7uCZOA8n_LPkjwcS7bpFCI8FSuJYtvbffSr0xOB-Rl4MUyhbCNVMWWB1qN-T5QJKW2yw";
+  const pushSuportado = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
+  function b64urlU8(s) { const pad = "=".repeat((4 - (s.length % 4)) % 4); const b = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...b].map((c) => c.charCodeAt(0))); }
+  let swReg = null, pushSub = null; const pushPref = { modo: "abre_fecha", permanente: false };
+  function atualizarSino() { const b = $("#btn-notif"); if (!b) return; b.innerHTML = IC(pushSub ? "bell-ringing" : "bell", { cls: "ic" }); b.classList.toggle("on", !!pushSub); b.title = pushSub ? "Notificações ativadas" : "Notificações"; }
+  async function pushInit() {
+    const b = $("#btn-notif"); if (b) { b.hidden = !S.user; atualizarSino(); }
+    if (!pushSuportado() || !S.user) return;
+    try {
+      swReg = await navigator.serviceWorker.register("sw.js");
+      pushSub = await swReg.pushManager.getSubscription();
+      if (pushSub) { const { data } = await sb.from("push_subs").select("modo,permanente").eq("endpoint", pushSub.endpoint).maybeSingle(); if (data) { pushPref.modo = data.modo; pushPref.permanente = data.permanente; } }
+    } catch (_) { /* sem suporte ou bloqueado */ }
+    atualizarSino();
+  }
+  async function ativarPush() {
+    const msgErr = (t) => { const m = $("#nt-erro"); if (m) { m.textContent = t; m.hidden = false; } };
+    let perm;
+    try { perm = await Notification.requestPermission(); } catch (_) { perm = Notification.permission; }
+    if (perm !== "granted") { renderNotif(); return; }
+    try {
+      swReg = swReg || await navigator.serviceWorker.register("sw.js");
+      await navigator.serviceWorker.ready;
+      pushSub = await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlU8(VAPID_PUB) });
+      const j = pushSub.toJSON();
+      const { error } = await sb.from("push_subs").upsert({ user_id: S.user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: pushPref.modo, permanente: pushPref.permanente }, { onConflict: "endpoint" });
+      if (error) throw error;
+      atualizarSino(); renderNotif(); toast("Notificações ativadas.");
+    } catch (e) { msgErr("Não foi possível ativar agora. Tente de novo em instantes."); }
+  }
+  async function desativarPush() {
+    try { if (pushSub) { const ep = pushSub.endpoint; await pushSub.unsubscribe(); await sb.from("push_subs").delete().eq("endpoint", ep); } } catch (_) { /* segue */ }
+    pushSub = null; atualizarSino(); renderNotif(); toast("Notificações desativadas neste aparelho.");
+  }
+  async function salvarPrefsPush() { if (!pushSub) return; try { await sb.from("push_subs").update({ modo: pushPref.modo, permanente: pushPref.permanente }).eq("endpoint", pushSub.endpoint); } catch (_) { /* tenta na próxima */ } }
+  async function testarPush() {
+    const b = $("#nt-testar"); if (b) { b.disabled = true; b.textContent = "Enviando…"; }
+    const { data, error } = await sb.functions.invoke("avisar", { body: { modo: "teste" } });
+    if (b) { b.disabled = false; b.innerHTML = IC("bell-ringing", { cls: "ic" }) + " Enviar uma agora"; }
+    toast(error ? "Não foi possível enviar o teste." : (data && data.enviados) ? "Enviamos uma notificação de teste." : "Teste enviado. Se não chegar, confira as permissões do navegador.");
+  }
+  function renderNotif() {
+    const box = $("#nt-body"); if (!box) return;
+    if (!pushSuportado()) {
+      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      box.innerHTML = `<div class="nt-hero"><div class="nt-ic">${IC("bell-slash", { cls: "ic" })}</div><h3>Notificações indisponíveis</h3><p class="nt-neg">${ios ? "No iPhone/iPad, toque em Compartilhar → <b>Adicionar à Tela de Início</b> e abra o Radar por lá. Aí as notificações funcionam." : "Este navegador não suporta notificações push, ou a página não está em HTTPS."}</p></div>`;
+      return;
+    }
+    if (Notification.permission === "denied") {
+      box.innerHTML = `<div class="nt-hero"><div class="nt-ic">${IC("bell-slash", { cls: "ic" })}</div><h3>Notificações bloqueadas</h3><p class="nt-neg">Você bloqueou as notificações deste site. Reative no cadeado ao lado do endereço (Permissões → Notificações) e volte aqui.</p></div>`;
+      return;
+    }
+    if (!pushSub) {
+      box.innerHTML = `<div class="nt-hero">
+        <div class="nt-ic">${IC("bell-ringing", { cls: "ic" })}</div>
+        <h3>Acompanhe sem abrir o site</h3>
+        <p>Receba o resumo da sua carteira direto no aparelho: quanto subiu ou caiu no dia e os destaques. Toque na notificação para ver tudo.</p>
+        <button class="btn primary" id="nt-ativar" type="button">${IC("bell", { cls: "ic" })} Ativar notificações</button>
+        <p class="nt-neg" id="nt-erro" hidden style="color:var(--down);margin-top:10px"></p>
+      </div>`;
+      $("#nt-ativar").addEventListener("click", ativarPush);
+      return;
+    }
+    const opt = (v, t, d) => `<label><input type="radio" name="nt-modo" value="${v}" ${pushPref.modo === v ? "checked" : ""}><span class="tx"><b>${t}</b><span>${d}</span></span></label>`;
+    box.innerHTML = `
+      <div class="nt-card">
+        <div class="nt-opt" style="border:0;padding-top:0"><div class="tx"><b>Notificações ligadas neste aparelho</b><span>Você recebe o resumo da carteira mesmo com o site fechado.</span></div>
+          <label class="nt-sw"><input type="checkbox" id="nt-on" checked><i></i></label></div>
+      </div>
+      <div class="nt-card">
+        <b style="display:block;margin-bottom:10px">Quando avisar</b>
+        <div class="nt-radios">
+          ${opt("abre_fecha", "Abertura e fechamento", "Duas por dia útil: de manhã e quando a bolsa fecha.")}
+          ${opt("horario", "Durante o pregão", "A cada 2 horas, das 10h às 16h, nos dias úteis.")}
+        </div>
+      </div>
+      <div class="nt-card">
+        <div class="nt-opt" style="border:0;padding:0"><div class="tx"><b>Notificação fixa</b><span>Fica parada na barra até você tocar (bom para olhar quando quiser). Só no Android/computador.</span></div>
+          <label class="nt-sw"><input type="checkbox" id="nt-perm" ${pushPref.permanente ? "checked" : ""}><i></i></label></div>
+      </div>
+      <div class="nt-foot">
+        <button class="btn" id="nt-testar" type="button">${IC("bell-ringing", { cls: "ic" })} Enviar uma agora</button>
+      </div>`;
+    $("#nt-on").addEventListener("change", desativarPush);
+    $("#nt-perm").addEventListener("change", (e) => { pushPref.permanente = e.target.checked; salvarPrefsPush(); });
+    box.querySelectorAll('input[name="nt-modo"]').forEach((r) => r.addEventListener("change", (e) => { pushPref.modo = e.target.value; salvarPrefsPush(); }));
+    $("#nt-testar").addEventListener("click", testarPush);
+  }
+  const btnNotif = $("#btn-notif");
+  if (btnNotif) btnNotif.addEventListener("click", () => { renderNotif(); $("#notif-drawer").hidden = false; document.body.classList.add("no-scroll"); });
+  function fecharNotif() { const d = $("#notif-drawer"); if (!d || d.hidden) return; d.hidden = true; if ($("#pf-drawer").hidden && $("#emp-drawer").hidden) document.body.classList.remove("no-scroll"); }
+  document.addEventListener("click", (e) => { if (e.target.closest("[data-nt-close]")) fecharNotif(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") fecharNotif(); });
+
   /* Início */
-  sb.auth.getSession().then(({ data }) => { if (!data.session && !modoNovaSenha) { $("#auth").hidden = false; setAuthMode(false); } });
+  sb.auth.getSession().then(({ data }) => {
+    if (!data.session && !modoNovaSenha) {
+      $("#auth").hidden = false; setAuthMode(false);
+      if (linkExpirado) { const m = $("#a-msg"); m.className = "msg down"; m.textContent = "Esse link de confirmação expirou ou já foi usado. Crie a conta de novo ou entre, que reenviamos um novo link."; }
+    }
+  });
 })();

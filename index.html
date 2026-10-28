@@ -9,6 +9,11 @@
 <title>Radar da Carteira</title>
 <meta name="description" content="Sua carteira de ações, FIIs, ETFs, ativos dos EUA, criptomoedas e renda fixa com cotações, notícias, termômetro do mercado, perfil dos ativos, diversificação e recomendações.">
 <meta name="theme-color" content="#2457F5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Radar">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232457F5'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -165,7 +170,43 @@ main{padding-block:22px 80px}
 .field input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-bg);outline:none}
 .auth .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:6px}
 .msg{font-size:13.5px;min-height:1.2em;margin:10px 0 0}
+#auth-confirm{text-align:center}
+#auth-confirm h2{margin:6px 0 8px}
+#auth-confirm p{color:var(--muted);font-size:14px;margin:0 0 10px}
+#auth-confirm .row{justify-content:center;margin-top:14px}
+#auth-confirm .ac-ic{width:64px;height:64px;margin:0 auto 10px;border-radius:50%;background:var(--accent-bg);display:grid;place-items:center;color:var(--accent)}
+#auth-confirm .ac-ic .ic{width:30px;height:30px}
 .chips-cls{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:0 0 18px}
+/* Notificações */
+#btn-notif{position:relative}
+#btn-notif.on::after{content:"";position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:50%;background:var(--up);border:2px solid var(--surface)}
+#btn-notif .ic{width:22px;height:22px}
+.nt-panel{width:min(520px,100%)}
+.nt-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+.nt-hero{text-align:center;padding:18px 16px}
+.nt-hero .nt-ic{width:66px;height:66px;margin:0 auto 10px;border-radius:50%;background:var(--accent-bg);color:var(--accent);display:grid;place-items:center}
+.nt-hero .nt-ic .ic{width:32px;height:32px}
+.nt-hero h3{margin:0 0 6px}
+.nt-hero p{color:var(--muted);font-size:14px;margin:0 0 14px}
+.nt-opt{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.nt-opt:first-child{border-top:0}
+.nt-opt .tx{flex:1;min-width:0}
+.nt-opt .tx b{display:block;font-size:14.5px}
+.nt-opt .tx span{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.nt-radios{display:flex;flex-direction:column;gap:2px}
+.nt-radios label{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;cursor:pointer;transition:border-color .15s,background .15s}
+.nt-radios label:has(input:checked){border-color:var(--accent);background:var(--accent-bg)}
+.nt-radios input{margin-top:3px;accent-color:var(--accent)}
+.nt-radios .tx b{font-size:14px}
+.nt-radios .tx span{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+.nt-sw{position:relative;width:44px;height:26px;flex:0 0 auto;cursor:pointer}
+.nt-sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.nt-sw i{position:absolute;inset:0;background:var(--line);border-radius:99px;transition:background .2s}
+.nt-sw i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+.nt-sw input:checked + i{background:var(--up)}
+.nt-sw input:checked + i::after{transform:translateX(18px)}
+.nt-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.nt-neg{color:var(--muted);font-size:13px;text-align:center;line-height:1.5}
 
 /* ---------- Resumo (hero) ---------- */
 .hero{position:relative;overflow:hidden;border-radius:22px;padding:26px;color:#fff;background:linear-gradient(135deg,var(--hero-a),var(--hero-b));box-shadow:0 16px 40px color-mix(in srgb,var(--hero-a) 30%,transparent);display:grid;gap:22px;grid-template-columns:minmax(0,1fr)}
@@ -1128,6 +1169,7 @@ button .ic,.btn .ic{margin:0}
         <span class="pregao" id="pregao"><span class="dot"></span><span id="pregao-txt">Pregão</span></span>
         <span id="last-upd"></span>
         <button class="icon-btn" id="btn-refresh" type="button" hidden aria-label="Atualizar cotações" title="Atualizar cotações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+        <button class="icon-btn" id="btn-notif" type="button" hidden aria-label="Notificações" title="Notificações"></button>
         <button class="icon-btn" id="btn-tema" type="button" aria-label="Trocar tema claro/escuro" title="Tema claro/escuro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
         <button class="pf-btn" id="btn-perfil" type="button" hidden aria-label="Meu perfil" title="Meu perfil"><span class="avw" id="pf-av-top" style="--s:34px"><span class="av">?</span></span></button>
         <button class="btn ghost sm" id="btn-sair" type="button" hidden>Sair</button>
@@ -1171,6 +1213,17 @@ button .ic,.btn .ic{margin:0}
         <button class="btn ghost" id="a-reset" type="button" style="padding-left:0;margin-top:6px">Esqueci minha senha</button>
         <p class="msg" id="a-msg" role="status"></p>
       </form>
+      <div id="auth-confirm" hidden>
+        <div class="ac-ic" aria-hidden="true"></div>
+        <h2>Confirme seu e-mail</h2>
+        <p>Enviamos um link de confirmação para <b id="ac-email"></b>. Abra o e-mail e toque no botão para ativar sua conta.</p>
+        <p class="hint">Não chegou? Veja o spam ou reenvie. O link vale por 1 hora.</p>
+        <div class="row">
+          <button class="btn primary" id="ac-resend" type="button">Reenviar e-mail</button>
+          <button class="btn ghost" id="ac-back" type="button">Voltar para entrar</button>
+        </div>
+        <p class="msg" id="ac-msg" role="status"></p>
+      </div>
     </div>
   </section>
 
@@ -1403,6 +1456,15 @@ button .ic,.btn .ic{margin:0}
   </section>
 </div>
 
+<!-- Notificações -->
+<div class="drawer" id="notif-drawer" hidden>
+  <div class="drawer-bg" data-nt-close></div>
+  <section class="drawer-panel nt-panel" role="dialog" aria-modal="true" aria-labelledby="nt-titulo">
+    <div class="dr-head"><div class="ttl"><h2 id="nt-titulo">Notificações</h2><p>O resumo da sua carteira no celular ou no computador.</p></div><button class="btn ghost sm" type="button" data-nt-close aria-label="Fechar">✕</button></div>
+    <div class="dr-body" id="nt-body"></div>
+  </section>
+</div>
+
 <!-- Perfil do ativo -->
 <div class="drawer" id="emp-drawer" hidden>
   <div class="drawer-bg" data-emp-close></div>
@@ -1419,8 +1481,8 @@ button .ic,.btn .ic{margin:0}
 
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
-<script src="icones.js?v=4"></script>
+<script src="icones.js?v=5"></script>
 <script src="escritorio.js?v=3d13"></script>
-<script src="app.js?v=20261103s"></script>
+<script src="app.js?v=20261103n"></script>
 </body>
 </html>
