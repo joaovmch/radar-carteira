@@ -931,6 +931,10 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .of-edbar span{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
 .of-edbar button{border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--fg);cursor:pointer}
 .of-edbar button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.of-cores{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;padding:4px 0 2px}.of-cores:empty{display:none}
+.of-cor-l{display:flex;align-items:center;gap:4px}.of-cor-l span{font-size:11.5px;font-weight:700;color:var(--muted);margin-right:2px}
+.of-cor-l button{width:20px;height:20px;padding:0;border-radius:50%;border:2px solid var(--surface);background:var(--c);box-shadow:0 0 0 1px var(--line)}.of-cor-l button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--fg)}
+.of-lite-volta{position:absolute;right:12px;top:12px;z-index:3;border:1px solid var(--line);background:color-mix(in srgb,var(--surface) 86%,transparent);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--fg);cursor:pointer;box-shadow:var(--shadow);display:inline-flex;align-items:center;gap:5px}
 .of-editando .of-dica,.of-editando .of-card{display:none}
 .of-editando .of-canvas{cursor:move}
 .of-deco button{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface);color:var(--fg);cursor:pointer;font:inherit;font-size:12px;transition:transform .2s var(--ease),border-color .2s}
@@ -1038,6 +1042,7 @@ button .ic,.btn .ic{margin:0}
 @media (min-width:561px){.pf-bn-3d{position:sticky;top:8px}}
 .bn-sws{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:4px}
 .bn-sw{width:28px;height:28px;border-radius:50%;border:3px solid var(--surface);background:var(--c);box-shadow:0 0 0 1px var(--line);transition:transform .15s}
+.bn-sw-perfil{display:inline-flex;align-items:center;justify-content:center;color:#fff}.bn-sw-perfil svg{width:15px;height:15px}
 .bn-sw:hover{transform:scale(1.12)}.bn-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--fg);transform:scale(1.08)}
 .bn-seg{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
 .bn-seg button{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600}
@@ -1385,8 +1390,8 @@ button .ic,.btn .ic{margin:0}
 
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
-<script src="icones.js?v=3"></script>
-<script src="escritorio.js?v=3d11"></script>
+<script src="icones.js?v=4"></script>
+<script src="escritorio.js?v=3d12"></script>
 <script src="app.js?v=20261031a"></script>
 </body>
 </html>

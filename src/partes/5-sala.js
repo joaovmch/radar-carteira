@@ -1,5 +1,12 @@
 
 /* ---------- a cena ---------- */
+// paletas da sala (o primeiro é o original); o chão é um tom multiplicado na madeira
+export const CORES_SALA = {
+  chao: ["#FFFFFF", "#9C7356", "#C9C9C9", "#E3B49A", "#B8C4D6", "#6B5D53"],
+  parede: ["#EEF1F6", "#F5EBDD", "#DDE9DD", "#DCE6F2", "#F2DEDE", "#FFF4CC", "#E7DDF2", "#3B4252"],
+  sofa: ["#0F766E", "#1E3A8A", "#7F1D1D", "#374151", "#92400E", "#6D28D9", "#A8A29E", "#166534"],
+  poltrona: ["#B45309", "#1E3A8A", "#7F1D1D", "#374151", "#0F766E", "#BE185D", "#A8A29E", "#CA8A04"],
+};
 export function criar(container, dados) { return new Escritorio(container, dados); }
 
 // caixa orientada (centro, meia largura, giro) para colisão entre móveis e navegação
@@ -66,7 +73,8 @@ class Escritorio {
       ao._overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { if (!o.visible) return; const mt = o.material; if (o.isPoints || o.isLine || o.isSprite || o.isInstancedMesh || (o.isMesh && mt && (mt.transparent || mt.isMeshBasicMaterial || mt.isShadowMaterial))) { o.visible = false; cache.push(o); } }); };
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
       ao.blendIntensity = 1;
-      const ss = ao.setSize.bind(ao); ao.setSize = (w, h) => ss(Math.max(2, w * 0.5 | 0), Math.max(2, h * 0.5 | 0));
+      const forte = (navigator.hardwareConcurrency || 4) >= 8, fr = forte ? 0.75 : 0.5;   // computador forte: oclusão com mais resolução
+      const ss = ao.setSize.bind(ao); ao.setSize = (w, h) => ss(Math.max(2, w * fr | 0), Math.max(2, h * fr | 0));
       c.addPass(ao); c.addPass(new OutputPass());
       this.ao = true;
     } catch (err) { console.warn("Oclusão de ambiente indisponível:", err); this.composer = null; this.ao = false; }
@@ -117,6 +125,7 @@ class Escritorio {
   posicionar(m, x, z, ri) { m.x = x; m.z = z; m.ri = ((ri % 8) + 8) % 8; m.outer.position.set(x, 0, z); m.outer.rotation.y = this.giro(m); }
   layoutAtual() {
     const out = { m: {}, off: [...(this.off || [])].sort() };
+    if (this.cores && Object.keys(this.cores).length) out.c = { ...this.cores };
     for (const id in this.moveis) { const m = this.moveis[id]; if (Math.abs(m.x - m.P[0]) > 0.005 || Math.abs(m.z - m.P[1]) > 0.005 || m.ri) out.m[id] = [Math.round(m.x * 100) / 100, Math.round(m.z * 100) / 100, m.ri]; }
     return out;
   }
@@ -126,8 +135,21 @@ class Escritorio {
     for (const id in this.moveis) { const m = this.moveis[id]; this.posicionar(m, m.P[0], m.P[1], 0); }
     const mv = L.m && typeof L.m === "object" ? L.m : {};
     for (const id in mv) { const m = this.moveis[id], v = mv[id]; if (!m || !Array.isArray(v) || v.length < 3 || !v.every(isFinite)) continue; const [x, z] = this.prender(m, +v[0], +v[1], v[2] | 0); this.posicionar(m, x, z, v[2] | 0); }
+    this.aplicarCores(L.c && typeof L.c === "object" ? L.c : {});
     if (!inicio) this.mudouLayout();
   }
+  // cores do chão, das paredes e dos estofados (índices nas paletas de CORES_SALA)
+  aplicarCores(c) {
+    this.cores = {};
+    for (const parte in CORES_SALA) {
+      const i = Number.isInteger(c[parte]) && c[parte] > 0 && c[parte] < CORES_SALA[parte].length ? c[parte] : 0; if (i) this.cores[parte] = i;
+      const cor = CORES_SALA[parte][i], ms = this.matCores && this.matCores[parte]; if (!ms) continue;
+      if (parte === "chao") ms[0].color.set(cor);
+      else if (parte === "parede") { ms[0].color.set(cor); ms[1].color.set(misturaCor(cor, "#000000", 0.035)); }
+      else { ms[0].color.set(cor); ms[1].color.set(misturaCor(cor, "#FFFFFF", 0.1)); if (ms[2]) ms[2].color.set(misturaCor(cor, "#FFFFFF", 0.28)); ms.forEach((m) => m.sheenColor && m.sheenColor.set(misturaCor(cor, "#FFFFFF", 0.35))); }
+    }
+  }
+  setCorSala(parte, i) { this.aplicarCores({ ...(this.cores || {}), [parte]: i }); this.sujo = true; this.avisarLayout(); }
   // refaz a grade de navegação e o roteiro sempre que um móvel muda
   mudouLayout() {
     const n = this.nav; n.limpar();
@@ -157,7 +179,8 @@ class Escritorio {
     this.hemi = new THREE.HemisphereLight("#E3EBFF", "#B08A64", 0.9); sc.add(this.hemi);
     const k = this.key = new THREE.DirectionalLight("#FFF4E3", 1.8);
     k.position.set(11, 12, 11); k.target.position.set(4, 0, 3.5); sc.add(k, k.target);
-    k.castShadow = true; k.shadow.mapSize.set(2048, 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 6; k.shadow.blurSamples = 12;
+    const forte = !(window.matchMedia && window.matchMedia("(pointer: coarse)").matches) && (navigator.hardwareConcurrency || 4) >= 8;
+    k.castShadow = true; k.shadow.mapSize.set(forte ? 4096 : 2048, forte ? 4096 : 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 6; k.shadow.blurSamples = 12;
     Object.assign(k.shadow.camera, { left: -7.5, right: 7.5, top: 7, bottom: -7, near: 2, far: 40 });
     this.fill = new THREE.DirectionalLight("#CFE0FF", 0.35); this.fill.position.set(-4, 6, 8); sc.add(this.fill);
     // contraluz frio: separa o boneco e os móveis do fundo
@@ -167,9 +190,10 @@ class Escritorio {
     const piso = tela(1024, 1024); this.desenharPiso(piso);
     piso.t.wrapS = piso.t.wrapT = THREE.RepeatWrapping; piso.t.repeat.set(W / 4.5, D / 4.5);
     this.chao = mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: piso.t, roughness: 0.42, metalness: 0 }), sc, W / 2, 0, D / 2, { rx: -PI / 2, cast: false });
+    this.matCores = { chao: [this.chao.material] };
     bloco(sc, M("#8A5A34", { r: 0.8 }), [-T_PAR, -0.22, -T_PAR], [W + 0.05, -0.001, D + 0.05], 0.02, { cast: false });
     bloco(sc, M("#E6E3DD", { r: 0.9 }), [-T_PAR - 0.06, -0.3, -T_PAR - 0.06], [W + 0.11, -0.2, D + 0.11], 0.04, { cast: false });
-    const pFundo = PAR("#EEF1F6"), pEsq = PAR("#E5E9F1"), topo = M("#C9D1DD", { r: 0.9 });
+    const pFundo = PAR("#EEF1F6").clone(), pEsq = PAR("#E5E9F1").clone(), topo = M("#C9D1DD", { r: 0.9 }); this.matCores.parede = [pFundo, pEsq];
     bloco(sc, pFundo, [-T_PAR, 0, -T_PAR], [W, H, 0], 0.005);
     const JZ0 = 0.95, JZ1 = 2.65, JY0 = 0.92, JY1 = 2.38;
     bloco(sc, pEsq, [-T_PAR, 0, 0], [0, H, JZ0], 0.005); bloco(sc, pEsq, [-T_PAR, 0, JZ1], [0, H, D], 0.005);
@@ -230,7 +254,7 @@ class Escritorio {
 
     // sofá (de frente para a TV)
     { const g = this.movel("sofa", [3.2, 3.05], [box(3.2, 3.05, 1.24, 0.47)], { nome: "Sofá" });
-      const sf = TEC("#0F766E"), sf2 = TEC("#14857B"), alm = TEC("#2BB3A3", { rep: [2, 2] });
+      const sf = TEC("#0F766E").clone(), sf2 = TEC("#14857B").clone(), alm = TEC("#2BB3A3", { rep: [2, 2] }).clone(); this.matCores.sofa = [sf, sf2, alm];
       bloco(g, sf, [2.0, 0.08, 2.6], [4.4, 0.42, 3.5], 0.06);
       bloco(g, sf, [2.0, 0.08, 3.22], [4.4, 0.98, 3.52], 0.08);
       bloco(g, sf2, [1.96, 0.08, 2.58], [2.2, 0.66, 3.52], 0.07); bloco(g, sf2, [4.2, 0.08, 2.58], [4.44, 0.66, 3.52], 0.07);
@@ -242,7 +266,7 @@ class Escritorio {
     // poltrona perto da janela
     { const g = this.movel("poltrona", [0.92, 3.2], [box(0.92, 3.2, 0.5, 0.44, PI / 4)], { nome: "Poltrona" });
       const pol = new THREE.Group(); pol.position.set(0.92, 0, 3.2); pol.rotation.y = PI / 4; g.add(pol);
-      const pc = TEC("#B45309"), pc2 = TEC("#D97706");
+      const pc = TEC("#B45309").clone(), pc2 = TEC("#D97706").clone(); this.matCores.poltrona = [pc, pc2];
       bloco(pol, pc, [-0.42, 0.1, -0.36], [0.42, 0.4, 0.4], 0.06); bloco(pol, pc, [-0.42, 0.1, -0.44], [0.42, 1.05, -0.2], 0.08, { rx: 0.1 });
       bloco(pol, pc2, [-0.5, 0.1, -0.4], [-0.32, 0.62, 0.4], 0.07); bloco(pol, pc2, [0.32, 0.1, -0.4], [0.5, 0.62, 0.4], 0.07);
       bloco(pol, M("#F59E0B", { r: 1 }), [-0.32, 0.38, -0.25], [0.32, 0.5, 0.38], 0.05);
@@ -260,9 +284,27 @@ class Escritorio {
       const arm = M("#F8FAFC", { r: 0.5 });
       bloco(g, arm, [0.02, 0, 4.35], [0.58, 0.88, 5.45], 0.02); bloco(g, M("#334155", { r: 0.35 }), [0.0, 0.88, 4.32], [0.62, 0.92, 5.48], 0.01);
       bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.4], [0.585, 0.82, 4.88], 0.004); bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.92], [0.585, 0.82, 5.4], 0.004);
+      // máquina de espresso: corpo, reservatório, cabeça do grupo com porta-filtro, bicos, bandeja e painel com botão aceso
       const cf = new THREE.Group(); cf.position.set(0.24, 0.92, 4.9); g.add(cf);
-      bloco(cf, M("#111827", { r: 0.3, m: 0.3 }), [-0.14, 0, -0.14], [0.14, 0.38, 0.14], 0.03); bloco(cf, M("#D1D5DB", { r: 0.25, m: 0.8 }), [-0.04, 0.24, -0.13], [0.2, 0.34, 0.13], 0.02);
-      bloco(cf, M("#374151", { r: 0.4, m: 0.5 }), [0.06, 0.0, -0.05], [0.2, 0.012, 0.05], 0.004);   // grade da máquina
+      const inox = M("#D1D5DB", { r: 0.2, m: 0.85 }), pretoC = M("#111827", { r: 0.32, m: 0.2 });
+      bloco(cf, pretoC, [-0.14, 0, -0.15], [0.12, 0.43, 0.15], 0.035);
+      bloco(cf, inox, [-0.13, 0.43, -0.14], [0.11, 0.45, 0.14], 0.01);
+      bloco(cf, new THREE.MeshPhysicalMaterial({ color: "#7DD3FC", transparent: true, opacity: 0.38, roughness: 0.05 }), [-0.16, 0.08, -0.12], [-0.12, 0.4, 0.12], 0.015);
+      bloco(cf, inox, [0.04, 0.26, -0.11], [0.2, 0.35, 0.11], 0.025);
+      cil(cf, inox, 0.036, 0.032, 0.035, 0.16, 0.24, 0, { seg: 24 });
+      bloco(cf, pretoC, [0.17, 0.214, -0.012], [0.33, 0.232, 0.012], 0.006, { rz: -0.12 });
+      for (const z of [-0.012, 0.012]) cil(cf, inox, 0.005, 0.0035, 0.03, 0.16, 0.208, z, { seg: 10 });
+      bloco(cf, inox, [0.03, 0.0, -0.11], [0.23, 0.018, 0.11], 0.006);
+      for (let i = 0; i < 6; i++) bloco(cf, M("#4B5563", { r: 0.4, m: 0.6 }), [0.045 + i * 0.03, 0.018, -0.09], [0.055 + i * 0.03, 0.021, 0.09], 0.001);
+      // painel frontal: botão grande (anel de luz), botão de vapor e visor
+      this.anelCafe = new THREE.MeshStandardMaterial({ color: "#F59E0B", emissive: "#F59E0B", emissiveIntensity: 0.6, toneMapped: false });
+      this.btnCafe = cil(cf, M("#F3F4F6", { r: 0.3 }), 0.019, 0.019, 0.012, 0.126, 0.395, 0.075, { rz: PI / 2, seg: 22 });
+      mesh(new THREE.TorusGeometry(0.023, 0.004, 8, 24), this.anelCafe, cf, 0.122, 0.395, 0.075, { ry: PI / 2, cast: false });
+      cil(cf, M("#9CA3AF", { r: 0.3 }), 0.012, 0.012, 0.01, 0.124, 0.395, -0.075, { rz: PI / 2, seg: 18 });
+      const vis = tela(64, 32); vis.g.fillStyle = "#082F49"; vis.g.fillRect(0, 0, 64, 32); vis.g.fillStyle = "#67E8F9"; vis.g.font = "bold 15px monospace"; vis.g.fillText("92°C", 12, 22);
+      mesh(new THREE.PlaneGeometry(0.06, 0.03), new THREE.MeshBasicMaterial({ map: vis.t, toneMapped: false }), cf, 0.1215, 0.395, 0, { ry: PI / 2, cast: false });
+      // jato de café (aparece quando ele aperta o botão)
+      this.jatoCafe = cil(g, new THREE.MeshStandardMaterial({ color: "#4A2511", roughness: 0.2, emissive: "#2A1206", emissiveIntensity: 0.3 }), 0.0035, 0.0035, 1, 0.4, 1.0, 4.9, { cast: false }); this.jatoCafe.visible = false;
       this.vapor = []; for (let i = 0; i < 4; i++) { const v = brilho("#FFFFFF", 0.1, 0.0); v.material.blending = THREE.NormalBlending; v.position.set(0.38, 1.0, 4.9); g.add(v); this.vapor.push(v); }
       for (let i = 0; i < 3; i++) cil(g, M(["#F43F5E", "#FACC15", "#38BDF8"][i]), 0.035, 0.03, 0.08, 0.38, 0.96, 5.2 + i * 0.09); }
     // quadro
@@ -330,9 +372,16 @@ class Escritorio {
       const pkt = M("#0B0B0B", { r: 0.9 });
       this.cacapas = [[sin.x0 + 0.11, sin.z0 + 0.11], [sin.x1 - 0.11, sin.z0 + 0.11], [sin.x0 + 0.11, sin.z1 - 0.11], [sin.x1 - 0.11, sin.z1 - 0.11], [(sin.x0 + sin.x1) / 2, sin.z0 + 0.09], [(sin.x0 + sin.x1) / 2, sin.z1 - 0.09]];
       for (const [x, z] of this.cacapas) cil(g, pkt, 0.055, 0.055, 0.012, x, 0.785, z, { cast: false });
-      const bola = (cor) => esf(g, M(cor, { r: 0.15 }), 0.03, 0, 0, 0, { seg: 20, seg2: 14 });
-      [["#DC2626", 6.25, 3.98], ["#1D4ED8", 6.4, 4.85], ["#111827", 6.95, 3.95], ["#7C3AED", 6.05, 4.15]].forEach(([c, x, z]) => bola(c).position.set(x, 0.81, z));
-      this.bB = bola("#F8FAFC"); this.bA = bola("#FACC15");
+      // bolas numeradas (a 9 é listrada) com física de verdade (4b-sinuca.js)
+      this.mesaSin = new MesaSinuca(this.cacapas); this.bolasM = [];
+      for (let n = 0; n <= 9; n++) {
+        const tx = tela(128, 64), gg = tx.g, cor = SIN_CORES[n];
+        gg.fillStyle = n === 9 ? "#F8FAFC" : cor; gg.fillRect(0, 0, 128, 64); if (n === 9) { gg.fillStyle = cor; gg.fillRect(0, 18, 128, 28); }
+        if (n > 0) for (const cx of [32, 96]) { gg.fillStyle = "#FFFFFF"; gg.beginPath(); gg.ellipse(cx, 32, 9, 12, 0, 0, TAU); gg.fill(); gg.fillStyle = "#111"; gg.font = "bold 15px system-ui"; gg.textAlign = "center"; gg.textBaseline = "middle"; gg.fillText(String(n), cx, 33); }
+        const m = esf(g, new THREE.MeshPhysicalMaterial({ map: tx.t, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05 }), 0.03, 0, 0.81, 0, { seg: 24, seg2: 16 });
+        m.rotation.set(ruido(n) * 6, ruido(n + 3) * 6, 0); this.bolasM.push(m);
+      }
+      this.mesaSin.vista = this.mesaSin.copia(this.mesaSin.bolas); this.mostrarBolas(this.mesaSin.vista, -1);
       this.pendLuz = new THREE.PointLight("#FFE3A8", 0, 3.2, 1.6); this.pendLuz.position.set(6.9, 1.95, 4.4); g.add(this.pendLuz);
       // giz no canto da mesa
       bloco(g, M("#3B82F6", { r: 0.8 }), [8.0, 0.84, 4.95], [8.04, 0.86, 4.99], 0.003); }
@@ -345,14 +394,38 @@ class Escritorio {
     const dec = this.dec = {};
     // fliperama (contra a parede do fundo, entre o painel e a mesa)
     { const g = this.movel("fliperama", [5.29, 0.5], [box(5.29, 0.5, 0.34, 0.42)], { nome: "Fliperama", decor: "fliperama" }); dec.fliperama = this.moveis.fliperama;
-      const s = this.pedaco(g, [8.52, 0.5], [5.29, 0.5]); const fp = M("#7C3AED", { r: 0.5 });
-      bloco(s, fp, [8.18, 0, 0.15], [8.86, 1.8, 0.8], 0.03); bloco(s, M("#1F2937"), [8.2, 0.95, 0.72], [8.84, 1.05, 1.0], 0.02, { rx: 0.15 });
-      this.arcade = tela(128, 128);
-      mesh(new THREE.PlaneGeometry(0.56, 0.46), new THREE.MeshBasicMaterial({ map: this.arcade.t, toneMapped: false }), s, 8.52, 1.3, 0.805, { rx: -0.12, cast: false });
-      bloco(s, new THREE.MeshStandardMaterial({ color: "#F472B6", emissive: "#F472B6", emissiveIntensity: 0.9 }), [8.2, 1.66, 0.6], [8.84, 1.78, 0.81], 0.02);
-      this.joy = new THREE.Group(); this.joy.position.set(8.36, 1.07, 0.88); s.add(this.joy); cil(this.joy, M("#111827"), 0.008, 0.008, 0.07, 0, 0.035, 0); esf(this.joy, M("#EF4444", { r: 0.3 }), 0.025, 0, 0.075, 0);
-      this.botoesArc = [esf(s, M("#FACC15", { r: 0.3 }), 0.02, 8.6, 1.07, 0.9), esf(s, M("#22C55E", { r: 0.3 }), 0.02, 8.68, 1.07, 0.88)];
-      this.arcMao = [new THREE.Object3D(), new THREE.Object3D()]; this.arcMao[0].position.set(8.36, 1.17, 0.9); this.arcMao[1].position.set(8.64, 1.12, 0.9); this.arcMao.forEach((o) => s.add(o));
+      const s = this.pedaco(g, [8.52, 0.5], [5.29, 0.5]);
+      // gabinete clássico: laterais com perfil (painel de controle saliente, tela inclinada, letreiro), filete de neon
+      const corpo = M("#1E1B4B", { r: 0.5 }), lateral = M("#6D28D9", { r: 0.42 }), preto = M("#0B0B12", { r: 0.55 });
+      const neon = new THREE.MeshStandardMaterial({ color: "#22D3EE", emissive: "#22D3EE", emissiveIntensity: 1.8, toneMapped: false });
+      const perfilA = [[0.15, 0], [0.8, 0], [0.8, 0.9], [0.99, 0.98], [0.99, 1.045], [0.8, 1.1], [0.775, 1.2], [0.705, 1.6], [0.77, 1.64], [0.77, 1.86], [0.15, 1.86]];
+      const shp = new THREE.Shape(); perfilA.forEach(([z, y], i) => (i ? shp.lineTo(z, y) : shp.moveTo(z, y))); shp.closePath();
+      for (const x of [8.18, 8.825]) {
+        const ex = new THREE.ExtrudeGeometry(shp, { depth: 0.035, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.005, bevelSegments: 2 }); ex.rotateY(-PI / 2); ex.translate(x + 0.035, 0, 0); mesh(ex, lateral, s);
+        const cam = new THREE.CurvePath(); for (let i = 0; i < perfilA.length; i++) { const a = perfilA[i], b = perfilA[(i + 1) % perfilA.length]; cam.add(new THREE.LineCurve3(V(0, a[1], a[0]), V(0, b[1], b[0]))); }
+        for (const dx of [-0.003, 0.038]) mesh(new THREE.TubeGeometry(cam, 220, 0.005, 6, true), neon, s, x + dx, 0, 0, { cast: false });
+      }
+      bloco(s, corpo, [8.21, 0, 0.16], [8.825, 0.92, 0.79], 0.01); bloco(s, corpo, [8.21, 0.9, 0.16], [8.825, 1.86, 0.64], 0.01);
+      bloco(s, M("#111827", { r: 0.5 }), [8.21, 1.1, 0.6], [8.825, 1.2, 0.79], 0.01);
+      bloco(s, M("#374151", { r: 0.4, m: 0.6 }), [8.39, 0.3, 0.775], [8.65, 0.62, 0.79], 0.01);   // porta das fichas
+      for (const x of [8.46, 8.58]) bloco(s, new THREE.MeshStandardMaterial({ color: "#EF4444", emissive: "#EF4444", emissiveIntensity: 1.4 }), [x - 0.02, 0.5, 0.788], [x + 0.02, 0.56, 0.796], 0.004);
+      const deck = mesh(new RoundedBoxGeometry(0.645, 0.06, 0.25, 2, 0.012), preto, s, 8.5025, 1.025, 0.885, { rx: 0.3 });
+      void deck;
+      // joystick e botões em cima do painel
+      this.joy = new THREE.Group(); this.joy.position.set(8.36, 1.072, 0.9); s.add(this.joy); cil(this.joy, M("#111827", { r: 0.3 }), 0.022, 0.026, 0.008, 0, 0.0, 0); cil(this.joy, M("#9CA3AF", { m: 0.8, r: 0.3 }), 0.006, 0.006, 0.07, 0, 0.035, 0); esf(this.joy, M("#EF4444", { r: 0.25 }), 0.024, 0, 0.075, 0);
+      const corBt = ["#FACC15", "#22C55E", "#38BDF8", "#F43F5E"];
+      this.botoesArc = corBt.map((c, i) => { const bt = cil(s, new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.3 }), 0.018, 0.018, 0.016, 8.56 + (i % 2) * 0.07, 1.07, 0.92 - Math.floor(i / 2) * 0.06 + (i % 2) * 0.008, { rx: 0.3 }); return bt; });
+      this.botoesArc.forEach((bt, i) => { bt.userData.y0 = bt.position.y; mesh(new THREE.TorusGeometry(0.02, 0.003, 6, 18), M("#111827"), s, bt.position.x, bt.position.y - 0.004, bt.position.z, { rx: PI / 2 + 0.3 }); });
+      // tela inclinada com moldura e brilho
+      this.arcade = tela(256, 256); this.arcade.g.scale(2, 2);
+      bloco(s, preto, [8.215, 1.18, 0.64], [8.82, 1.63, 0.735], 0.012, { rx: -0.17 });
+      mesh(new THREE.PlaneGeometry(0.48, 0.38), new THREE.MeshBasicMaterial({ map: this.arcade.t, toneMapped: false }), s, 8.5025, 1.405, 0.748, { rx: -0.17, cast: false });
+      const halo = brilho("#A78BFA", 0.9, 0.22); halo.position.set(8.5, 1.4, 0.95); s.add(halo);
+      // letreiro aceso
+      const mq = tela(256, 64); { const q = mq.g; const gr2 = q.createLinearGradient(0, 0, 256, 0); gr2.addColorStop(0, "#F472B6"); gr2.addColorStop(1, "#A78BFA"); q.fillStyle = gr2; q.fillRect(0, 0, 256, 64); q.fillStyle = "#FFF"; q.font = "bold 30px system-ui"; q.textAlign = "center"; q.shadowColor = "#FFF"; q.shadowBlur = 8; q.fillText("RADAR ARCADE", 128, 43); }
+      mesh(new THREE.PlaneGeometry(0.58, 0.19), new THREE.MeshBasicMaterial({ map: mq.t, toneMapped: false }), s, 8.5025, 1.745, 0.768, { cast: false });
+      bloco(s, preto, [8.21, 1.62, 0.62], [8.825, 1.86, 0.765], 0.008);
+      this.arcMao = [new THREE.Object3D(), new THREE.Object3D()]; this.arcMao[0].position.set(8.36, 1.175, 0.9); this.arcMao[1].position.set(8.6, 1.115, 0.9); this.arcMao.forEach((o) => s.add(o)); this.arcMaoBase = this.arcMao.map((o) => o.position.clone());
       sombra(s); }
     // cofre (na parede da direita, porta virada para a sala)
     { const g = this.movel("cofre", [8.54, 1.63], [box(8.54, 1.63, 0.36, 0.34), box(7.92, 1.12, 0.12, 0.12)], { nome: "Cofre", decor: "cofre" }); dec.cofre = this.moveis.cofre;
@@ -426,7 +499,7 @@ class Escritorio {
       mesh(new THREE.CircleGeometry(0.22, 32), new THREE.MeshStandardMaterial({ map: t.t, roughness: 0.8 }), g, 0.012, 1.75, 5.95, { ry: PI / 2, cast: false });
       this.dardos = [];
       for (let i = 0; i < 3; i++) { const dd = new THREE.Group(); cil(dd, M("#9CA3AF", { m: 0.8, r: 0.3 }), 0.003, 0.001, 0.05, 0, 0.025, 0); cil(dd, M("#1D4ED8"), 0.006, 0.006, 0.08, 0, -0.04, 0); mesh(new THREE.ConeGeometry(0.02, 0.04, 4), M("#FACC15", { ds: true }), dd, 0, -0.09, 0, { rx: PI }); dd.scale.setScalar(1.7); sc.add(dd); dd.visible = false; this.dardos.push(dd); }
-      this.dardosAlvo = [[0.07, 1.77, 5.93], [0.07, 1.7, 6.0], [0.07, 1.78, 6.02]]; }
+      this.dardosAlvo = [[0.07, 1.77, 5.93], [0.07, 1.7, 6.0], [0.07, 1.78, 6.02]]; this.dardosCentro = V(0.012, 1.75, 5.95); }
     // cachorro: objeto à parte (a caminha é o móvel)
 
     // confete
@@ -447,7 +520,13 @@ class Escritorio {
     // objetos que o boneco pega (ficam sempre na cena: ou no lugar deles ou na mão)
     this.itens = {};
     this.itens.controle = this.fazerControle(); sc.add(this.itens.controle);
-    const xi = new THREE.Group(); cil(xi, M("#FFFFFF", { r: 0.3 }), 0.042, 0.036, 0.1, 0, 0.05, 0); cil(xi, M("#6B3E1F", { r: 0.2 }), 0.038, 0.038, 0.004, 0, 0.096, 0); mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 14), M("#FFFFFF"), xi, 0.045, 0.05, 0, {}); sombra(xi, true, false);
+    // xícara com café de verdade: o nível sobe quando enche e desce a cada gole
+    const xi = new THREE.Group(); const porc = M("#FFFFFF", { r: 0.25 });
+    mesh(new THREE.CylinderGeometry(0.042, 0.035, 0.1, 28, 1, true), porc, xi, 0, 0.05, 0); mesh(new THREE.CylinderGeometry(0.039, 0.033, 0.098, 28, 1, true), M("#F1F5F9", { r: 0.3, ds: true }), xi, 0, 0.051, 0);
+    cil(xi, porc, 0.035, 0.035, 0.006, 0, 0.003, 0); mesh(new THREE.TorusGeometry(0.0405, 0.0035, 6, 28), porc, xi, 0, 0.1, 0, { rx: PI / 2 });
+    mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 14), porc, xi, 0.045, 0.05, 0, {});
+    this.cafeLiq = cil(xi, new THREE.MeshStandardMaterial({ color: "#3B1D0B", roughness: 0.15 }), 0.036, 0.036, 0.004, 0, 0.09, 0, { cast: false }); this.cafeLiq.visible = false;
+    sombra(xi, true, false);
     this.itens.xicara = xi; sc.add(xi);
     const nota = new THREE.Mesh(this.notaGeo, this.notaMat); nota.castShadow = true; this.itens.nota = nota; sc.add(nota);
     const maco = new THREE.Group(); for (let i = 0; i < 6; i++) { const n = new THREE.Mesh(this.notaGeo, this.notaMat); n.position.y = i * 0.005; n.rotation.y = (i % 3 - 1) * 0.08; maco.add(n); } sombra(maco, true, false); this.itens.maco = maco; sc.add(maco);

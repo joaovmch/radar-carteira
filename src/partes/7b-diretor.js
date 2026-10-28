@@ -6,7 +6,7 @@ class Diretor {
   replanejar() { this.entrar = true; }
   // item recém-liberado: ele larga o que está fazendo e vai ver
   novidade(id) { if (ITEM_ANIM[id] && !this.novos.includes(id)) { this.novos.push(id); if (!this.e.reduz) this.entrar = true; } }
-  rotina() { return (ROTEIROS[this.h] || ROTEIROS.tranquilo)(this.L, this.e, this.ciclo); }
+  rotina() { return (ROTEIROS[this.h] || ROTEIROS.tranquilo)(this.L, this.e, this.ciclo, (this.ent || 0) + ":" + this.ciclo); }
   // transforma passos em uma fila com tempos e caminhos calculados
   compilar(passos, de, t0, extra = {}) {
     const nav = this.e.nav; let pos = de.slice(); let t = t0; const out = [];
@@ -51,7 +51,7 @@ class Diretor {
   encher() {
     const e = this.e;
     if (this.entrar) {
-      this.entrar = false; this.L = e.lugares();
+      this.entrar = false; this.L = e.lugares(); this.ent = (this.ent || 0) + 1;
       const rt = this.rotina(); this.padrao = rt.padrao;
       const pos = e.posF ? [e.posF.x, e.posF.z, e.posF.y] : rt.inicio.slice();
       const snap = this.ultimaPose ? { ...this.ultimaPose } : null;
@@ -89,7 +89,7 @@ class Diretor {
       return;
     }
     this.ultimoBloco = "rotina";
-    this.anexar(this.compilar(rt.passos, rt.inicio, t0));
+    this.anexar(this.compilar(rt.passos, rt.deAtual ? de : rt.inicio, t0));
     this.ciclo++;
   }
   anexar(c) { this.fila.push(...c.out); }

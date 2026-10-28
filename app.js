@@ -1785,17 +1785,26 @@
   const avKey = (v) => !v ? "" : AV_IC[v] ? v : AV_ANTIGO[v] || "";
   const CORES = ["#2457F5", "#7C3AED", "#DB2777", "#E11D48", "#EA580C", "#CA8A04", "#16A34A", "#0F9D8A", "#0891B2", "#475569", "#111827", "#9333EA"];
   const CAPAS = [["cor", "Sua cor"], ["aurora", "Aurora"], ["oceano", "Oceano"], ["solar", "Pôr do sol"], ["floresta", "Floresta"], ["noite", "Noite"], ["grafite", "Grafite"], ["neon", "Neon"], ["ouro", "Ouro"]];
-  // Boneco do escritório: p pele, c cabelo, k corte, b barba, l calça, o óculos, a altura, w corpo, r roupa, e calça/bermuda, s tênis (ex.: p1c0k1b0l0o0a2w2r0e0s0)
+  // Boneco do escritório: uma letra por opção e um caractere de valor (0-9, depois a-z), ex.: p1c0k1b0l0o0a2w2r0e0s0
+  // p pele, c cabelo, k corte, b barba, l calça, o óculos, a altura, w corpo, r roupa, e parte de baixo, s cor do calçado,
+  // u cor da roupa, f calçado, h acessório de cabeça, j extra, i olhos
   const BONECO = {
-    p: ["#F6D3B3", "#F2C3A0", "#D9A27A", "#B07850", "#7A4E33", "#4F3123"], c: ["#2B1B12", "#3B261B", "#6B4226", "#A86B3C", "#D9B26A", "#EFDDB0", "#8E8E8E", "#B33A2A", "#2F4FC0", "#D9568E"],
-    k: ["Topete", "Curto", "Raspado", "Comprido", "Cacheado", "Black power", "Coque", "Moicano", "Rabo de cavalo", "Careca"], b: ["Sem barba", "Cavanhaque", "Barba cheia", "Bigode"],
-    l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB", "#6F86B5"], o: ["Sem óculos", "Óculos"],
+    p: ["#F6D3B3", "#F2C3A0", "#D9A27A", "#B07850", "#7A4E33", "#4F3123", "#FFE3CC", "#3A2218"],
+    c: ["#2B1B12", "#3B261B", "#6B4226", "#A86B3C", "#D9B26A", "#EFDDB0", "#8E8E8E", "#B33A2A", "#2F4FC0", "#D9568E", "#121212", "#E8E8E8", "#C4552B", "#7C4BC7"],
+    k: ["Topete", "Curto", "Raspado", "Comprido", "Cacheado", "Black power", "Coque", "Moicano", "Rabo de cavalo", "Careca", "Lateral", "Franja", "Ondulado", "Espetado", "Undercut", "Tranças", "Chanel"],
+    b: ["Sem barba", "Cavanhaque", "Barba cheia", "Bigode", "Barba rala", "Lenhador"],
+    l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB", "#6F86B5", "#111318", "#A0643A", "#7F1D1D", "#9CA3AF"], o: ["Sem óculos", "Redondo", "Quadrado"],
     a: ["Bem baixo", "Baixo", "Médio", "Alto", "Bem alto"], w: ["Magro", "Esguio", "Médio", "Forte", "Grandão"],
-    r: ["Polo", "Camiseta", "Moletom", "Social", "Jaqueta", "Regata", "Terno", "Blazer", "Xadrez", "Havaiana"], e: ["Calça", "Bermuda"], s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB"],
+    r: ["Polo", "Camiseta", "Moletom", "Social", "Jaqueta", "Regata", "Terno", "Blazer", "Xadrez", "Havaiana", "Agasalho", "Camisa", "Colete", "Suéter", "Listrada", "Jeans", "Time", "Vestido"],
+    e: ["Calça", "Bermuda", "Saia", "Jogger", "Shorts"], s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB", "#16A34A", "#F59E0B", "#7C3AED", "#EC4899", "#0EA5E9"],
+    u: [null, "#F8FAFC", "#111827", "#DC2626", "#EA580C", "#FACC15", "#16A34A", "#0D9488", "#2563EB", "#7C3AED", "#DB2777", "#92400E", "#6B7280", "#0F766E"],
+    f: ["Tênis", "Cano alto", "Sapato", "Bota", "Corrida"], h: ["Nenhum", "Fone", "Gorro", "Faixa", "Laço", "Boné virado"],
+    j: ["Nenhum", "Relógio", "Colar", "Brincos", "Relógio e colar", "Mochila"], i: ["#3A2214", "#140C08", "#2F6FB5", "#3E7A3A", "#8A6A2F", "#5E6E7A"],
   };
-  const BN_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0 };
-  const bonecoLer = (v) => { const r = { ...BN_PAD }; String(v || "").replace(/([pckbloawres])(\d)/g, (_, k, d) => { if (BONECO[k][+d] != null) r[k] = +d; }); return r; };
-  const bonecoTxt = (o) => "pckbloawres".split("").map((k) => k + (o[k] ?? BN_PAD[k])).join("");
+  const BN_CH = "pckbloawresufhji";
+  const BN_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0, u: 0, f: 0, h: 0, j: 0, i: 0 };
+  const bonecoLer = (v) => { const r = { ...BN_PAD }; String(v || "").replace(/([pckbloawresufhji])([0-9a-z])/g, (_, k, d) => { const n = parseInt(d, 36); if (BONECO[k] && n < BONECO[k].length) r[k] = n; }); return r; };
+  const bonecoTxt = (o) => BN_CH.split("").map((k) => k + (o[k] ?? BN_PAD[k]).toString(36)).join("");
   const bonecoLocal = () => { try { return localStorage.getItem("radar-boneco") || ""; } catch (_) { return ""; } };
   const CATS = [["rentabilidade", "Rentabilidade", "resultado sobre o preço médio", "chart-line-up"], ["dividendos", "Dividendos", "dividend yield de 12 meses", "coins"], ["hoje", "Hoje", "variação do dia", "lightning"], ["diversificacao", "Diversificação", "nota de 0 a 100", "chart-pie-slice"], ["proventos", "Proventos", "proventos em reais, só de quem mostra valores", "hand-coins"], ["patrimonio", "Patrimônio", "só de quem mostra valores", "bank"]];
   const ESCOPOS = [["cidade", "Minha cidade"], ["estado", "Meu estado"], ["brasil", "Brasil"], ["mundo", "Mundo"]];
@@ -1922,7 +1931,8 @@
     const acDe = (n) => ITENS.find((i) => i.t === "a" && i.n === n);
     const conqs = ITENS.filter((i) => i.g === "conq");
     const nConq = conqs.filter((i) => lib.has(i.id)).length;
-    const sw = (k, cor, i) => `<button type="button" class="bn-sw" data-bn="${k}" data-v="${i}" style="--c:${cor}" aria-pressed="${pend.boneco[k] === i}" aria-label="${{ p: "Tom de pele", c: "Cor do cabelo", l: "Cor da calça", s: "Cor do tênis" }[k]} ${i + 1}"></button>`;
+    const sw = (k, cor, i) => cor ? `<button type="button" class="bn-sw" data-bn="${k}" data-v="${i}" style="--c:${cor}" aria-pressed="${pend.boneco[k] === i}" aria-label="${{ p: "Tom de pele", c: "Cor do cabelo", l: "Cor da calça", s: "Cor do calçado", u: "Cor da roupa", i: "Cor dos olhos" }[k]} ${i + 1}"></button>`
+      : `<button type="button" class="bn-sw bn-sw-perfil" data-bn="${k}" data-v="${i}" style="--c:${esc(pend.cor)}" aria-pressed="${pend.boneco[k] === i}" aria-label="Cor do perfil" title="Cor do perfil">${IC("user-circle")}</button>`;
     const seg = (k) => BONECO[k].map((n, i) => `<button type="button" data-bn="${k}" data-v="${i}" aria-pressed="${pend.boneco[k] === i}">${esc(n)}</button>`).join("");
     $("#pf-body").innerHTML = `<form id="pf-form" class="pf-ed" autocomplete="off" novalidate>
       <div class="seg pf-tabs" role="tablist" aria-label="Partes do perfil"><button type="button" role="tab" id="pft-perfil" data-pftab="perfil" aria-controls="pfs-perfil" aria-selected="true">${IC("user-circle")} Perfil</button><button type="button" role="tab" id="pft-boneco" data-pftab="boneco" aria-controls="pfs-boneco" aria-selected="false">${IC("t-shirt")} Boneco</button></div>
@@ -1944,16 +1954,20 @@
           <div class="pf-bn-3d" id="pf-bn-3d" aria-label="Prévia do boneco"></div>
           <div class="pf-bn-op">
             <span class="label">Pele</span><div class="bn-sws">${BONECO.p.map((c, i) => sw("p", c, i)).join("")}</div>
+            <span class="label">Olhos</span><div class="bn-sws">${BONECO.i.map((c, i) => sw("i", c, i)).join("")}</div>
             <span class="label">Altura</span><div class="bn-seg">${seg("a")}</div>
             <span class="label">Corpo</span><div class="bn-seg">${seg("w")}</div>
             <span class="label">Cabelo</span><div class="bn-sws">${BONECO.c.map((c, i) => sw("c", c, i)).join("")}</div>
             <span class="label">Corte</span><div class="bn-seg">${seg("k")}</div>
             <span class="label">Barba</span><div class="bn-seg">${seg("b")}</div>
             <span class="label">Roupa</span><div class="bn-seg">${seg("r")}</div>
-            <span class="label">Calça ou bermuda</span><div class="bn-seg">${seg("e")}</div><div class="bn-sws">${BONECO.l.map((c, i) => sw("l", c, i)).join("")}</div>
-            <span class="label">Tênis</span><div class="bn-sws">${BONECO.s.map((c, i) => sw("s", c, i)).join("")}</div>
+            <span class="label">Cor da roupa</span><div class="bn-sws">${BONECO.u.map((c, i) => sw("u", c, i)).join("")}</div>
+            <span class="label">Parte de baixo</span><div class="bn-seg">${seg("e")}</div><div class="bn-sws">${BONECO.l.map((c, i) => sw("l", c, i)).join("")}</div>
+            <span class="label">Calçado</span><div class="bn-seg">${seg("f")}</div><div class="bn-sws">${BONECO.s.map((c, i) => sw("s", c, i)).join("")}</div>
             <span class="label">Óculos</span><div class="bn-seg">${seg("o")}</div>
-            <p class="hint" style="margin:6px 0 0">A roupa usa a cor do perfil (na social e no terno, é a gravata; no terno, a calça acompanha o paletó). O ícone vai estampado no peito da polo, da camiseta, do moletom e da regata.</p>
+            <span class="label">Na cabeça</span><div class="bn-seg">${seg("h")}</div>
+            <span class="label">Extras</span><div class="bn-seg">${seg("j")}</div>
+            <p class="hint" style="margin:6px 0 0">A primeira bolinha de cor da roupa usa a cor do perfil. Na social e no terno, a gravata fica na cor do perfil; no terno, a calça acompanha o paletó. O ícone vai estampado no peito da polo, da camiseta, do moletom e da regata. Chapéus de recompensa ficam no lugar do acessório de cabeça.</p>
           </div>
         </div>
       </section>
@@ -2016,7 +2030,7 @@
       }).join("") : ""; }).join("");
     };
     const bnDados = () => ({ cor: pend.cor, icone: pend.avatar ? AV_IC[pend.avatar] : "", boneco: bonecoTxt(pend.boneco), acessorio: pend.acessorio });
-    const bn = () => { if (vitrine) vitrine.atualizar(bnDados()); };
+    const bn = () => { document.querySelectorAll(".bn-sw-perfil").forEach((x) => x.style.setProperty("--c", pend.cor)); if (vitrine) vitrine.atualizar(bnDados()); };
     if (vitrine) { vitrine.destruir(); vitrine = null; }
     // abas: a prévia 3D do boneco só é montada quando a aba dele aparece (com tamanho de verdade)
     let prevPedida = false;

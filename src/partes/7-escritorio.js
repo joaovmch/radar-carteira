@@ -29,6 +29,50 @@
     this.tacoBase = { tip: [Bc[0] - u[0] * 0.035, Bc[1] - u[1] * 0.035], u, el: 0.16 };
     this.sinP = this.lugar("sinuca", [raiz[0], raiz[1], yaw]);
   }
+  // próxima jogada de sinuca (uma por ciclo da rotina; a mesma chave devolve o mesmo plano)
+  planoSinuca(chave) {
+    if (this.planoChave === chave && this.planoAtual) return this.planoAtual;
+    // o lugar dele: dentro da sala e longe dos outros móveis (pode ficar colado na mesa)
+    const ok = (x, z, yaw) => {
+      const w = this.lugar("sinuca", [x, z, yaw]); if (w[0] < 0.32 || w[0] > W - 0.32 || w[1] < 0.32 || w[1] > D - 0.25) return false;
+      for (const id in this.moveis) { const m = this.moveis[id]; if (id === "sinuca" || m.piso || !this.ativo(m)) continue;
+        for (const bx of this.caixasDe(m)) { const [lx, lz] = giraXZ(w[0] - bx.c[0], w[1] - bx.c[1], -bx.r); if (Math.abs(lx) < bx.h[0] + 0.2 && Math.abs(lz) < bx.h[1] + 0.2) return false; } }
+      return true;
+    };
+    const pl = this.mesaSin.planejar(ok); pl.lugar = this.lugar("sinuca", [pl.stance[0], pl.stance[1], pl.yaw]);
+    this.planoChave = chave; this.planoAtual = pl; return pl;
+  }
+  // bolas: estado parado (lista de bolas) ou um quadro da gravação; tSim = tempo dentro da gravação (para a queda na caçapa)
+  mostrarBolas(est, tSim, quadro) {
+    const r = SIN.r, ant = this.bolaAnt || (this.bolaAnt = []);
+    for (let n = 0; n <= 9; n++) {
+      const m = this.bolasM[n]; let x, z, em, cai = -1;
+      if (quadro) { const q = quadro.find((_, i) => (this.bolaOrdem ? this.bolaOrdem[i] : i) === n) || quadro[n]; [x, z, em, cai] = q; }
+      else { const b = est.find((q) => q.n === n); if (!b) { m.visible = false; continue; } x = b.x; z = b.z; em = b.em ? 1 : 0; }
+      if (em) { m.visible = true; m.scale.setScalar(1); m.position.set(x, SIN.y, z); }
+      else if (cai >= 0 && tSim - cai < 0.3) { const k = (tSim - cai) / 0.3; m.visible = true; m.position.set(x, SIN.y - 0.07 * k, z); m.scale.setScalar(1 - 0.4 * k); }
+      else m.visible = false;
+      // rola: gira em volta do eixo perpendicular ao movimento
+      const a = ant[n]; if (a && m.visible) { const dx = x - a[0], dz = z - a[1], d = Math.hypot(dx, dz); if (d > 1e-5 && d < 0.3) { const eixo = V(dz / d, 0, -dx / d); m.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(eixo, d / r)); } }
+      ant[n] = [x, z];
+    }
+  }
+  // o que mostrar na mesa neste quadro (fase|id do plano vem do passo da rotina)
+  mostrarSinuca(p, tl) {
+    const [fase, idS] = String(p.bolas || "").split("|"); const pl = idS ? this.mesaSin.planos.get(+idS) : null;
+    if (!pl) { this.mostrarBolas(this.mesaSin.vista, -1); return; }
+    this.bolaOrdem = pl.sim.final.map((b) => b.n);
+    if (fase === "pre") this.mostrarBolas(pl.pre, -1);
+    else if (fase === "rack") {   // as bolas somem e o losango aparece arrumado
+      const k = fase2(tl, 0.4, 2.2);
+      if (k < 0.5) { const v = this.mesaSin.vista; this.mostrarBolas(v, -1); this.bolasM.forEach((m) => m.scale.multiplyScalar(1 - k * 2)); }
+      else { this.mostrarBolas(pl.pre, -1); this.bolasM.forEach((m) => m.scale.multiplyScalar((k - 0.5) * 2)); }
+    }
+    else if (fase === "jogo") {
+      const tt = Math.max(0, tl - TACADA); const Q = pl.sim.quadros; const i = Math.min(Q.length - 1, Math.floor(tt * 60));
+      this.mostrarBolas(null, tt, Q[i]); if (i === Q.length - 1) this.mesaSin.vista = pl.sim.final;
+    } else { this.mostrarBolas(pl.sim.final, 99); this.mesaSin.vista = pl.sim.final; }
+  }
   // pontas do taco (mundo) para cada estado: -1 encostado na mesa, 0 na mão (em pé), 1 na tacada
   tacoPontas(p) {
     const b = this.boneco, root = b.root; const t = p.taco, rec = p.recuo || 0;
@@ -47,6 +91,8 @@
     return { butt: a, tip: c, ax, apoioBridge: this.pto("sinuca", tb.tip[0], 0.8, tb.tip[1]).addScaledVector(ax, 0.26).setY(0.795), dedos: ax.clone().negate().setY(-0.15) };
   }
   aplicarTaco(p) {
+    const [, idS] = String(p.bolas || "").split("|"); const pl = idS ? this.mesaSin.planos.get(+idS) : null;
+    if (pl) this.tacoBase = { tip: pl.tip, u: pl.u, el: 0.14 };
     const T = this.tacoPontas(p); const taco = this.itens.taco; taco.visible = true;
     const dir = T.tip.clone().sub(T.butt); const L = dir.length() || 1; dir.divideScalar(L);
     taco.position.copy(T.butt); taco.quaternion.setFromUnitVectors(V(0, 1, 0), dir);
@@ -54,9 +100,68 @@
     // mão direita no cabo: em pé segura alto, na tacada segura atrás
     const g = lerp(0.98, 0.5, cl(t)); const pg = T.butt.clone().addScaledVector(dir, g);
     p.ikR = [pg.x, pg.y, pg.z]; p.kR = Math.max(p.kR || 0, k);
+    if (t > 0.3) p.poloR = [0.35, 0.75, -1];   // na tacada, cotovelo para cima e para trás, antebraço caindo reto até o cabo
     if (t > 0.02) { const br = T.apoioBridge; p.ikL = [br.x, br.y, br.z]; p.kL = Math.max(p.kL || 0, cl(t)); p.oriL = [T.dedos.x, T.dedos.y, T.dedos.z]; }
     p.item = t > 0.5 ? "tacoShot" : t > -0.5 ? "tacoV" : p.item;
   }
+  /* balões de pensamento: de tempos em tempos ele pensa no humor, na carteira, numa ação ou no que está fazendo */
+  pensamento(p, T, dt, cab, fx, st) {
+    if (!this.pensa) {
+      const tx = tela(512, 288); const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx.t, transparent: true, depthWrite: false, depthTest: false, toneMapped: false }));
+      sp.renderOrder = 10; sp.visible = false; this.scene.add(sp); this.pensa = { tx, sp, prox: T + 4 + Math.random() * 4, ini: -99, dur: 4.2, chave: "" };
+    }
+    const P = this.pensa, ocupado = p.balao > 0.05 || this.edit || this.reduz;
+    if (T < P.ini - 1 || T > P.prox + 60) { P.prox = T + 3; P.ini = -99; }   // relógio pulou (testes)
+    if (!ocupado && T >= P.prox) {
+      const op = this.ideias(p, fx, st); const it = op[Math.floor(Math.random() * op.length)];
+      if (it) { this.desenharPensamento(it); P.ini = T; P.prox = T + 12 + Math.random() * 8; } else P.prox = T + 5;
+    }
+    const k = (T - P.ini) / P.dur; const vis = k >= 0 && k <= 1 && !ocupado; P.sp.visible = vis;
+    if (vis) {
+      const ent = sai(cl(k / 0.07)), sai2 = 1 - suave(cl((k - 0.88) / 0.12)), esc = b2(ent) * sai2;
+      P.sp.position.set(cab.x, cab.y + 0.74 + 0.025 * Math.sin(T * 2.2), cab.z); P.sp.scale.set(1.02 * esc, 0.574 * esc, 1); P.sp.material.opacity = sai2;
+    }
+    function b2(t) { return t < 1 ? 1 + 0.12 * Math.sin(PI * t) : 1; }
+  }
+  // o que ele pode estar pensando agora
+  ideias(p, fx, st) {
+    const h = this.h, d = this.d || {}, out = [];
+    const sent = { tranquilo: ["smiley", "Tudo calmo hoje", "#7C3AED"], feliz: ["smiley", "Dia bom!", "#16A34A"], euforico: ["confetti", "Que dia!!", "#D97706"], preocupado: ["smiley-nervous", "Hmm… vermelho", "#EA580C"], triste: ["smiley-sad", "Paciência, vai passar", "#2563EB"] }[h];
+    if (sent) out.push({ ic: sent[0], txt: sent[1], cor: sent[2] });
+    if (d.pct != null && isFinite(d.pct) && !d.sim) { const v = d.pct; out.push({ ic: v >= 0 ? "chart-line-up" : "chart-line-down", txt: "Carteira " + (v > 0 ? "+" : "") + v.toFixed(2).replace(".", ",") + "%", cor: v >= 0 ? "#16A34A" : "#DC2626" }); }
+    const at = (d.ativos || []).filter((a) => a.vd != null && isFinite(a.vd));
+    if (at.length) { const a = at[Math.floor(Math.random() * at.length)]; out.push({ ic: "coins", txt: a.t + " " + (a.vd >= 0 ? "▲" : "▼") + " " + Math.abs(a.vd).toFixed(2).replace(".", ",") + "%", cor: a.vd >= 0 ? "#16A34A" : "#DC2626" }); }
+    const bolas = String(p.bolas || "");
+    if (bolas.startsWith("pre")) out.push({ ic: "target", txt: "Essa entra!", cor: "#16A34A" }, { ic: "target", txt: "Mira na caçapa…", cor: "#0F766E" });
+    if (p.item === "controle") out.push({ ic: "lightning", txt: "Bora zerar essa fase!", cor: "#7C3AED" });
+    if (p.item === "tecla") out.push({ ic: "chart-line-up", txt: "Analisando a carteira…", cor: "#2563EB" });
+    if (fx === "cafe" || fx === "gole") out.push({ ic: "sparkle", txt: "Cafezinho!", cor: "#92400E" });
+    if (h === "triste") out.push({ ic: "trophy", txt: "Longo prazo.", cor: "#2563EB" });
+    void st; return out;
+  }
+  desenharPensamento(it) {
+    const { g, t } = this.pensa.tx; g.clearRect(0, 0, 512, 288);
+    // nuvem: vários círculos, contorno suave, e bolinhas descendo até a cabeça
+    const bol = [[120, 112, 70], [200, 82, 78], [300, 84, 80], [380, 112, 66], [330, 150, 62], [190, 152, 66], [256, 140, 74], [120, 150, 52], [400, 150, 46]];
+    g.save(); g.shadowColor = "rgba(15,23,42,.25)"; g.shadowBlur = 14; g.shadowOffsetY = 5; g.fillStyle = "#FFFFFF";
+    for (const [x, y, r] of bol) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+    for (const [x, y, r] of [[200, 228, 16], [178, 258, 10]]) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+    g.restore();
+    g.font = "bold 40px system-ui, sans-serif"; let tam = 40; while (g.measureText(it.txt).width > 300 && tam > 24) { tam -= 2; g.font = `bold ${tam}px system-ui, sans-serif`; }
+    const w = g.measureText(it.txt).width, x0 = 256 - (w + 62) / 2;
+    if (window.RI) window.RI.desenhar(g, it.ic, x0 + 24, 120, 52, it.cor);
+    g.fillStyle = "#1F2937"; g.textBaseline = "middle"; g.fillText(it.txt, x0 + 62, 122); g.textBaseline = "alphabetic";
+    g.fillStyle = it.cor; g.fillRect(x0 + 62, 148, Math.min(w, 120), 4);
+    t.needsUpdate = true;
+  }
+  // onde cada dardo vai cravar (o plano é sorteado quando a visita ao alvo é montada)
+  planejarDardos() {
+    const habil = { euforico: 0.045, feliz: 0.06, tranquilo: 0.075, preocupado: 0.1, triste: 0.12 }[this.h] || 0.08;
+    const pts = [0, 1, 2].map(() => { const a = Math.random() * TAU, r = Math.min(0.2, Math.abs(Math.sqrt(-2 * Math.log(Math.random() + 1e-9)) * habil * 0.7)); return [Math.cos(a) * r, Math.sin(a) * r]; });
+    const dist = pts.map(([y, z]) => Math.hypot(y, z)); this.dardosPlano = { pts, dist, mosca: dist.some((d) => d < 0.035), ruim: dist.every((d) => d > 0.12) };
+    return this.dardosPlano;
+  }
+  pontoDardo(i) { const pl = this.dardosPlano || this.planejarDardos(); const [dy, dz] = pl.pts[i] || [0, 0]; return this.dardosCentro.clone().add(V(0.02, dy, dz)); }
   teclado() { return { L: this.pto("mesa", 6.62, 0.822, 0.645), R: this.pto("mesa", 6.97, 0.822, 0.645) }; }
   mundo(o) { return o.getWorldPosition(new THREE.Vector3()); }
   alvoCao() { return this.mundo(this.cao.cab).add(V(0, 0.05, 0)); }
@@ -87,7 +192,7 @@
       }
     } else this.serieAlvo = null;
     if (!d.sim && d.pct != null && isFinite(d.pct)) { const l = this.hist[this.hist.length - 1]; if (!l || Math.abs(l.v - d.pct) > 1e-6) { this.hist.push({ v: d.pct, t: Date.now() }); if (this.hist.length > 60) this.hist.shift(); } }
-    if (d.layout !== undefined && !this.salvando && !this.arrasto) { const n = (L) => JSON.stringify({ m: (L && L.m) || {}, off: [...((L && L.off) || [])].sort() }); if (n(d.layout) !== n(this.layoutAtual())) { this.aplicarLayout(d.layout, true); this.navOk = false; } }
+    if (d.layout !== undefined && !this.salvando && !this.arrasto) { const n = (L) => JSON.stringify({ m: (L && L.m) || {}, off: [...((L && L.off) || [])].sort(), c: (L && L.c) || {} }); if (n(d.layout) !== n(this.layoutAtual())) { this.aplicarLayout(d.layout, true); this.navOk = false; } }
     this.tem = d.tem || {};
     if (!this.dir) this.dir = new Diretor(this);
     const mudou = this.aplicarDecor(!d.tudo && !d.sim);
@@ -125,7 +230,7 @@
     this.log((on ? "colocou " : "guardou ") + (this.moveis[id] ? this.moveis[id].nome.toLowerCase() : id));
   }
   avisarLayout() { if (typeof this.d.onLayout === "function") { this.salvando = true; try { this.d.onLayout(this.layoutAtual()); } finally { this.salvando = false; } } }
-  restaurar() { const off = [...this.off]; this.aplicarLayout({ off }); this.avisarLayout(); this.log("restaurou os móveis"); }
+  restaurar() { const off = [...this.off]; this.aplicarLayout({ off, c: this.cores }); this.avisarLayout(); this.log("restaurou os móveis"); }
   aplicarHumor() {
     const L = LUZ[this.h];
     this.cfg = L;
@@ -296,25 +401,13 @@
     const naMaoL = Object.keys(this.prop).find((n) => this.prop[n].h === "L");
     if (!["tecla", "tacoV", "tacoShot"].includes(p.item)) p.item = naMaoR === "joga" ? "" : naMaoR || "";
     if (naMaoL) p.mL = Math.max(p.mL || 0, 0.9);
+    if (p.item === "controle" && this.h === "tranquilo") p.botaoR = JOGO_TV.estado(T).botao ? 1 : 0;
     b.aplicar(p, T, dt); b.desenharRosto(this.vida.rosto(p, { T, dt, humor: this.h, facePropria: !!r.pose._fp }), T);
     b.blob.position.set(pf.x, 0.004, pf.z); b.blob.material.opacity = cl(1 - (p.dy || 0) * 2, 0.3, 1);
     this.moverProps(p, tl, fxk, dt);
     if (this.itens.celular.visible) this.desenharCel(T);
-    // bolas da sinuca (coordenadas da própria mesa)
-    const B = this.bolas, yb = 0.81;
-    const est = this.h === "feliz" ? p.bolas || "ini" : "ini";
-    if (est === "ini") { this.bB.position.set(B.R[0], yb, B.R[1]); this.bA.position.set(B.Y[0], yb, B.Y[1]); this.bA.visible = true; this.bA.scale.setScalar(1); }
-    else if (est === "jogo") {
-      const k1 = fase(tl, TACADA, TACADA + 0.28), k2 = fase(tl, TACADA + 0.28, TACADA + 1.0), k3 = fase(tl, TACADA + 1.0, TACADA + 1.15);
-      const cb = k2 > 0 ? [lerp(B.C[0], B.fimB[0], sai(k2)), lerp(B.C[1], B.fimB[1], sai(k2))] : [lerp(B.R[0], B.C[0], k1), lerp(B.R[1], B.C[1], k1)];
-      this.bB.position.set(cb[0], yb, cb[1]);
-      this.bA.position.set(lerp(B.Y[0], B.pk[0], sai(k2)), yb - 0.06 * k3, lerp(B.Y[1], B.pk[1], sai(k2))); this.bA.scale.setScalar(1 - 0.6 * k3); this.bA.visible = k3 < 1;
-      this.bA.rotation.x += dt * 20 * (k2 > 0 && k2 < 1 ? 1 : 0);
-    } else if (est === "volta") {   // a bola sai da caçapa e as duas rolam de volta para o lugar
-      const k = fase(tl, 0.3, 1.9), sobe = fase(k, 0, 0.18), rola = suave(fase(k, 0.15, 1));
-      this.bB.position.set(lerp(B.fimB[0], B.R[0], suave(fase(tl, 0.2, 1.5))), yb, lerp(B.fimB[1], B.R[1], suave(fase(tl, 0.2, 1.5))));
-      this.bA.visible = k > 0; this.bA.scale.setScalar(lerp(0.4, 1, sobe)); this.bA.position.set(lerp(B.pk[0], B.Y[0], rola), yb - 0.06 * (1 - sobe), lerp(B.pk[1], B.Y[1], rola)); this.bA.rotation.x -= dt * 12 * (rola > 0 && rola < 1 ? 1 : 0);
-    } else { this.bB.position.set(B.fimB[0], yb, B.fimB[1]); this.bA.visible = false; }
+    // bolas da sinuca (física gravada da jogada; coordenadas da própria mesa)
+    this.mostrarSinuca(this.h === "feliz" ? p : {}, tl);
     /* efeitos das recompensas */
     // cachorro
     if (this.cao.g.visible) {
@@ -342,7 +435,13 @@
     }
     // fliperama
     const jogando = fx === "arcade";
-    if (this.dec.fliperama.outer.visible) { this.joy.rotation.set(jogando ? Math.sin(T * 9) * 0.35 : 0, 0, jogando ? Math.sin(T * 7.3) * 0.35 : 0); this.botoesArc.forEach((bt, i) => { bt.position.y = 1.07 - (jogando && Math.sin(T * 13 + i * 2) > 0.6 ? 0.008 : 0); }); }
+    if (this.dec.fliperama.outer.visible) {
+      const ns = JOGO_NAVE.estado(T); const inc = jogando ? cl(ns.vx * 0.035, -0.4, 0.4) : 0;
+      this.joyInc = lerp(this.joyInc || 0, inc, Math.min(1, dt * 14)); this.joy.rotation.set(jogando ? 0.08 * Math.sin(T * 5) : 0, 0, -this.joyInc);
+      this.arcMao[0].position.copy(this.arcMaoBase[0]).add(V(Math.sin(this.joyInc) * 0.07, 0, 0));
+      this.botoesArc.forEach((bt, i) => { const ap = jogando && ns.atira && i === 0; bt.position.y = bt.userData.y0 - (ap ? 0.007 : 0); bt.material.emissiveIntensity = ap ? 1.6 : 0.35; });
+      this.arcMao[1].position.copy(this.arcMaoBase[1]).add(V(0, jogando && ns.atira ? -0.012 : 0, 0));
+    }
     // cofre
     if (this.dec.cofre.outer.visible) { const ang = fx === "cofre" || fx === "moedaJoga" ? p.porta : 0; this.cofrePorta.rotation.y = -ang; this.cofreBrilho.material.opacity = cl(ang / 1.9) * 0.85; }
     // porquinho: a moeda cai no cofrinho
@@ -361,10 +460,14 @@
     // dardos
     if (this.dec.dardos.visible) {
       if (fx === "dardo" && fxk < 0.01 && tl < 0.15) { this.dardos.forEach((dd) => { dd.visible = false; }); this.voos = []; }
-      if (fx === "dardo" && fxk % 1 > 0.4) { const i = Math.floor(fxk); const key = st.t0 + ":" + i; if (this.dardoKey !== key && i < 3) { this.dardoKey = key; (this.voos ||= []).push({ i, de: b.mR.clone(), t: 0 }); } }
+      if (fx === "dardo" && fxk % 1 > 0.4) { const i = Math.floor(fxk); const key = st.t0 + ":" + i; if (this.dardoKey !== key && i < 3) { this.dardoKey = key;
+        const alvo = this.pontoDardo(i), de = b.mR.clone(), Tv = 0.36, g = V(0, -9.8, 0); const v0 = alvo.clone().sub(de).sub(g.clone().multiplyScalar(0.5 * Tv * Tv)).divideScalar(Tv);
+        (this.voos ||= []).push({ i, de, v0, alvo, Tv, t: 0 }); } }
       for (const v of this.voos || []) {
-        v.t += dt; const k = cl(v.t / 0.32); const a = V(...this.dardosAlvo[v.i]); const pos = v.de.clone().lerp(a, k); pos.y += Math.sin(PI * k) * 0.18;
-        const dd = this.dardos[v.i]; dd.visible = true; dd.position.copy(pos); dd.rotation.set(0, 0, -PI / 2 + (1 - k) * 0.4);
+        v.t += Math.min(dt, 0.05); const dd = this.dardos[v.i]; dd.visible = true; const t = Math.min(v.t, v.Tv), g = V(0, -9.8, 0);
+        const vel = v.v0.clone().addScaledVector(g, t); const dir = vel.clone().normalize();
+        if (v.t < v.Tv) { dd.position.copy(v.de).addScaledVector(v.v0, t).addScaledVector(g, 0.5 * t * t).addScaledVector(dir, -0.07); dd.quaternion.setFromUnitVectors(V(0, 1, 0), dir).multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), t * 30)); v.dir = dir; }
+        else { const dx = v.t - v.Tv, w = 0.16 * Math.exp(-dx * 8) * Math.sin(dx * 46); const d0 = v.dir || dir; dd.position.copy(v.alvo).addScaledVector(d0, -0.068); dd.quaternion.setFromUnitVectors(V(0, 1, 0), d0).premultiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), w)); }
       }
     } else this.dardos.forEach((dd) => { dd.visible = false; });
     // globo de festa
@@ -390,6 +493,7 @@
       if (p.balaoT !== this.balaoT) { this.balaoT = p.balaoT; const { g, t } = this.balao; g.clearRect(0, 0, 128, 128); g.fillStyle = "#FFF"; g.strokeStyle = "#CBD5E1"; g.lineWidth = 3; rr(g, 8, 8, 112, 86, 22); g.fill(); g.stroke(); g.beginPath(); g.moveTo(40, 92); g.lineTo(34, 120); g.lineTo(62, 93); g.fill(); if (window.RI) window.RI.desenhar(g, p.balaoT, 64, 51, 60, p.balaoT === "chart-line-down" ? "#DC2626" : p.balaoT === "smiley-nervous" ? "#F59E0B" : "#7C3AED"); t.needsUpdate = true; }
       this.balaoS.position.set(cab.x + 0.25, cab.y + 0.6, cab.z); this.balaoS.scale.setScalar(0.42 * p.balao); this.balaoS.material.opacity = p.balao;
     }
+    this.pensamento(p, T, dt, cab, fx, st);
     // notas jogadas
     if (p.solta && p.solta !== this.ultSolta) { this.ultSolta = p.solta; for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(this.notaGeo, this.notaMat); m.castShadow = true; m.position.copy(b.mR); this.scene.add(m); const fw = V(Math.sin(pf.y), 0, Math.cos(pf.y)); this.notas.push({ m, v: V(fw.x * 0.6 + (Math.random() - 0.5) * 1.2, 2.2 + Math.random() * 1.2, fw.z * 0.6 + (Math.random() - 0.5) * 1.2), rv: V(Math.random() * 6, Math.random() * 6, Math.random() * 6), vida: 0 }); } }
     if (!p.solta) this.ultSolta = 0;
@@ -403,7 +507,18 @@
     const agora = new Date(); const sg = agora.getSeconds() + agora.getMilliseconds() / 1000, mi = agora.getMinutes() + sg / 60, ho = (agora.getHours() % 12) + mi / 60;
     this.pS.rotation.z = -sg / 60 * TAU; this.pM.rotation.z = -mi / 60 * TAU; this.pH.rotation.z = -ho / 12 * TAU;
     (this.plantas || []).forEach((f, i) => { f.rotation.z = Math.sin(T * 0.8 + i) * 0.03; f.rotation.x = Math.sin(T * 0.6 + i * 2) * 0.02; });
-    this.vapor.forEach((v, i) => { const k = (T * 0.35 + i / 4) % 1; v.position.set(0.38 + Math.sin(T * 2 + i) * 0.02, 1.0 + k * 0.4, 4.9); v.material.opacity = 0.35 * Math.sin(PI * k); v.scale.setScalar(0.06 + k * 0.12); });
+    // café: o botão acende quando ele aperta, o café escorre do bico, a xícara enche, solta vapor e esvazia nos goles
+    { const casa = this.prop.xicara && this.prop.xicara.h === "casa";
+      if (fx === "cafe") { this.cafeNivel = fase(tl, 2.55, 4.15); if (tl > 2.5) this.cafeQuente = T; }
+      else if (fx === "gole") this.cafeNivel = 1 - 0.36 * fase(tl, 0.7, 1.7) - 0.36 * fase(tl, 2.7, 3.6);
+      else if (casa) this.cafeNivel = 0;
+      const nv = this.cafeNivel || 0; this.cafeLiq.visible = nv > 0.02; this.cafeLiq.position.y = 0.012 + 0.08 * nv; this.cafeLiq.scale.setScalar(0.92 + 0.1 * nv);
+      const jorra = fx === "cafe" && tl > 2.45 && tl < 4.2; this.jatoCafe.visible = jorra;
+      if (jorra) { const topo = 1.128, fundo = 0.945 + 0.08 * nv; this.jatoCafe.scale.set(1 + 0.15 * Math.sin(T * 40), topo - fundo, 1); this.jatoCafe.position.set(0.4, (topo + fundo) / 2, 4.9); }
+      this.anelCafe.emissiveIntensity = fx === "cafe" && tl > 1.95 && tl < 4.2 ? 2.4 + 0.6 * Math.sin(T * 10) : 0.55;
+      const xw = this.itens.xicara.getWorldPosition(new THREE.Vector3()); const quente = nv > 0.05 && T - (this.cafeQuente ?? -99) < 30;
+      this.vapor.forEach((v, i) => { const k = (T * 0.45 + i / 4) % 1; v.position.copy(v.parent.worldToLocal(xw.clone().add(V(Math.sin(T * 2 + i) * 0.015, 0.1 + k * 0.22, Math.cos(T * 1.7 + i) * 0.015)))); v.material.opacity = quente ? 0.32 * Math.sin(PI * k) : 0; v.scale.setScalar(0.04 + k * 0.1); });
+    }
     const digitando = p.item === "tecla";
     this.teclas.material.emissiveIntensity = digitando ? 0.4 + 0.3 * Math.abs(Math.sin(T * 14)) : 0.25;
     this.monLuz.intensity = 1.0 + 0.25 * Math.sin(T * 2.2) + (performance.now() - (this.ultimaAcao || 0) < 900 ? 0.8 : 0);
@@ -418,9 +533,9 @@
     // telas (com taxa menor para poupar bateria)
     const perto = this.camModo === "tela";
     if (this.reduz || T - (this.tMon || -9) > (perto ? 1 / 30 : 1 / 8) || this.sujo) { this.tMon = T; this.desenharMonitor(T); }
-    if (this.reduz || T - (this.tTv || -9) > 1 / 15) { this.tTv = T; this.desenharTV(T, this.h === "tranquilo" ? "jogo" : "news"); }
+    if (this.reduz || T - (this.tTv || -9) > 1 / 20) { this.tTv = T; this.tvVitoria = st.vibras ? Math.max(0, ...st.vibras.map((v) => jan(tl, v, v + 1.3))) : 0; this.desenharTV(T, this.h === "tranquilo" ? "jogo" : "news"); }
     if (this.reduz || T - (this.tCeu || -9) > 1 / 8) { this.tCeu = T; this.desenharCeu(T); }
-    if (this.dec.fliperama.outer.visible && (this.reduz || T - (this.tArc || -9) > (jogando ? 1 / 20 : 1 / 6))) { this.tArc = T; this.desenharArcade(T * (jogando ? 2 : 1)); }
+    if (this.dec.fliperama.outer.visible && (this.reduz || T - (this.tArc || -9) > (jogando ? 1 / 24 : 1 / 6))) { this.tArc = T; this.desenharArcade(T); }
     // contornos do modo de edição
     if (this.edit) for (const id in this.moveis) {
       const m = this.moveis[id], mk = m.marca; mk.visible = this.ativo(m); if (!mk.visible) continue;
@@ -448,7 +563,7 @@
     return null;
   }
   bico() { return this.pto("cafe", 0.4, 0.99, 4.9); }
-  botaoCafe() { return this.pto("cafe", 0.36, 1.3, 4.97); }
+  botaoCafe() { return this.pto("cafe", 0.392, 1.315, 4.975); }
   bolso(lado = "R") { return this.boneco.root.localToWorld(V(lado === "R" ? 0.17 : -0.17, 0.84, 0.05)); }
   // st.props: { nome: "casa" | "R" | "L" | "LR" | "joga" | "cofrinho" | (k, tl) => ... }
   decidirProps(st, k, tl) {

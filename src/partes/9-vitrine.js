@@ -29,6 +29,7 @@ export function vitrine(el, d) {
     if (!el.isConnected) { destruir(); return; }
     const agora = performance.now(), T = window.__ofVitT != null ? window.__ofVitT : (agora - t0) / 1000, dt = Math.min(0.05, (agora - tAnt) / 1000); tAnt = agora;
     if (!arrastando && agora - ultimoToque > 2500) yaw += dt * 0.35;
+    if (window.__ofVitYaw != null) yaw = window.__ofVitYaw;   // páginas de teste
     // ciclo: parado, acena, joinha, sorri
     const c = T % 12; let p;
     if (c < 3.5) p = emPe(T, { olhar: [Math.sin(T * 0.7) * 0.6, 0] });
@@ -40,7 +41,7 @@ export function vitrine(el, d) {
     p = vida.passo(p, { T, dt, humor: "feliz", cabeca: cab, yawCorpo: yaw, alvos: [{ nome: "camera", pos: cam.position.clone(), peso: 2 }, { nome: "lado", pos: V(Math.sin(yaw + 1) * 3, 1.4, Math.cos(yaw + 1) * 3), peso: 1 }], legsLivres: true, nariz: cab.clone().add(V(Math.sin(yaw) * 0.15, -0.02, Math.cos(yaw) * 0.15)) });
     p = filtro.passo(p, dt);
     b.aplicar(p, T, dt); b.desenharRosto(vida.rosto(p, { T, dt, humor: "feliz", facePropria: c >= 3.5 && c < 6 }), T);
-    const e = b.esc; const vc = window.__ofVitCam; if (vc) { cam.position.set(0, vc[0], vc[1]); cam.lookAt(0, vc[2], 0); } else { cam.position.set(0, 1.0 * e, 4.2 * (0.6 + 0.4 * e)); cam.lookAt(0, 0.9 * e, 0); }
+    const e = b.esc; const vc = window.__ofVitCam; if (vc) { cam.position.set(0, vc[0], vc[1]); cam.lookAt(0, vc[2], 0); } else { cam.position.set(0, 1.05 * e, 4.65 * (0.6 + 0.4 * e)); cam.lookAt(0, 0.97 * e, 0); }
     r.render(sc, cam);
     raf = requestAnimationFrame(quadro);
   }

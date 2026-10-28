@@ -32,19 +32,39 @@
   const IC = (n, o) => (window.RI ? window.RI.svg(n, o) : "");
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const MOD = "./escritorio3d.js?v=20261102-1";
+  const MOD = "./escritorio3d.js?v=20261102-2";
   let mod = null, carregando = null, inst = null, modo = null, ultimo = null, render2d = null, el0 = null;
   const pendentes = []; let secao = "";
   function temWebGL() {
     try { const c = document.createElement("canvas"); return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl"))); } catch (_) { return false; }
   }
+  // versão lite (2D, para computador fraco): escolha guardada neste aparelho
+  const LITE = "radar-esc-lite";
+  const ehLite = () => { try { return localStorage.getItem(LITE) === "1"; } catch (_) { return false; } };
+  let elAtual = null, escolheuLite = false;
+  function com2d(el, d) { render2d(el, d); if (temWebGL() && !el.querySelector(".of-lite-volta")) { const b = document.createElement("button"); b.type = "button"; b.className = "of-lite-volta"; b.innerHTML = IC("cube") + " Versão 3D"; b.title = "Voltar para o escritório 3D"; b.addEventListener("click", () => setLite(false)); (el.querySelector(".of-palco") || el).appendChild(b); } }
   function usar2d(el, d) {
     modo = "2d";
-    if (render2d) { el.innerHTML = ""; render2d(el, d); return; }
+    if (render2d) { el.innerHTML = ""; com2d(el, d); return; }
     const nosso = window.RadarEscritorio;
     const s = document.createElement("script"); s.src = "escritorio-2d.js";
-    s.onload = () => { const v2 = window.RadarEscritorio; window.RadarEscritorio = nosso; render2d = v2.render; el.innerHTML = ""; render2d(el, el0 || d); };
+    s.onload = () => { const v2 = window.RadarEscritorio; window.RadarEscritorio = nosso; render2d = v2.render; el.innerHTML = ""; com2d(el, el0 || d); };
     document.head.appendChild(s);
+  }
+  function setLite(on) {
+    try { localStorage.setItem(LITE, on ? "1" : "0"); } catch (_) { /* modo privado */ }
+    escolheuLite = on; const el = elAtual; if (!el) return;
+    if (editando) editar(false);
+    if (inst) { try { inst.destruir(); } catch (_) { /* já foi */ } inst = null; }
+    el.innerHTML = ""; modo = null;
+    if (on) usar2d(el, el0); else render(el, el0);
+  }
+  // cores da sala no modo de arrumar
+  const NOMES_COR = { chao: "Chão", parede: "Parede", sofa: "Sofá", poltrona: "Poltrona" };
+  function painelCores(pal) {
+    const box = pal && pal.querySelector(".of-cores"); if (!box || !mod || !mod.CORES_SALA || !inst) return;
+    const atual = inst.cores || {};
+    box.innerHTML = Object.entries(NOMES_COR).map(([k, n]) => `<div class="of-cor-l"><span>${n}</span>${mod.CORES_SALA[k].map((c, i) => `<button type="button" data-cor-sala="${k}" data-i="${i}" style="--c:${c}" aria-pressed="${(atual[k] || 0) === i}" aria-label="${n}: opção ${i + 1}"></button>`).join("")}</div>`).join("");
   }
 
   // o que você faz no site aparece na tela do computador
@@ -87,31 +107,35 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", vigiarSecoes); else setTimeout(vigiarSecoes, 0);
 
   function render(el, d) {
-    d = d || {}; el0 = d;
+    d = d || {}; el0 = d; elAtual = el;
     const h = humorDe(d.pct, d.fechado); const info = HUMORES[h];
     const v = d.pct == null || !isFinite(d.pct) ? "" : (d.pct > 0 ? "+" : "") + d.pct.toFixed(2).replace(".", ",") + "%";
     const lib = new Set(d.itens || []); const tem = {}; DECOR.forEach((x) => { tem[x.id] = !!(d.tudo || lib.has(x.item)); });
-    if (modo === "2d") { if (render2d) render2d(el, d); return h; }
+    if (modo === "2d") { if (render2d) com2d(el, d); return h; }
+    if (ehLite() && !escolheuLite) { escolheuLite = true; usar2d(el, d); return h; }
+    if (ehLite()) { usar2d(el, d); return h; }
     let palco = el.querySelector(".of-palco3d");
     if (!palco) {
       el.innerHTML = `<div class="of-palco of-palco3d">
         <div class="of-3d"><div class="of-load"><i></i>Montando o escritório…</div>
-          <div class="of-cams" role="group" aria-label="Câmera"><button type="button" data-cam="sala" aria-pressed="true" title="Visão da sala">${IC("house")} Sala</button><button type="button" data-cam="tela" aria-pressed="false" title="Chegar perto da tela do computador">${IC("monitor")} Tela</button><button type="button" data-cam="seguir" aria-pressed="false" title="Câmera seguindo o boneco">${IC("crosshair")} Seguir</button><button type="button" data-act="editar" aria-pressed="false" title="Arrastar e girar os móveis">${IC("arrows-out-cardinal")} Arrumar</button></div>
-          <div class="of-edbar" hidden><span>${IC("hand-grabbing")} Arraste um móvel para mudar de lugar · toque nele para girar</span><button type="button" data-act="restaurar">${IC("arrow-counter-clockwise")} Restaurar</button><button type="button" data-act="pronto" class="pri">${IC("check")} Pronto</button></div>
+          <div class="of-cams" role="group" aria-label="Câmera"><button type="button" data-cam="sala" aria-pressed="true" title="Visão da sala">${IC("house")} Sala</button><button type="button" data-cam="tela" aria-pressed="false" title="Chegar perto da tela do computador">${IC("monitor")} Tela</button><button type="button" data-cam="seguir" aria-pressed="false" title="Câmera seguindo o boneco">${IC("crosshair")} Seguir</button><button type="button" data-act="editar" aria-pressed="false" title="Arrastar e girar os móveis e mudar as cores">${IC("arrows-out-cardinal")} Arrumar</button><button type="button" data-act="lite" title="Versão 2D, leve, para computador mais fraco">${IC("feather")} Versão lite</button></div>
+          <div class="of-edbar" hidden><span>${IC("hand-grabbing")} Arraste um móvel para mudar de lugar · toque nele para girar</span><button type="button" data-act="restaurar">${IC("arrow-counter-clockwise")} Restaurar</button><button type="button" data-act="pronto" class="pri">${IC("check")} Pronto</button><div class="of-cores"></div></div>
           <span class="of-dica">arraste para girar · toque duplo para centralizar</span></div>
         <div class="of-card"><span class="of-emo"></span><div><b></b><span></span></div><strong></strong></div>
       </div>`;
       palco = el.querySelector(".of-palco3d"); inst = null;
       palco.querySelector(".of-cams").addEventListener("click", (e) => {
         const ed = e.target.closest("[data-act=editar]"); if (ed) { editar(ed.getAttribute("aria-pressed") !== "true"); return; }
+        if (e.target.closest("[data-act=lite]")) { setLite(true); return; }
         const b = e.target.closest("[data-cam]"); if (!b) return;
         if (editando) editar(false);
         palco.querySelectorAll("[data-cam]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
         if (inst) inst.setCam(b.dataset.cam);
       });
       palco.querySelector(".of-edbar").addEventListener("click", (e) => {
+        const cs = e.target.closest("[data-cor-sala]"); if (cs && inst) { inst.setCorSala(cs.dataset.corSala, +cs.dataset.i); cs.parentElement.querySelectorAll("[data-cor-sala]").forEach((x) => x.setAttribute("aria-pressed", String(x === cs))); return; }
         const b = e.target.closest("[data-act]"); if (!b) return;
-        if (b.dataset.act === "restaurar" && inst) inst.restaurar();
+        if (b.dataset.act === "restaurar" && inst) { inst.restaurar(); painelCores(palco); }
         if (b.dataset.act === "pronto") editar(false);
       });
     }
@@ -143,6 +167,7 @@
     const bar = pal.querySelector(".of-edbar"); if (bar) bar.hidden = !editando;
     if (editando) pal.querySelectorAll("[data-cam]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.cam === "sala")));
     if (inst) { if (editando) inst.setCam("sala", true); inst.setEdicao(editando); }
+    if (editando) painelCores(pal);
   }
   // Guarda ou coloca de volta um item da decoração
   function equipar(id, on) { if (inst) inst.equipar(id, on); }
@@ -151,5 +176,5 @@
     if (!el || !temWebGL()) return null;
     try { if (!carregando) carregando = import(MOD).then((m) => (mod = m)); await carregando; return mod.vitrine ? mod.vitrine(el, d) : null; } catch (err) { console.warn("Prévia do boneco indisponível:", err); return null; }
   }
-  window.RadarEscritorio = { render, humorDe, HUMORES, DECOR, acao, esc, vitrine, editar, equipar };
+  window.RadarEscritorio = { render, humorDe, HUMORES, DECOR, acao, esc, vitrine, editar, equipar, setLite };
 })();

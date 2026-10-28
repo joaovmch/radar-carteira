@@ -5,7 +5,8 @@
    transferência de peso quando está em pé e rosto com parâmetros contínuos que se misturam sem saltos. */
 const EXPR = {
   neutro: {},
-  contente: { sorr: 0.45, feliz: 0.3, boch: 0.3 },
+  contente: { sorr: 0.62, feliz: 0.42, boch: 0.38 },
+  sorrisao: { sorr: 0.88, abre: 0.32, dentes: 1, feliz: 0.65, boch: 0.55, sobeS: 0.18 },
   concentrado: { sorr: -0.05, larg: 0.82, assim: 0.35, dentroS: -0.3, olho: 0.9, lingua: 0.55 },
   surpreso: { abre: 0.42, redondo: 0.7, sorr: 0.1, sobeS: 0.85, olho: 1.2 },
   rindo: { sorr: 0.9, abre: 0.5, dentes: 1, feliz: 0.9, boch: 0.6, sobeS: 0.2 },
@@ -28,9 +29,9 @@ const EXPR = {
 };
 // repertório de cada humor: [expressão, peso, duração mín, máx]
 const REPERT = {
-  tranquilo: [["contente", 4, 3, 6], ["concentrado", 3, 3, 7], ["surpreso", 1, 0.9, 1.6], ["rindo", 1.2, 1.4, 2.6], ["bocejo", 0.6, 2.4, 3.2], ["pensativo", 1, 2.5, 4.5], ["assovia", 0.8, 2.5, 4], ["neutro", 2, 2, 4]],
-  feliz: [["contente", 3, 3, 6], ["rindo", 2, 1.5, 3], ["orgulhoso", 2, 2.5, 4.5], ["concentrado", 1.5, 2, 4], ["assovia", 1.2, 2.5, 4], ["neutro", 1, 2, 3]],
-  euforico: [["gargalhada", 3, 1.5, 3], ["grito", 2, 0.9, 1.8], ["rindo", 2, 1.5, 3], ["contente", 1.5, 2, 4]],
+  tranquilo: [["contente", 4, 3, 6], ["sorrisao", 1.4, 1.8, 3.2], ["concentrado", 3, 3, 7], ["surpreso", 1, 0.9, 1.6], ["rindo", 1.2, 1.4, 2.6], ["bocejo", 0.6, 2.4, 3.2], ["pensativo", 1, 2.5, 4.5], ["assovia", 0.8, 2.5, 4], ["neutro", 2, 2, 4]],
+  feliz: [["contente", 3, 3, 6], ["sorrisao", 3, 2, 4], ["rindo", 2, 1.5, 3], ["orgulhoso", 2, 2.5, 4.5], ["concentrado", 1.5, 2, 4], ["assovia", 1.2, 2.5, 4], ["neutro", 1, 2, 3]],
+  euforico: [["gargalhada", 3, 1.5, 3], ["sorrisao", 2, 1.5, 3], ["grito", 2, 0.9, 1.8], ["rindo", 2, 1.5, 3], ["contente", 1.5, 2, 4]],
   preocupado: [["tenso", 3, 3, 6], ["mordeLabio", 2, 1.5, 3], ["aflito", 2, 2, 4], ["resmunga", 2, 1.8, 3.5], ["suspira", 1.5, 1.8, 2.6], ["esperanca", 1, 2, 3.5], ["pensativo", 1, 2, 4]],
   triste: [["choroso", 2, 3, 6], ["vazio", 3, 3, 6], ["suspira", 2, 1.8, 2.6], ["sorrisoFraco", 0.6, 1.5, 3], ["aflito", 1, 2, 4]],
 };

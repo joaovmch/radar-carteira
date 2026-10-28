@@ -17,7 +17,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const suave = (t) => { t = cl(t); return t * t * (3 - 2 * t); };
 const io = (t) => { t = cl(t); return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; };
 const sai = (t) => 1 - Math.pow(1 - cl(t), 3);
-const fase = (t, a, b) => cl((t - a) / (b - a));
+const fase = (t, a, b) => cl((t - a) / (b - a)), fase2 = fase;
 const jan = (t, a, b, r = 0.35) => suave((t - a) / r) * suave((b - t) / r);
 const difAng = (a, b) => ((((b - a + PI) % TAU) + TAU) % TAU) - PI;
 const angLerp = (a, b, t) => a + difAng(a, b) * t;

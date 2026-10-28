@@ -18,7 +18,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const suave = (t) => { t = cl(t); return t * t * (3 - 2 * t); };
 const io = (t) => { t = cl(t); return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; };
 const sai = (t) => 1 - Math.pow(1 - cl(t), 3);
-const fase = (t, a, b) => cl((t - a) / (b - a));
+const fase = (t, a, b) => cl((t - a) / (b - a)), fase2 = fase;
 const jan = (t, a, b, r = 0.35) => suave((t - a) / r) * suave((b - t) / r);
 const difAng = (a, b) => ((((b - a + PI) % TAU) + TAU) % TAU) - PI;
 const angLerp = (a, b, t) => a + difAng(a, b) * t;
@@ -165,6 +165,346 @@ function faixaAO(par, w, h, pos, rot, forca = 0.22) {
   m.position.copy(pos); m.rotation.copy(rot); m.renderOrder = 1; par.add(m); return m;
 }
 
+/* ---------- corpo do boneco: tronco inteiro (sem emendas), dobras de tecido, cabelo esculpido, mãos e calçados ---------- */
+
+// mapa de normais gerado no navegador a partir de um desenho de alturas (claro = alto); fica em cache pelo nome
+const _nm = new Map();
+function mapaNormal(nome, w, h, desenho, forca = 3) {
+  if (_nm.has(nome)) return _nm.get(nome);
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
+  g.fillStyle = "#808080"; g.fillRect(0, 0, w, h); desenho(g, w, h);
+  const src = g.getImageData(0, 0, w, h).data, out = g.createImageData(w, h), od = out.data;
+  const H = (x, y) => src[((((y % h) + h) % h) * w + (((x % w) + w) % w)) * 4];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (H(x + 1, y) - H(x - 1, y)) / 255 * forca, dy = (H(x, y + 1) - H(x, y - 1)) / 255 * forca;
+    const l = Math.hypot(dx, dy, 1), i = (y * w + x) * 4;
+    od[i] = (-dx / l * 0.5 + 0.5) * 255; od[i + 1] = (dy / l * 0.5 + 0.5) * 255; od[i + 2] = (0.5 / l + 0.5) * 255; od[i + 3] = 255;
+  }
+  g.putImageData(out, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; t.channel = 1;
+  _nm.set(nome, t); return t;
+}
+// trama do tecido (repete sem emenda): liso (algodão), malha (nervuras), jeans (sarja), tricô (lã), lã fina (paletó)
+function trama(g, w, h, tipo) {
+  g.save();
+  if (tipo === "malha") { for (let x = 0; x < w; x += 4) { g.fillStyle = "rgba(255,255,255,.2)"; g.fillRect(x, 0, 2, h); } }
+  else if (tipo === "jeans") { g.strokeStyle = "rgba(255,255,255,.22)"; g.lineWidth = 1.4; for (let i = -h; i < w; i += 4) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); } }
+  else if (tipo === "trico") { g.fillStyle = "rgba(255,255,255,.32)"; for (let y = 0; y < h; y += 8) for (let x = 0; x < w; x += 8) { g.beginPath(); g.ellipse(x + 2, y + 4, 1.9, 3.6, -0.55, 0, TAU); g.ellipse(x + 6, y + 4, 1.9, 3.6, 0.55, 0, TAU); g.fill(); } }
+  else if (tipo === "la") { for (let y = 0; y < h; y += 2) { g.fillStyle = `rgba(255,255,255,${(y / 2) % 2 ? 0.05 : 0.0})`; g.fillRect(0, y, w, 1); } }
+  else { for (let y = 0; y < h; y += 2) { g.fillStyle = `rgba(255,255,255,${(y / 2) % 2 ? 0.08 : 0.02})`; g.fillRect(0, y, w, 1); } for (let x = 0; x < w; x += 2) { g.fillStyle = `rgba(0,0,0,${(x / 2) % 2 ? 0.06 : 0})`; g.fillRect(x, 0, 1, h); } }
+  g.restore();
+}
+// dobra: crista clara com o vale escuro logo abaixo, borrada (a luz faz o volume)
+function dobra(g, pts, larg = 9, forca = 0.5, w = 0) {
+  const tr = (cor, off, lw, dx) => { g.strokeStyle = cor; g.lineWidth = lw; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x + dx, y + off) : g.moveTo(x + dx, y + off))); g.stroke(); };
+  g.save(); g.filter = `blur(${(larg * 0.45).toFixed(1)}px)`; g.lineCap = "round"; g.lineJoin = "round";
+  for (const dx of w ? [0, -w, w] : [0]) { tr(`rgba(0,0,0,${forca * 0.75})`, larg * 0.55, larg * 0.7, dx); tr(`rgba(255,255,255,${forca})`, 0, larg, dx); }
+  g.restore();
+}
+function costura(g, x0, y0, x1, y1, w = 0) {
+  g.save(); g.filter = "blur(0.7px)";
+  for (const dx of w ? [0, -w, w] : [0]) {
+    g.strokeStyle = "rgba(0,0,0,.55)"; g.lineWidth = 2.2; g.beginPath(); g.moveTo(x0 + dx, y0); g.lineTo(x1 + dx, y1); g.stroke();
+    g.strokeStyle = "rgba(255,255,255,.35)"; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x0 + dx + 2.5, y0 + 1); g.lineTo(x1 + dx + 2.5, y1 + 1); g.stroke();
+  }
+  g.restore();
+}
+const onda = (x0, x1, y, amp, n, fase = 0) => { const r = []; for (let i = 0; i <= 12; i++) { const t = i / 12; r.push([lerp(x0, x1, t), y + amp * Math.sin(t * PI * n + fase)]); } return r; };
+// mapas de cada peça: tronco (u em volta a partir das costas, v de baixo para cima), manga e perna (u em volta a partir da frente)
+const Yt = (y) => (1 - (y + 0.135) / 0.685) * 512;
+function nmTronco(tipo) {
+  return mapaNormal("tronco-" + tipo, 512, 512, (g, w, h) => {
+    trama(g, w, h, tipo);
+    // cintura: puxados horizontais na frente e nas costas
+    for (const [y, f] of [[0.035, 0.42], [0.085, 0.36], [0.13, 0.28]]) { dobra(g, onda(178, 334, Yt(y), 5, 2, y * 30), 10, f); dobra(g, onda(410, 500, Yt(y + 0.01), 4, 1.5), 9, f * 0.6); dobra(g, onda(12, 102, Yt(y + 0.01), 4, 1.5), 9, f * 0.6); }
+    // axilas: dobras em leque do lado para o peito e para as costas
+    for (const s of [1, -1]) { const x0 = s > 0 ? 128 : 384;
+      [[0.405, 0.33, 70], [0.392, 0.3, 58], [0.38, 0.265, 46]].forEach(([y0, y1, dx], i) => { dobra(g, [[x0 + s * 6, Yt(y0)], [x0 + s * dx * 0.55, Yt((y0 + y1) / 2) + 4], [x0 + s * dx, Yt(y1)]], 8, 0.45 - i * 0.08); dobra(g, [[x0 - s * 6, Yt(y0)], [x0 - s * dx * 0.5, Yt(y1 + 0.02)]], 7, 0.3); }); }
+    // costuras do lado e dos ombros, barra pespontada
+    costura(g, 128, 0, 128, h); costura(g, 384, 0, 384, h);
+    costura(g, 92, Yt(0.475), 164, Yt(0.475)); costura(g, 348, Yt(0.475), 420, Yt(0.475));
+    costura(g, 0, Yt(-0.112), w, Yt(-0.112));
+  }, 2.6);
+}
+const Ym = (y) => (1 - (0.1 - y) / 0.7) * 256;
+function nmManga(tipo, longa) {
+  return mapaNormal("manga-" + tipo + (longa ? "L" : "C"), 256, 256, (g, w, h) => {
+    trama(g, w, h, tipo);
+    costura(g, 0, Ym(0.035), w, Ym(0.035));
+    if (longa) {
+      // dobra do cotovelo (por dentro, na frente) e sanfona no punho
+      for (const [dy, f] of [[0.02, 0.5], [-0.01, 0.55], [-0.04, 0.45], [-0.07, 0.3]]) dobra(g, onda(-46, 46, Ym(-0.27 + dy), 4, 1, dy * 40), 9, f, w);
+      for (const dy of [0, -0.05]) dobra(g, onda(100, 156, Ym(-0.3 + dy), 3, 1), 7, 0.25);
+      for (const [y, f] of [[-0.44, 0.35], [-0.47, 0.45], [-0.5, 0.4]]) dobra(g, onda(0, w, Ym(y), 5, 3, y * 50), 8, f);
+      costura(g, 0, Ym(-0.525), w, Ym(-0.525));
+    } else {
+      dobra(g, onda(0, w, Ym(-0.12), 4, 2), 8, 0.35); costura(g, 0, Ym(-0.172), w, Ym(-0.172));
+    }
+    costura(g, 128, 0, 128, h);
+  }, 2.4);
+}
+const Yp = (y) => (1 - (0.06 - y) / 0.84) * 512;
+function nmPerna(tipo) {
+  return mapaNormal("perna-" + tipo, 256, 512, (g, w, h) => {
+    trama(g, w, h, tipo);
+    // virilha: puxados na frente da coxa; joelho: dobras atrás e marcas na frente; tornozelo: sanfona
+    for (const [y, f] of [[-0.04, 0.42], [-0.085, 0.34], [-0.13, 0.22]]) dobra(g, [[200, Yp(y + 0.03)], [150, Yp(y)], [70, Yp(y - 0.04)]], 9, f);
+    for (const [dy, f] of [[0.03, 0.35], [-0.01, 0.5], [-0.05, 0.45]]) dobra(g, onda(96, 160, Yp(-0.42 + dy), 5, 1.5, dy * 30), 9, f);
+    for (const dy of [0.02, -0.03]) dobra(g, onda(-30, 30, Yp(-0.42 + dy), 3, 1), 7, 0.22, w);
+    for (const [y, f] of [[-0.69, 0.32], [-0.72, 0.45], [-0.75, 0.4]]) dobra(g, onda(0, w, Yp(y), 6, 2.5, y * 40), 9, f);
+    costura(g, 64, 0, 64, h); costura(g, 192, 0, 192, h);
+  }, 2.6);
+}
+
+/* --- tronco: superelipses empilhadas (peito largo e ombros redondos), com barriga integrada e barra solta --- */
+// seções [y, meia largura, meia profundidade, expoente, avanço do peito] em coordenadas da coluna
+const SEC_TRONCO = [
+  [-0.135, 0.178, 0.13, 2.3, 0.004], [-0.07, 0.169, 0.124, 2.35, 0.004], [0.0, 0.159, 0.116, 2.4, 0.003], [0.1, 0.153, 0.11, 2.5, 0.003],
+  [0.2, 0.159, 0.114, 2.6, 0.005], [0.3, 0.173, 0.121, 2.7, 0.009], [0.38, 0.184, 0.12, 2.8, 0.008], [0.437, 0.19, 0.112, 2.7, 0.004],
+  [0.475, 0.174, 0.1, 2.45, 0.0], [0.505, 0.14, 0.087, 2.25, 0.0], [0.527, 0.1, 0.073, 2.05, 0.0], [0.542, 0.072, 0.063, 2.0, 0.0], [0.552, 0.052, 0.054, 2.0, 0.0],
+];
+function secTronco(y) {
+  const S = SEC_TRONCO; let i = 0; while (i < S.length - 2 && S[i + 1][0] < y) i++;
+  const t = cl((y - S[i][0]) / (S[i + 1][0] - S[i][0]));
+  const p0 = S[Math.max(0, i - 1)], p1 = S[i], p2 = S[i + 1], p3 = S[Math.min(S.length - 1, i + 2)];
+  const cr = (k) => { const a = p0[k], b = p1[k], c = p2[k], d = p3[k]; return 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t); };
+  return [cr(1), cr(2), cr(3), cr(4)];
+}
+const sgp = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), e);
+// o: g (largura do corpo), bar (barriga em metros), ini (altura da barra), folga (roupa por cima), flare (barra mais aberta)
+function corpoTronco(o) {
+  const g = o.g || 1, bar = o.bar || 0, folga = o.folga || 0, flare = o.flare || 0, ini = o.ini ?? -0.135;
+  const ponto = (y, t) => {
+    let [a, b, n, zc] = secTronco(y); const em = cl((-y + 0.0) / 0.135) * flare;
+    a = (a + folga + em) * g; b = (b + folga + em * 0.7) * g;
+    const s = Math.sin(t), c = Math.cos(t);
+    let x = a * sgp(c, 2 / n), z = zc * g + b * sgp(s, 2 / n);
+    const bb = bar * Math.exp(-(((y - 0.11) / 0.13) ** 2));
+    if (bb > 0) { z += bb * Math.pow(Math.max(0, s), 1.4); x *= 1 + (bb / Math.max(a, 0.05)) * 0.22; }
+    return [x, z];
+  };
+  // z da frente do tronco num x e y (para peças coladas no peito)
+  const frente = (x, y, eps = 0) => {
+    let [a, , n] = secTronco(y); const em = cl(-y / 0.135) * flare; a = (a + folga + em) * g;
+    const bb = bar * Math.exp(-(((y - 0.11) / 0.13) ** 2)); const ax = a * (1 + (bb / Math.max(a, 0.05)) * 0.22);
+    const ct = cl(sgp(x / ax, n / 2), -1, 1); const t = Math.acos(ct);
+    return ponto(y, t)[1] + eps;
+  };
+  return { ponto, frente, ini, topo: 0.552 };
+}
+// pesos de pele do tronco: [coluna, quadril, barra da frente, barra de trás]
+function pesoTronco(y, s) {
+  const wS = suave((y - 0.0) / 0.15), resto = 1 - wS;
+  const barra = suave((-0.015 - y) / 0.11) * 0.9, f = 0.5 + 0.5 * cl(s * 1.6, -1, 1);
+  return [wS, resto * (1 - barra), resto * barra * f, resto * barra * (1 - f)];
+}
+function geoTronco(corpo) {
+  const N = 64, ini = corpo.ini, topo = corpo.topo;
+  const linhas = []; const M = Math.max(24, Math.round((topo - ini) / 0.0105));
+  for (let i = 0; i <= M; i++) linhas.push({ y: topo - (topo - ini) * (i / M), k: 1 });
+  // barra com espessura: dobra para dentro e sobe um pouco
+  linhas.push({ y: ini + 0.002, k: 0.955 }, { y: ini + 0.035, k: 0.94 });
+  const pos = [], uv = [], si = [], sw = [], idx = [];
+  linhas.forEach(({ y, k }) => {
+    for (let j = 0; j <= N; j++) {
+      const t = -PI / 2 + (j / N) * TAU; const [x, z] = corpo.ponto(y, t);
+      pos.push(x * k, y, z * k); uv.push(j / N, (y + 0.135) / 0.685);
+      const w = pesoTronco(y, Math.sin(t)); si.push(0, 1, 2, 3); sw.push(...w);
+    }
+  });
+  for (let i = 0; i < linhas.length - 1; i++) for (let j = 0; j < N; j++) { const a = i * (N + 1) + j, b = a + N + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute("uv1", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(sw, 4)); geo.setIndex(idx);
+  geo.computeVertexNormals(); voltarParaFora(geo, V(0, 0.3, 1));
+  return geo;
+}
+// confere se as normais apontam para fora (pela frente do peito); se não, inverte a ordem dos triângulos
+function voltarParaFora(geo, dir) {
+  const p = geo.attributes.position, n = geo.attributes.normal; let melhor = -1, mz = -1e9;
+  for (let i = 0; i < p.count; i++) { const v = p.getX(i) * dir.x + p.getY(i) * dir.y * 0 + p.getZ(i) * dir.z; if (v > mz) { mz = v; melhor = i; } }
+  if (n.getZ(melhor) < 0) { const ix = geo.index.array; for (let k = 0; k < ix.length; k += 3) { const t = ix[k + 1]; ix[k + 1] = ix[k + 2]; ix[k + 2] = t; } geo.index.needsUpdate = true; geo.computeVertexNormals(); }
+}
+// qualquer geometria (em coordenadas da coluna) vira malha com os mesmos pesos do tronco: golas, botões e bolsos acompanham
+function pesosComoTronco(geo) {
+  const p = geo.attributes.position, n = p.count; const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { const w = pesoTronco(p.getY(i), cl(p.getZ(i) / 0.11, -1, 1)); si.set([0, 1, 2, 3], i * 4); sw.set(w, i * 4); }
+  geo.setAttribute("skinIndex", new THREE.BufferAttribute(si, 4)); geo.setAttribute("skinWeight", new THREE.BufferAttribute(sw, 4));
+  return geo;
+}
+
+/* --- casca esculpida sobre a cabeça (cabelo, barba): espessura h(d) em cada direção d, máscara de 0 a 1,
+       sulcos que irradiam de um polo (as mechas) e cor de vértice mais escura no fundo dos sulcos --- */
+function casca(R, o) {
+  const geo = new THREE.SphereGeometry(1, o.seg || 168, o.an || 118, 0, TAU, 0, o.thMax ?? 2.35);
+  const p = geo.attributes.position, n = p.count, cores = new Float32Array(n * 3), manter = new Uint8Array(n);
+  const P = o.polo ? o.polo.clone().normalize() : null; let A = null, B = null;
+  if (P) { A = (Math.abs(P.y) < 0.9 ? V(0, 1, 0) : V(1, 0, 0)).cross(P).normalize(); B = new THREE.Vector3().crossVectors(P, A); }
+  const d = new THREE.Vector3(), q = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    d.fromBufferAttribute(p, i).normalize();
+    const m = o.mascara ? cl(o.mascara(d)) : 1;
+    let h = m > 0 ? o.h(d) * Math.pow(m, 0.6) : 0, c = 1;
+    if (P && h > 0 && o.sulcos) {
+      q.copy(d).addScaledVector(P, -d.dot(P)); const lq = q.length();
+      if (lq > 1e-4) {
+        const az = Math.atan2(q.dot(B), q.dot(A)), longe = cl(lq * 2.6), dist = Math.acos(cl(d.dot(P), -1, 1));
+        const fase = 0.7 * Math.sin(az * 3 + 1.3) + (o.onda ? o.onda(d, dist) : 0);
+        const s = 0.5 + 0.5 * Math.cos(az * o.sulcos + fase), sulco = Math.pow(s, o.agudo || 5) * longe;
+        h *= 1 - (o.prof ?? 0.3) * sulco * cl(m * 1.5); c = 1 - 0.34 * sulco;
+      }
+    }
+    if (o.relevo && m > 0) { const r2 = o.relevo(d); h += r2 * m; c *= 0.82 + 0.36 * cl(r2 / (o.relevoMax || 0.02), 0, 1); }
+    c *= 0.94 + 0.12 * ruido(i * 0.173);
+    manter[i] = m > 0.002 ? 1 : 0;
+    const r = R + (o.base ?? 0.0008) + Math.max(0, h);
+    p.setXYZ(i, d.x * r, d.y * r, d.z * r); cores[i * 3] = cores[i * 3 + 1] = cores[i * 3 + 2] = c;
+  }
+  const ix = geo.index.array, novo = [];
+  for (let k = 0; k < ix.length; k += 3) if (manter[ix[k]] || manter[ix[k + 1]] || manter[ix[k + 2]]) novo.push(ix[k], ix[k + 1], ix[k + 2]);
+  geo.setIndex(novo); geo.setAttribute("color", new THREE.BufferAttribute(cores, 3)); geo.deleteAttribute("uv");
+  if (o.forma) o.forma(geo, R);
+  geo.computeVertexNormals();
+  return geo;
+}
+// direção a partir de (th: ângulo a partir do topo, ph: em volta, 0 = frente)
+const dirCab = (th, ph) => V(Math.sin(th) * Math.sin(ph), Math.cos(th), Math.sin(th) * Math.cos(ph));
+const angDe = (d) => [Math.acos(cl(d.y, -1, 1)), Math.atan2(d.x, d.z)];
+// relevo de cachos: soma de calombos em pontos espalhados (Fibonacci) da esfera
+function calombos(nPts, raio, amp, semente = 1) {
+  const pts = []; for (let i = 0; i < nPts; i++) { const y = 1 - 2 * ((i + 0.5) / nPts), r = Math.sqrt(1 - y * y), ph = i * 2.39996 + semente; pts.push([V(r * Math.sin(ph), y, r * Math.cos(ph)), amp * (0.7 + 0.6 * ruido(i + semente))]); }
+  const c2 = Math.cos(raio * 2.2);
+  return (d) => { let s = 0; for (const [c, a] of pts) { const k = d.dot(c); if (k < c2) continue; const ang = Math.acos(Math.min(1, k)); s += a * Math.exp(-((ang / raio) ** 2)); } return s; };
+}
+
+/* --- mecha esculpida: tubo achatado ao longo de uma curva, com sulcos no comprimento e ponta arredondada --- */
+// r(t): raio; o.ach: achatamento (0..1, menor = mais chato); o.ref(p): para onde aponta a face larga; o.sulcos; o.cor
+function mecha(pts, r, o = {}) {
+  const curva = new THREE.CatmullRomCurve3(pts, false, "centripetal");
+  const seg = o.seg || 32, rad = o.rad || 18, ach = o.ach ?? 0.5, nS = o.sulcos ?? 4;
+  const fr = curva.computeFrenetFrames(seg, false);
+  const pos = [], cor = [], idx = [];
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg, pt = curva.getPointAt(t), tg = fr.tangents[i];
+    let nn = fr.normals[i].clone(), bb = fr.binormals[i].clone();
+    if (o.ref) { const up = (typeof o.ref === "function" ? o.ref(pt, t) : o.ref).clone(); nn = up.sub(tg.clone().multiplyScalar(up.dot(tg))).normalize(); bb = new THREE.Vector3().crossVectors(tg, nn).normalize(); }
+    const rr = (typeof r === "function" ? r(t) : r) * Math.sqrt(cl(t / 0.04)) * Math.sqrt(cl((1 - t) / 0.12));
+    const tor = (o.torcao || 0) * t;
+    for (let j = 0; j <= rad; j++) {
+      const a = (j / rad) * TAU + tor; const ca = Math.cos(a), sa = Math.sin(a);
+      const sulco = nS ? Math.pow(0.5 + 0.5 * Math.cos(a * nS * 2 + 0.6), 6) : 0;   // ranhuras nas duas faces
+      const k = rr * (1 - 0.16 * sulco);
+      const off = nn.clone().multiplyScalar(ca * ach * k).add(bb.clone().multiplyScalar(sa * k));
+      pos.push(pt.x + off.x, pt.y + off.y, pt.z + off.z); const c = (o.cor ?? 1) * (1 - 0.3 * sulco) * (0.9 + 0.1 * t); cor.push(c, c, c);
+    }
+  }
+  for (let i = 0; i < seg; i++) for (let j = 0; j < rad; j++) { const a = i * (rad + 1) + j, b = a + rad + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(cor, 3)); g.setIndex(idx);
+  g.computeVertexNormals(); return g;
+}
+// trança: gomos alternados ao longo da curva
+function tranca(pts, r0, r1, n = 11) {
+  const curva = new THREE.CatmullRomCurve3(pts, false, "centripetal"); const lista = [];
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n, p = curva.getPointAt(t), tg = curva.getTangentAt(t); const r = lerp(r0, r1, t);
+    const gm = new THREE.SphereGeometry(r, 16, 12); gm.scale(1.15, 1.6, 0.9);
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), tg.clone().negate()); const tw = new THREE.Quaternion().setFromAxisAngle(tg, (i % 2 ? 0.55 : -0.55));
+    gm.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), i % 2 ? 0.5 : -0.5)); gm.applyQuaternion(q); gm.applyQuaternion(tw); gm.translate(p.x, p.y, p.z);
+    lista.push(comCor(gm, 0.92 - (i % 2) * 0.08));
+  }
+  return juntar(lista);
+}
+
+/* --- mãos: palma cheia (caixa arredondada), dedos grossos e juntos, polegar com a base carnuda --- */
+function superElipsoide(rx, ry, rz, e = 2.6, seg = 22, seg2 = 16) {
+  const g = new THREE.SphereGeometry(1, seg, seg2); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = Math.pow(Math.pow(Math.abs(x), e) + Math.pow(Math.abs(y), e) + Math.pow(Math.abs(z), e), -1 / e); p.setXYZ(i, x * k * rx, y * k * ry, z * k * rz); }
+  g.computeVertexNormals(); return g;
+}
+function montarMao(hand, lado, pele, peleSom) {
+  // punho e palma (palma virada para −X na direita e +X na esquerda; dedos para −Y; indicador do lado +Z)
+  mesh(superElipsoide(0.022, 0.024, 0.031, 2.2), pele, hand, 0, -0.008, 0);
+  mesh(superElipsoide(0.0205, 0.041, 0.0415, 2.7, 26, 18), pele, hand, lado * 0.002, -0.052, 0.001);
+  esf(hand, pele, 0.02, -lado * 0.012, -0.045, 0.026, { s: [0.85, 1.35, 0.9], seg: 16, seg2: 12 });   // base do polegar
+  const lista = [];
+  [[-0.0285, 0.024, 0.0112], [-0.0095, 0.03, 0.0122], [0.0095, 0.032, 0.0124], [0.0285, 0.029, 0.0118]].forEach(([z, len, r]) => {
+    const p1 = new THREE.Group(); p1.position.set(0, -0.088, z); hand.add(p1);
+    caps(p1, pele, r, len, 0, -len / 2 + 0.002, 0);
+    esf(p1, pele, r * 1.04, lado * 0.003, 0.002, 0, { seg: 12, seg2: 10 });   // nó do dedo
+    const p2 = new THREE.Group(); p2.position.y = -len - 0.002; p1.add(p2);
+    caps(p2, pele, r * 0.95, len * 0.78, 0, -len * 0.39, 0);
+    esf(p2, peleSom, r * 0.62, lado * 0.0072, -len * 0.62, 0, { s: [0.45, 0.8, 1], seg: 10, seg2: 8, cast: false });   // unha
+    lista.push({ p1, p2 });
+  });
+  const t1 = new THREE.Group(); t1.position.set(-lado * 0.014, -0.036, 0.034); t1.rotation.set(0.4, 0, lado * 0.5); hand.add(t1);
+  caps(t1, pele, 0.0145, 0.026, 0, -0.018, 0);
+  const t2 = new THREE.Group(); t2.position.y = -0.04; t1.add(t2);
+  caps(t2, pele, 0.0132, 0.022, 0, -0.013, 0);
+  esf(t2, peleSom, 0.008, lado * 0.008, -0.019, 0, { s: [0.45, 0.8, 1], seg: 10, seg2: 8, cast: false });
+  lista.push({ p1: t1, p2: t2, polegar: true });
+  return lista;
+}
+
+/* --- calçados (coordenadas do tornozelo; sola toca o chão em y = −0,076; bico para +Z) --- */
+// sola: contorno do pé extrudado para baixo, com borda arredondada
+function solaGeo(comp, larg, alt, bisel = 0.007, bico = 1) {
+  const s = new THREE.Shape(); const L0 = -0.068, L1 = L0 + comp, w = larg / 2, wc = w * 0.8;
+  s.moveTo(0, L0); s.bezierCurveTo(wc * 1.15, L0, wc, L0 + 0.03, wc * 1.02, L0 + 0.06);
+  s.bezierCurveTo(w * 1.02, L0 + comp * 0.55, w * 1.08, L1 - 0.05, w * 0.7 * bico, L1 - 0.012);
+  s.quadraticCurveTo(0, L1 + 0.008, -w * 0.7 * bico, L1 - 0.012);
+  s.bezierCurveTo(-w * 1.08, L1 - 0.05, -w * 1.02, L0 + comp * 0.55, -wc * 1.02, L0 + 0.06);
+  s.bezierCurveTo(-wc, L0 + 0.03, -wc * 1.15, L0, 0, L0);
+  const g = new THREE.ExtrudeGeometry(s, { depth: alt - 2 * bisel, bevelEnabled: true, bevelThickness: bisel, bevelSize: bisel, bevelSegments: 3, curveSegments: 18 });
+  g.rotateX(PI / 2); g.translate(0, -0.076 + alt - bisel, 0); g.computeVertexNormals(); return g;
+}
+// cabedal: arcos ao longo do pé (largura w(u) e altura h(u)), fechados no bico e no calcanhar;
+// o.u0/o.u1 recortam o comprimento, o.a0/o.a1 o arco (painel do cadarço) e o.off afasta da superfície
+function cabedalGeo(y0, comp, w, h, o = {}) {
+  const NU = o.nu || 44, NA = o.na || 26, pos = [], idx = []; const z0 = -0.07, u0 = o.u0 ?? 0, u1 = o.u1 ?? 1, a0 = o.a0 ?? 0, a1 = o.a1 ?? PI, off = o.off || 0;
+  for (let i = 0; i <= NU; i++) {
+    const u = lerp(u0, u1, i / NU), z = z0 + comp * u; const fim = Math.sqrt(cl(u / 0.09)) * Math.sqrt(cl((1 - u) / 0.12));
+    const ww = w(u) * fim + off, hh = h(u) * Math.pow(fim, 0.6) + off;
+    for (let j = 0; j <= NA; j++) { const a = lerp(a0, a1, j / NA); pos.push(Math.cos(a) * ww, y0 + Math.sin(a) * hh, z); }
+  }
+  for (let i = 0; i < NU; i++) for (let j = 0; j < NA; j++) { const a = i * (NA + 1) + j, b = a + NA + 1; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+// tipos: 0 tênis, 1 cano alto, 2 sapato social, 3 bota, 4 tênis de corrida
+function montarCalcado(tipo, M2) {
+  const g = new THREE.Group(); const { cor, sola, det, cadarco, faixa } = M2;
+  if (tipo === 2) {
+    mesh(solaGeo(0.215, 0.083, 0.016, 0.004, 0.8), sola, g);
+    const w = (u) => lerp(0.036, 0.041, Math.sin(u * PI)) * (u > 0.8 ? lerp(1, 0.78, (u - 0.8) / 0.2) : 1), h = (u) => lerp(0.07, 0.025, suave(u)) + 0.004;
+    mesh(cabedalGeo(-0.062, 0.218, w, h), cor, g);
+    mesh(cabedalGeo(-0.062, 0.218, w, h, { u0: 0.36, u1: 0.62, a0: PI / 2 - 0.42, a1: PI / 2 + 0.42, off: 0.0015, nu: 12, na: 10 }), cor, g);
+    for (let i = 0; i < 3; i++) { const u = 0.4 + i * 0.07, z = -0.07 + 0.218 * u; bloco(g, det, [-0.012, -0.0012, -0.0014], [0.012, 0.0012, 0.0014], 0.0008).position.set(0, -0.062 + h(u) + 0.002, z); }
+    bloco(g, sola, [-0.03, -0.076, -0.07], [0.03, -0.056, -0.025], 0.004);
+    return g;
+  }
+  const alta = tipo === 1 || tipo === 3, corrida = tipo === 4, bota = tipo === 3;
+  const sAlt = bota ? 0.032 : corrida ? 0.038 : 0.03;
+  mesh(solaGeo(0.228, bota ? 0.094 : 0.09, sAlt, 0.008), sola, g);
+  if (faixa) mesh(new THREE.TorusGeometry(1, 0.0032, 6, 64), faixa, g, 0, -0.076 + sAlt * 0.55, 0.046, { rx: PI / 2, s: [0.0462, 0.1175, 1] });
+  const y0 = -0.076 + sAlt - 0.004;
+  const w = (u) => lerp(0.038, 0.046, Math.sin(u * PI * 0.9)), h = (u) => (bota ? 0.085 : 0.078) * (1 - 0.62 * suave((u - 0.35) / 0.65)) + 0.008;
+  mesh(cabedalGeo(y0, 0.226, w, h), cor, g);
+  // borracha na ponta (tênis e cano alto) e biqueira branca no cano alto
+  if (tipo === 0 || tipo === 1) mesh(cabedalGeo(y0, 0.226, w, (u) => Math.min(h(u), 0.021), { u0: 0.78, off: 0.002, nu: 14 }), sola, g);
+  if (tipo === 1) mesh(cabedalGeo(y0, 0.226, w, (u) => h(u) * 0.78, { u0: 0.84, off: 0.0016, nu: 10 }), det, g);
+  // painel do cadarço, ilhós e cadarço seguindo a curva do peito do pé
+  if (!bota) mesh(cabedalGeo(y0, 0.226, w, h, { u0: 0.3, u1: 0.74, a0: PI / 2 - 0.5, a1: PI / 2 + 0.5, off: 0.0016, nu: 16, na: 10 }), det, g);
+  for (let i = 0; i < 4; i++) { const u = 0.36 + i * 0.09, z = -0.07 + 0.226 * u, yy = y0 + h(u) * Math.pow(Math.sqrt(cl(u / 0.09)) * Math.sqrt(cl((1 - u) / 0.12)), 0.6) + 0.004; const ang = Math.atan2(h(u + 0.01) - h(u - 0.01), 0.226 * 0.02);
+    bloco(g, cadarco, [-0.02, -0.0022, -0.0034], [0.02, 0.0022, 0.0034], 0.0018, { rx: -ang }).position.set(0, yy, z); }
+  esf(g, cor, 0.026, 0, y0 + 0.078, 0.004, { s: [0.92, 0.4, 1.0], seg: 16, seg2: 10 });   // língua
+  mesh(new THREE.TorusGeometry(0.036, 0.011, 10, 26), alta ? cor : det, g, 0, y0 + 0.085, -0.024, { rx: PI / 2 + 0.25, s: [1.05, 1.15, 1] });
+  esf(g, det, 0.03, 0, y0 + 0.03, -0.06, { s: [1.18, 1.05, 0.42], seg: 16, seg2: 12 });   // reforço do calcanhar
+  if (alta) { cil(g, cor, 0.047, 0.05, 0.075, 0, y0 + 0.11, -0.014, { seg: 26 }); mesh(new THREE.TorusGeometry(0.046, 0.009, 8, 26), bota ? cor : det, g, 0, y0 + 0.148, -0.014, { rx: PI / 2 }); if (!bota) esf(g, det, 0.016, 0.047, y0 + 0.098, -0.016, { s: [0.25, 1, 1], seg: 12, seg2: 8 }); }
+  if (corrida) for (const s of [-1, 1]) mesh(cabedalGeo(y0, 0.226, w, h, { u0: 0.32, u1: 0.62, a0: s > 0 ? 0.25 : PI - 0.65, a1: s > 0 ? 0.65 : PI - 0.25, off: 0.0014, nu: 12, na: 6 }), faixa || det, g);
+  return g;
+}
+// retângulo de cantos arredondados num THREE.Shape
+function rrShape(s, x, y, w, h, r) { s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r); s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h); s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r); s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y); return s; }
 /* ---------- humores e luz ---------- */
 const LUZ = {
   triste: { hemi: 0.55, key: 0.85, keyCor: "#AFC0E6", amb: "#7F8FB3", lamp: false, pend: false, raio: 0.1, tv: "#EF4444", mon: "#EF4444", exp: 0.9 },
@@ -175,31 +515,52 @@ const LUZ = {
 };
 
 /* ---------- boneco ---------- */
-// Aparência configurável pelo perfil (um dígito por opção, ex.: "p1c0k1b0l0o0a2w2r0e0s0"):
-// p pele, c cor do cabelo, k corte, b barba, l calça, o óculos, a altura, w corpo, r roupa, e calça/bermuda, s tênis
+// Aparência configurável pelo perfil: uma letra por opção e um caractere de valor (0-9, depois a-z), ex.: "p1c0k1b0l0o0a2w2r0e0s0"
+// p pele, c cor do cabelo, k corte, b barba, l calça, o óculos, a altura, w corpo, r roupa, e parte de baixo, s cor do calçado,
+// u cor da roupa (0 = cor do perfil), f tipo de calçado, h acessório de cabeça, j extra (relógio, colar…), i cor dos olhos
 const AP = {
-  p: ["#F6D3B3", "#F2C3A0", "#D9A27A", "#B07850", "#7A4E33", "#4F3123"],
-  c: ["#2B1B12", "#3B261B", "#6B4226", "#A86B3C", "#D9B26A", "#EFDDB0", "#8E8E8E", "#B33A2A", "#2F4FC0", "#D9568E"],
-  l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB", "#6F86B5"],
-  s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB"],
+  p: ["#F6D3B3", "#F2C3A0", "#D9A27A", "#B07850", "#7A4E33", "#4F3123", "#FFE3CC", "#3A2218"],
+  c: ["#2B1B12", "#3B261B", "#6B4226", "#A86B3C", "#D9B26A", "#EFDDB0", "#8E8E8E", "#B33A2A", "#2F4FC0", "#D9568E", "#121212", "#E8E8E8", "#C4552B", "#7C4BC7"],
+  l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB", "#6F86B5", "#111318", "#A0643A", "#7F1D1D", "#9CA3AF"],
+  s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB", "#16A34A", "#F59E0B", "#7C3AED", "#EC4899", "#0EA5E9"],
+  u: [null, "#F8FAFC", "#111827", "#DC2626", "#EA580C", "#FACC15", "#16A34A", "#0D9488", "#2563EB", "#7C3AED", "#DB2777", "#92400E", "#6B7280", "#0F766E"],
+  i: ["#3A2214", "#140C08", "#2F6FB5", "#3E7A3A", "#8A6A2F", "#5E6E7A"],
 };
-const AP_MAX = { p: 5, c: 9, k: 9, b: 3, l: 5, o: 1, a: 4, w: 4, r: 9, e: 1, s: 4 };
-const AP_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0 };
-const lerAp = (v) => { const r = { ...AP_PAD }; String(v || "").replace(/([pckbloawres])(\d)/g, (_, k, d) => { r[k] = Math.min(+d, AP_MAX[k]); }); return r; };
-// roupas: tecido do tronco, manga (C curta, L comprida, R regata), punho de outra cor e se o ícone do perfil vai estampado
-const COR_TERNO = "#272C38";
+const AP_MAX = { p: 7, c: 13, k: 16, b: 5, l: 9, o: 2, a: 4, w: 4, r: 17, e: 4, s: 9, u: 13, f: 4, h: 5, j: 5, i: 5 };
+const AP_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0, u: 0, f: 0, h: 0, j: 0, i: 0 };
+const AP_CHAVES = "pckbloawresufhji";
+const lerAp = (v) => { const r = { ...AP_PAD }; String(v || "").replace(/([pckbloawresufhji])([0-9a-z])/g, (_, k, d) => { r[k] = Math.min(parseInt(d, 36), AP_MAX[k]); }); return r; };
+// roupas: tecido (trama), mapa de estampa, manga (C curta, L comprida, R regata), gola, barra solta ou para dentro, detalhes
+const COR_TERNO = "#272C38", COR_JEANS = "#3B5B8C";
 const ROUPAS = [
-  { m: "camisa", manga: "C", estampa: 1 }, { m: "camisa", manga: "C", estampa: 1 }, { m: "camisa", manga: "L", estampa: 1 }, { m: "branco", manga: "L" }, { m: "camisa", manga: "L" }, { m: "camisa", manga: "R", estampa: 1 },
-  { m: "paleto", manga: "L", punho: "branco" }, { m: "camisa", manga: "L", punho: "branco" }, { m: "xadrez", manga: "L" }, { m: "havai", manga: "C" },
+  { m: "camisa", manga: "C", gola: "polo", estampa: 1 },
+  { m: "camisa", manga: "C", gola: "redonda", estampa: 1 },
+  { m: "camisa", tec: "malha", manga: "L", gola: "capuz", estampa: 1, punhoR: 1, barraR: 1, bolso: "canguru" },
+  { m: "branco", manga: "L", gola: "social", enf: 1, gravata: 1, botoes: 1 },
+  { m: "camisa", manga: "L", gola: "jaqueta", folga: 0.006, aberta: 1, punhoR: 1 },
+  { m: "camisa", manga: "R", gola: "regata", estampa: 1 },
+  { m: "terno", tec: "la", manga: "L", gola: "terno", folga: 0.008, flare: 0.006, ini: -0.15, punho: "branco", calca: COR_TERNO },
+  { m: "camisa", tec: "la", manga: "L", gola: "blazer", folga: 0.007, ini: -0.15, punho: "branco" },
+  { m: "xadrez", manga: "L", gola: "camisa", botoes: 1 },
+  { m: "havai", manga: "C", gola: "aberta", botoes: 1 },
+  { m: "camisa", tec: "malha", manga: "L", gola: "alta", ziper: 1, listras: 1, punhoR: 1, barraR: 1 },
+  { m: "camisa", manga: "C", gola: "camisa", botoes: 1 },
+  { m: "camisa", tec: "trico", manga: "L", mangaM: "branco", gola: "colete", folga: 0.004, barraR: 1 },
+  { m: "camisa", tec: "trico", manga: "L", gola: "redonda", punhoR: 1, barraR: 1 },
+  { m: "listras", manga: "C", gola: "redonda" },
+  { m: "jeans", tec: "jeans", manga: "L", gola: "camisa", botoes: 1, bolso: "peito", folga: 0.005, punhoR: 1 },
+  { m: "time", manga: "C", gola: "v", numero: 1 },
+  { m: "camisa", manga: "C", gola: "redonda", vestido: 1, enf: 1 },
 ];
 const ALTURA = [0.9, 0.95, 1, 1.05, 1.1], CORPO = [0.84, 0.92, 1, 1.12, 1.26].map((x) => x * 1.12);   // corpo mais cheio, proporção de boneco de animação
+const BARRIGA = [0, 0, 0.004, 0.022, 0.05];
 const POSE0 = { alt: 0.89, dy: 0, hz: 0, lean: 0, side: 0, twist: 0, nod: 0, turn: 0, roll: 0, aL: [0, 0.12, 0.2], aR: [0, 0.12, 0.2], lL: [0, 0], lR: [0, 0], olhar: [0, 0], boch: 0, abre: 0.6, lagrima: 0, nuvem: 0, balao: 0, yawAdd: 0, sent: 0, kL: 0, kR: 0, ikL: null, ikR: null, mL: 0, mR: 0, taco: -1, recuo: 0, porta: 0, fxk: 0, gole: 0, pL: 0, pR: 0, olhos: "A", boca: "leve", sob: "", item: "", balaoT: "" };
 const NUM = ["alt", "dy", "hz", "lean", "side", "twist", "nod", "turn", "roll", "boch", "abre", "lagrima", "nuvem", "balao", "yawAdd", "sent", "kL", "kR", "mL", "mR", "taco", "recuo", "porta", "fxk", "gole", "pL", "pR"];
 const ARR = ["aL", "aR", "lL", "lR", "olhar"];
 const DISC = ["olhos", "boca", "sob", "item", "balaoT", "bolas", "solta", "fx", "gestoL", "gestoR"];
-// Cabeça modelada numa esfera de raio R e achatada pela escala do grupo (cabeça um pouco maior: traço de desenho animado)
+// Cabeça modelada numa esfera de raio R e achatada pela escala do grupo (cabeça grande: traço de desenho animado)
 const CAB_ESC = [0.47 * 1.4, 0.565 * 1.4, 0.52 * 1.4], ESTICA = CAB_ESC[1] / CAB_ESC[0] * 0.98;
-const BR_A = 0.29, BR_B = 0.325, ESC_MAO = 1.1;   // braço e antebraço (até o ponto de pegada)
+const BR_A = 0.29, BR_B = 0.325, ESC_MAO = 1.18;   // braço e antebraço (até o ponto de pegada)
 
 // gira uma geometria e a coloca no lugar antes de juntar
 function assado(geo, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = null) {
@@ -207,7 +568,7 @@ function assado(geo, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = null) {
   geo.applyMatrix4(m); return geo;
 }
 
-// formato da cabeça: mandíbula mais estreita, queixo levemente à frente, nuca arredondada
+// formato da cabeça: rosto cheio, queixo levemente à frente, nuca arredondada
 function formaCabeca(geo, R) {
   const p = geo.attributes.position; const v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {
@@ -220,144 +581,88 @@ function formaCabeca(geo, R) {
   }
   geo.computeVertexNormals(); return geo;
 }
+// expressões com volume: bochechas que sobem no sorriso, queixo que desce com a boca aberta e lábios em bico
+const BOCHECHA = [dirCab(1.76, -0.6), dirCab(1.76, 0.6)], BOCA_D = dirCab(1.94, 0);
+function morfesRosto(geo, R) {
+  const p = geo.attributes.position, n = p.count, d = new THREE.Vector3();
+  const alvo = [new Float32Array(n * 3), new Float32Array(n * 3), new Float32Array(n * 3)];
+  for (let i = 0; i < n; i++) {
+    d.fromBufferAttribute(p, i).normalize();
+    let wb = 0; for (const c of BOCHECHA) { const a = Math.acos(cl(d.dot(c), -1, 1)); wb += Math.exp(-((a / 0.3) ** 2)); }
+    alvo[0].set([d.x * 0.017 * wb, d.y * 0.017 * wb + 0.008 * wb, d.z * 0.017 * wb], i * 3);
+    const wq = suave((-d.y - 0.42) / 0.3) * suave((d.z - 0.15) / 0.5);
+    alvo[1].set([0, -0.03 * wq, 0.006 * wq], i * 3);
+    const ab = Math.acos(cl(d.dot(BOCA_D), -1, 1)), wl = Math.exp(-((ab / 0.17) ** 2));
+    alvo[2].set([d.x * 0.013 * wl, d.y * 0.013 * wl, d.z * 0.013 * wl], i * 3);
+  }
+  geo.morphTargetsRelative = true; geo.morphAttributes.position = []; geo.morphAttributes.normal = [];
+  const n0 = geo.attributes.normal.array.slice();
+  for (const a of alvo) {
+    geo.morphAttributes.position.push(new THREE.Float32BufferAttribute(a, 3));
+    const tmp = geo.clone(); tmp.morphAttributes = {}; const tp = tmp.attributes.position;
+    for (let i = 0; i < n; i++) tp.setXYZ(i, tp.getX(i) + a[i * 3], tp.getY(i) + a[i * 3 + 1], tp.getZ(i) + a[i * 3 + 2]);
+    tmp.computeVertexNormals(); const tn = tmp.attributes.normal.array; const dn = new Float32Array(n * 3);
+    for (let k = 0; k < n * 3; k++) dn[k] = tn[k] - n0[k];
+    geo.morphAttributes.normal.push(new THREE.Float32BufferAttribute(dn, 3)); tmp.dispose();
+  }
+  return geo;
+}
 
 class Boneco {
   constructor(cor, icone, aparencia, acessorio) {
     const ap = this.ap = lerAp(aparencia);
-    this.molas = {};   // cabelo que balança (rabo de cavalo)
+    this.molas = {};   // cabelo que balança
     this.cor = cor || "#2457F5";
-    const camisa = this.camisa = new THREE.MeshPhysicalMaterial({ color: this.cor, roughness: 0.8, sheen: 0.22, sheenRoughness: 0.75, sheenColor: new THREE.Color("#E6ECFF") });
-    const gola = this.gola = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.8 });
-    const branco = this.branco = new THREE.MeshStandardMaterial({ color: "#F4F6FA", roughness: 0.7 });
-    // terno (cor fixa, grafite), xadrez e havaiana (estampas desenhadas na cor do perfil)
-    const paleto = this.paleto = new THREE.MeshStandardMaterial({ color: COR_TERNO, roughness: 0.62 });
-    this.texX = tela(256, 256); this.texH = tela(256, 256);
-    for (const T of [this.texX, this.texH]) { T.t.wrapS = T.t.wrapT = THREE.RepeatWrapping; T.t.repeat.set(4, 2); }
-    const xadrez = this.xadrez = new THREE.MeshStandardMaterial({ map: this.texX.t, roughness: 0.92 });
-    const havai = this.havai = new THREE.MeshStandardMaterial({ map: this.texH.t, roughness: 0.72 });
-    this.estampasCor = this.cor; this.desenharEstampas(this.cor);
-    // pele macia (brilho aveludado nas bordas, como nas animações 3D) e tecidos com sheen
+    // tecidos: tronco e mangas têm materiais próprios (cada peça tem o seu mapa de dobras)
+    const fis = (c, r = 0.82, sh = 0.2) => new THREE.MeshPhysicalMaterial({ color: c, roughness: r, sheen: sh, sheenRoughness: 0.75, sheenColor: new THREE.Color("#E9EEFF"), normalScale: new THREE.Vector2(0.9, 0.9) });
+    this.mtTronco = fis(this.cor); this.mtManga = fis(this.cor);
+    this.mtDet = fis(this.cor, 0.8, 0.15);   // golas, punhos e barras canelados
+    this.gola = this.mtDet;
+    this.branco = new THREE.MeshPhysicalMaterial({ color: "#F4F6FA", roughness: 0.66, sheen: 0.15, sheenColor: new THREE.Color("#FFFFFF"), normalMap: nmTronco("liso"), normalScale: new THREE.Vector2(0.7, 0.7) });
+    this.mtGravata = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.42 });
+    this.mtLapela = new THREE.MeshStandardMaterial({ color: "#1D212B", roughness: 0.45 });
+    this.texX = tela(256, 256); this.texH = tela(256, 256); this.texL = tela(128, 128); this.texT = tela(512, 512); this.texLM = tela(128, 128); this.texLP = tela(128, 128);
+    for (const T of [this.texX, this.texH, this.texL]) { T.t.wrapS = T.t.wrapT = THREE.RepeatWrapping; T.t.repeat.set(4, 2); }
+    for (const T of [this.texLM, this.texLP, this.texT]) { T.t.wrapS = T.t.wrapT = THREE.RepeatWrapping; T.t.channel = 1; }
+    // pele macia (brilho aveludado nas bordas, como nas animações 3D)
     const pele = this.pele = new THREE.MeshPhysicalMaterial({ color: AP.p[ap.p], roughness: 0.5, emissive: "#4A1D0C", emissiveIntensity: 0.15, sheen: 0.18, sheenRoughness: 0.55, sheenColor: new THREE.Color("#FFC9B0") });
-    const peleSom = this.peleSom = new THREE.MeshStandardMaterial({ color: AP.p[ap.p], roughness: 0.6, emissive: "#4A1D0C", emissiveIntensity: 0.1 });
-    const cab = this.cab = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.64, vertexColors: true });   // fosco: cor fiel em qualquer luz
-    const cabRaspado = this.cabRaspado = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.95 });
-    const calca = this.calca = new THREE.MeshPhysicalMaterial({ color: AP.l[ap.l], roughness: 0.84, sheen: 0.18, sheenRoughness: 0.75, sheenColor: new THREE.Color("#B8C4DA") });
-    const sap = this.sapMat = new THREE.MeshStandardMaterial({ color: AP.s[ap.s], roughness: 0.45 });
-    const sola = this.solaMat = new THREE.MeshStandardMaterial({ color: "#F4F6F8", roughness: 0.55 });
-    const meia = M("#F8FAFC", { r: 0.9 });
+    const peleSom = this.peleSom = new THREE.MeshStandardMaterial({ color: AP.p[ap.p], roughness: 0.55, emissive: "#4A1D0C", emissiveIntensity: 0.1 });
+    this.cab = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.6, vertexColors: true });
+    this.cabRaspado = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.95, vertexColors: true });
+    this.barbaMat = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.9, vertexColors: true });
+    this.mtCalca = fis(AP.l[ap.l], 0.84, 0.18); this.mtCalca.normalMap = nmPerna("liso");
+    this.mtSap = new THREE.MeshStandardMaterial({ color: AP.s[ap.s], roughness: 0.48 });
+    this.mtSola = new THREE.MeshStandardMaterial({ color: "#F4F6F8", roughness: 0.6 });
+    this.mtSapDet = new THREE.MeshStandardMaterial({ color: "#F8FAFC", roughness: 0.55 });
+    this.mtCadarco = new THREE.MeshStandardMaterial({ color: "#F1F5F9", roughness: 0.7 });
+    this.mtFaixa = new THREE.MeshStandardMaterial({ color: "#CBD5E1", roughness: 0.5 });
+    this.meia = M("#F8FAFC", { r: 0.9 });
     const cinto = M("#2A1D16", { r: 0.45 }), fivela = M("#D9B44A", { r: 0.28, m: 0.7 });
-    this.gir = [];   // malhas que engordam/emagrecem (escala só na espessura, sem distorcer as juntas)
-    const G = (m, k = 1) => { this.gir.push({ m, s: m.scale.clone(), k }); return m; };
     const root = this.root = new THREE.Group();
     const hips = this.hips = new THREE.Group(); root.add(hips);
-    /* quadril + cinto */
-    G(mesh(new THREE.SphereGeometry(0.155, 28, 18), calca, hips, 0, 0.025, 0, { s: [1.06, 0.64, 0.82] }));
-    this.cinto = G(cil(hips, cinto, 0.145, 0.145, 0.03, 0, 0.066, 0, { s: [1.06, 1, 0.8], seg: 32 }));
-    this.fivela = bloco(hips, fivela, [-0.018, 0.052, 0.108], [0.018, 0.082, 0.118], 0.006);
     const spine = this.spine = new THREE.Group(); spine.position.y = 0.04; hips.add(spine);
-    /* tronco */
-    const perfil = new THREE.SplineCurve([[0.0, -0.03], [0.138, -0.01], [0.142, 0.08], [0.146, 0.15], [0.162, 0.25], [0.176, 0.34], [0.182, 0.41], [0.172, 0.462], [0.135, 0.505], [0.074, 0.536], [0.0, 0.55]].map((q) => new THREE.Vector2(q[0], q[1]))).getPoints(48);
-    this.torso = G(mesh(new THREE.LatheGeometry(perfil, 48), camisa, spine, 0, 0, 0, { s: [1.06, 1, 0.74] }));
-    this.barriga = G(esf(spine, camisa, 0.155, 0, 0.16, 0, { s: [0.98, 1.05, 0.8], seg: 36, seg2: 24 }), 1); this.barriga.visible = false;
-    // detalhes de cada roupa
-    const R = this.roupas = [];
-    const vest = (fn) => { const g = new THREE.Group(); spine.add(g); fn(g); g.visible = false; R.push(g); return g; };
-    // peças coladas no peito: malha que segue a curva do tronco (xy(u, t) dá o ponto; u de 0 a 1 na largura, t de 0 a 1 na altura)
-    const rTorso = (y) => { let a = perfil[0], b = perfil[perfil.length - 1]; for (let i = 1; i < perfil.length; i++) if (perfil[i].y >= y) { a = perfil[i - 1]; b = perfil[i]; break; } return lerp(a.x, b.x, cl((y - a.y) / ((b.y - a.y) || 1))); };
-    const naFrente = (x, y, eps) => { const r = rTorso(y); return Math.sqrt(Math.max(0, 1 - (x / (r * 1.06)) ** 2)) * r * 0.74 + eps; };
-    const placa = (g, mat, xy, eps, nx = 6, ny = 12) => {
-      const pos = [], idx = [];
-      // folga maior no alto do peito, onde o tronco inclina e respira
-      for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) { const [x, y] = xy(i / nx, j / ny); pos.push(x, y, naFrente(x, y, eps + 0.004 + 0.06 * Math.max(0, y - 0.4))); }
-      const [x0, y0] = xy(0, 0), [x1, y1] = xy(1, 0), [x2, y2] = xy(0, 1); const vira = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0) < 0;   // lado espelhado
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, b = a + nx + 1; if (vira) idx.push(a, b, a + 1, a + 1, b, b + 1); else idx.push(a, a + 1, b, a + 1, b + 1, b); }
-      const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, mat); m.castShadow = false; m.receiveShadow = true; g.add(m); return m;
-    };
-    const faixa = (y0, y1, meia) => (u, t) => { const y = lerp(y0, y1, t); return [(u * 2 - 1) * meia(t), y]; };
-    const botao = (g, mat, x, y, r = 0.0068) => esf(g, mat, r, x, y, naFrente(x, y, 0.004), { s: [1, 1, 0.5], seg: 10, seg2: 8 });
-    // lapela: faixa ao longo do V do decote (s = lado), da cintura do V até a gola
-    const lapela = (g, mat, s, yb, yt, xb, xt, lb, lt, eps) => placa(g, mat, (u, t) => { const xi = lerp(xb, xt, t), w = lerp(lb, lt, t) * (t > 0.86 ? 1 - (t - 0.86) * 2.4 : 1); return [s * (xi + u * w), lerp(yb, yt, t)]; }, eps, 4, 14);
-    // 0 polo: gola com abas e dois botões
-    vest((g) => {
-      const flap = new THREE.BoxGeometry(0.08, 0.01, 0.07);
-      for (const s of [-1, 1]) mesh(flap, gola, g, s * 0.042, 0.522, 0.072, { rx: 0.62, rz: -s * 0.55 });
-      mesh(new THREE.TorusGeometry(0.066, 0.017, 10, 28), gola, g, 0, 0.535, -0.004, { rx: PI / 2 });
-      for (const y of [0.48, 0.44]) esf(g, M("#E8EDF5", { r: 0.4 }), 0.0078, 0, y, 0.122, { seg: 10, seg2: 8 });
-    });
-    // 1 camiseta: gola redonda
-    vest((g) => { mesh(new THREE.TorusGeometry(0.07, 0.012, 10, 28), gola, g, 0, 0.528, 0.004, { rx: PI / 2 - 0.12 }); });
-    // 2 moletom: capuz, cordões, bolso canguru e barra
-    vest((g) => {
-      mesh(new THREE.TorusGeometry(0.085, 0.034, 12, 28, PI * 1.25), gola, g, 0, 0.53, -0.025, { rx: PI / 2 - 0.25, rz: -PI * 0.125 + PI });
-      esf(g, gola, 0.1, 0, 0.5, -0.1, { s: [1.05, 0.6, 0.55] });
-      for (const s of [-1, 1]) caps(g, M("#F1F5F9", { r: 0.6 }), 0.006, 0.09, s * 0.03, 0.45, 0.13, { rx: 0.08 });
-      bloco(g, gola, [-0.09, 0.07, 0.098], [0.09, 0.18, 0.124], 0.025, { rx: -0.05 });
-      cil(g, gola, 0.15, 0.15, 0.04, 0, -0.005, 0, { s: [1.06, 1, 0.76], seg: 32 });
-    });
-    // 3 social: camisa branca, colarinho e gravata na cor do perfil
-    vest((g) => {
-      for (const s of [-1, 1]) mesh(new THREE.BoxGeometry(0.075, 0.008, 0.06), branco, g, s * 0.04, 0.525, 0.07, { rx: 0.7, rz: -s * 0.75 });
-      mesh(new THREE.TorusGeometry(0.064, 0.013, 10, 28), branco, g, 0, 0.535, -0.004, { rx: PI / 2 });
-      const gr = this.gravata = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.5 });
-      bloco(g, gr, [-0.02, 0.49, 0.112], [0.02, 0.525, 0.13], 0.008);
-      const gv = new THREE.Shape(); gv.moveTo(-0.018, 0); gv.lineTo(0.018, 0); gv.lineTo(0.032, -0.25); gv.lineTo(0, -0.29); gv.lineTo(-0.032, -0.25); gv.closePath();
-      mesh(new THREE.ExtrudeGeometry(gv, { depth: 0.008, bevelEnabled: true, bevelSize: 0.003, bevelThickness: 0.003, bevelSegments: 1 }), gr, g, 0, 0.495, 0.118, { rx: -0.1 });
-      for (const y of [0.4, 0.3, 0.2, 0.1]) esf(g, M("#CBD5E1", { r: 0.4 }), 0.006, 0.045, y, 0.14 - y * 0.02, { seg: 8, seg2: 6 });
-    });
-    // 4 jaqueta: aberta, com camiseta branca por baixo
-    vest((g) => {
-      placa(g, branco, faixa(0.03, 0.515, (t) => lerp(0.07, 0.06, t)), 0.002);
-      for (const s of [-1, 1]) { bloco(g, M("#475569", { r: 0.3, m: 0.6 }), [-0.004, -0.0, -0.004], [0.004, 0.42, 0.004], 0.002).position.set(s * 0.075, 0.24, 0.136 - 0.0); }
-      mesh(new THREE.TorusGeometry(0.078, 0.026, 10, 28), gola, g, 0, 0.525, -0.012, { rx: PI / 2 - 0.15 });
-      cil(g, gola, 0.15, 0.15, 0.04, 0, -0.005, 0, { s: [1.06, 1, 0.76], seg: 32 });
-    });
-    // 5 regata: cava funda (o ombro aparece)
-    vest((g) => { mesh(new THREE.TorusGeometry(0.075, 0.01, 10, 28), gola, g, 0, 0.52, 0.01, { rx: PI / 2 - 0.25 }); });
-    // 6 terno: paletó grafite, camisa branca no V, gravata e lenço na cor do perfil, dois botões
-    vest((g) => {
-      placa(g, branco, faixa(0.3, 0.535, (t) => lerp(0.012, 0.08, t)), 0.003);
-      const gr = this.gravata2 = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.45 });
-      placa(g, gr, faixa(0.255, 0.49, (t) => t < 0.1 ? lerp(0.002, 0.025, t / 0.1) : lerp(0.025, 0.012, (t - 0.1) / 0.9)), 0.0065);
-      placa(g, gr, faixa(0.488, 0.522, (t) => lerp(0.012, 0.018, t)), 0.0085, 4, 3);
-      const lap = M("#1D212B", { r: 0.42 });
-      for (const s of [-1, 1]) lapela(g, lap, s, 0.285, 0.535, 0.002, 0.07, 0.03, 0.05, 0.009);
-      for (const y of [0.25, 0.18]) botao(g, M("#11141B", { r: 0.35 }), 0, y);
-      placa(g, M("#1D212B", { r: 0.5 }), (u, t) => [-0.115 + u * 0.065, lerp(0.352, 0.356, t)], 0.006, 3, 1);
-      placa(g, gr, (u, t) => [-0.108 + u * 0.05, lerp(0.354, 0.385, t) - (u > 0.5 ? 0 : 0.008 * t)], 0.0075, 4, 4);
-    });
-    // 7 blazer: na cor do perfil, camiseta branca por baixo
-    vest((g) => {
-      placa(g, branco, faixa(0.18, 0.53, (t) => lerp(0.03, 0.085, t)), 0.003);
-      mesh(new THREE.TorusGeometry(0.068, 0.011, 10, 28), branco, g, 0, 0.528, 0.004, { rx: PI / 2 - 0.12 });
-      const lb = this.lapBlazer = new THREE.MeshStandardMaterial({ color: misturaCor(this.cor, "#000000", 0.22), roughness: 0.55 });
-      for (const s of [-1, 1]) lapela(g, lb, s, 0.17, 0.535, 0.028, 0.078, 0.032, 0.05, 0.008);
-      botao(g, M("#1F2937", { r: 0.35 }), 0.03, 0.15, 0.0075);
-    });
-    // 8 camisa xadrez de flanela: gola, carcela e botões
-    vest((g) => {
-      const flap = new THREE.BoxGeometry(0.082, 0.009, 0.07);
-      for (const s of [-1, 1]) mesh(flap, xadrez, g, s * 0.043, 0.523, 0.071, { rx: 0.66, rz: -s * 0.6 });
-      mesh(new THREE.TorusGeometry(0.066, 0.015, 10, 28), xadrez, g, 0, 0.534, -0.004, { rx: PI / 2 });
-      placa(g, xadrez, faixa(0.02, 0.5, () => 0.011), 0.003, 2, 10);
-      for (const y of [0.45, 0.36, 0.27, 0.18, 0.09]) botao(g, M("#EDE6D6", { r: 0.4 }), 0, y, 0.006);
-    });
-    // 9 camisa havaiana: gola aberta (aparece o pescoço) e botões
-    vest((g) => {
-      placa(g, pele, faixa(0.43, 0.535, (t) => lerp(0.004, 0.05, t)), 0.003);
-      for (const s of [-1, 1]) lapela(g, havai, s, 0.4, 0.535, 0.004, 0.052, 0.03, 0.045, 0.006);
-      for (const y of [0.36, 0.26, 0.16, 0.06]) botao(g, M("#F5EBD8", { r: 0.4 }), 0, y, 0.006);
-    });
+    /* tronco: uma malha só (sem bola no ombro nem emenda na cintura), presa a quatro ossos:
+       coluna, quadril e as duas metades da barra, que balançam e sobem quando ele senta */
+    const bS = this.bS = new THREE.Bone(); spine.add(bS);
+    const bH = this.bH = new THREE.Bone(); hips.add(bH);
+    const bF = this.bF = new THREE.Bone(); hips.add(bF);
+    const bB = this.bB = new THREE.Bone(); hips.add(bB);
+    this.troncoM = new THREE.SkinnedMesh(new THREE.BufferGeometry(), this.mtTronco); this.troncoM.frustumCulled = false; this.troncoM.castShadow = this.troncoM.receiveShadow = true; spine.add(this.troncoM);
+    this.detRoupa = new THREE.Group(); spine.add(this.detRoupa);
+    // calça: quadril arredondado (fica por baixo da camisa), cinto só quando a camisa vai por dentro
+    this.pelveM = mesh(new THREE.BufferGeometry(), this.mtCalca, hips, 0, 0, 0);
+    this.cintoM = mesh(new THREE.BufferGeometry(), cinto, hips, 0, 0, 0);
+    this.fivela = bloco(hips, fivela, [-0.02, -0.013, -0.004], [0.02, 0.013, 0.004], 0.004);
     // ícone do perfil estampado no peito
     this.estampa = tela(128, 128);
-    const ep = mesh(new THREE.PlaneGeometry(0.1, 0.1), new THREE.MeshBasicMaterial({ map: this.estampa.t, transparent: true, alphaTest: 0.1, toneMapped: false }), spine, -0.072, 0.37, 0.126, { cast: false, ry: -0.1 });
-    this.estampaPlano = ep; this.temIcone = false; this.setIcone(icone);
+    this.estampaPlano = mesh(new THREE.PlaneGeometry(0.1, 0.1), new THREE.MeshBasicMaterial({ map: this.estampa.t, transparent: true, alphaTest: 0.1, toneMapped: false }), spine, -0.072, 0.36, 0.13, { cast: false, ry: -0.12 });
+    this.temIcone = false;
     /* pescoço e cabeça */
     const neck = this.neck = new THREE.Group(); neck.position.y = 0.52; spine.add(neck);
-    cil(neck, pele, 0.05, 0.056, 0.12, 0, 0.03, 0.004, { seg: 20 });
+    cil(neck, pele, 0.052, 0.058, 0.12, 0, 0.03, 0.004, { seg: 24 });
     const head = this.head = new THREE.Group(); head.position.set(0, 0.045, 0.014); head.scale.set(...CAB_ESC); neck.add(head);
-    const hc = 0.2, Rc = 0.24; this.hc = hc; this.R = Rc;
-    mesh(formaCabeca(new THREE.SphereGeometry(Rc, 56, 40), Rc), pele, head, 0, hc, 0);
+    const hc = 0.2, Rc = 0.24; this.hc = hc; this.RC = Rc;
+    this.cabM = mesh(morfesRosto(formaCabeca(new THREE.SphereGeometry(Rc, 72, 54), Rc), Rc), pele, head, 0, hc, 0);
     // orelhas grandes e macias, com a concha por dentro
     for (const s of [-1, 1]) {
       esf(head, pele, 0.074, s * (Rc - 0.006), hc - 0.014, -0.014, { s: [0.46, 1.0, 0.78], seg: 24, seg2: 16 });
@@ -367,81 +672,51 @@ class Boneco {
     // nariz: um botão redondo, pequeno, como nos bonecos 3D de animação
     esf(head, pele, 0.031, 0, hc - 0.042, Rc - 0.004, { s: [1.18, 0.9, 0.95], seg: 24, seg2: 16 });
     this.montarOlhos(head, hc, Rc);
-    // rosto pintado em canvas sobre um pedaço de esfera
+    // boca, bochechas coradas e lágrima pintadas num pedaço de esfera que acompanha os volumes do rosto
     this.rosto = tela(512, 384); this.rosto.g.scale(2, 2);
-    const fg = formaCabeca(new THREE.SphereGeometry(Rc + 0.003, 48, 28, PI / 2 - 0.9, 1.8, 0.85, 1.3), Rc + 0.003);
+    const fg = morfesRosto(formaCabeca(new THREE.SphereGeometry(Rc + 0.003, 56, 34, PI / 2 - 0.9, 1.8, 0.85, 1.3), Rc + 0.003), Rc + 0.003);
     const fm = new THREE.MeshStandardMaterial({ map: this.rosto.t, transparent: true, alphaTest: 0.04, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 });
-    mesh(fg, fm, head, 0, hc, 0, { cast: false });
+    this.rostoM = mesh(fg, fm, head, 0, hc, 0, { cast: false });
     this.rostoKey = "";
-    this.montarCabelo(head, hc, Rc);
-    this.montarBarba(head, hc, Rc);
+    this.cortes = []; this.barbas = [];
     this.montarOculos(head, hc, Rc);
     this.montarChapeus(head, hc, Rc);
-    /* braços: pele e mangas são tubos contínuos presos a dois ossos (ombro e cotovelo), que dobram
-       suaves na junta em vez de cilindros soltos com uma bola no meio */
+    /* braços: pele e mangas são tubos contínuos presos a dois ossos (ombro e cotovelo) */
     this.dedos = { L: [], R: [] }; this.tubos = [];
-    const tubo = (par, mat, perfil, juntaY, ossos, o = {}) => { const m = new THREE.SkinnedMesh(new THREE.BufferGeometry(), mat); m.frustumCulled = false; m.castShadow = true; par.add(m); this.tubos.push({ m, perfil, juntaY, ossos, kz: o.kz ?? 1, k: o.k ?? 1, aberto: !!o.aberto, banda: o.banda ?? 0.055 }); return m; };
+    const tubo = (par, mat, perfil, juntaY, ossos, o = {}) => { const m = new THREE.SkinnedMesh(new THREE.BufferGeometry(), mat); m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; par.add(m); this.tubos.push({ m, perfil, juntaY, ossos, kz: o.kz ?? 1, k: o.k ?? 1, aberto: !!o.aberto, banda: o.banda ?? 0.055, espelho: !!o.espelho, vTopo: o.vTopo ?? 0.1, vLen: o.vLen ?? 0.7 }); return m; };
     const braco = (lado, nome) => {
       const sh = new THREE.Group(); sh.position.set(0.19 * lado, 0.437, 0); spine.add(sh);
       const el = new THREE.Group(); el.position.y = -BR_A; sh.add(el);
       const o0 = new THREE.Bone(), o1 = new THREE.Bone(); sh.add(o0); el.add(o1);
-      // perfil [y, raio]: ombro, bíceps, acima do cotovelo, cotovelo, antebraço, punho
-      const pele = tubo(sh, this.pele, [[0.045, 0.0], [0.035, 0.032], [0.0, 0.05], [-0.1, 0.048], [-0.2, 0.043], [-0.29, 0.039], [-0.35, 0.043], [-0.47, 0.034], [-0.545, 0.029], [-0.562, 0.0]], -BR_A, [o0, o1]);
-      const mangaC = tubo(sh, camisa, [[0.06, 0.0], [0.05, 0.04], [0.02, 0.062], [-0.06, 0.06], [-0.19, 0.055]], -BR_A, [o0, o1], { aberto: true });
-      const mangaL = tubo(sh, camisa, [[0.06, 0.0], [0.05, 0.04], [0.02, 0.062], [-0.1, 0.058], [-0.22, 0.052], [-0.29, 0.05], [-0.36, 0.051], [-0.5, 0.044], [-0.535, 0.043]], -BR_A, [o0, o1], { aberto: true });
-      const ombro = G(esf(sh, camisa, 0.06, 0, 0.0, 0, { seg: 24, seg2: 18, s: [1, 0.9, 1] }));
-      const ombroPele = G(esf(sh, this.pele, 0.051, 0, -0.004, 0, { seg: 20, seg2: 14 }));
-      const bainhaC = G(mesh(new THREE.TorusGeometry(0.055, 0.008, 8, 24), camisa, sh, 0, -0.188, 0, { rx: PI / 2 }));
-      const punho = G(cil(el, camisa, 0.045, 0.045, 0.03, 0, -0.24, 0, { seg: 22 }));
-      const hand = new THREE.Group(); hand.position.y = -0.27; hand.scale.setScalar(ESC_MAO); el.add(hand);   // mãos mais cheias, estilo animação
-      // mão: dorso e palma arredondados, nós dos dedos, cinco dedos de duas falanges
-      esf(hand, this.pele, 0.033, 0, -0.006, 0, { s: [0.72, 0.75, 1.05], seg: 16, seg2: 12 });
-      esf(hand, this.pele, 0.046, 0, -0.052, 0, { s: [0.38, 1.0, 0.92], seg: 22, seg2: 16 });
-      for (const z of [-0.027, -0.009, 0.009, 0.027]) esf(hand, this.pele, 0.0118, 0, -0.09, z, { s: [1.05, 0.9, 1], seg: 10, seg2: 8 });
-      const lista = this.dedos[nome];
-      [[-0.028, 0.035], [-0.0095, 0.043], [0.0095, 0.041], [0.028, 0.033]].forEach(([z, len]) => {
-        const p1 = new THREE.Group(); p1.position.set(0, -0.092, z); hand.add(p1);
-        caps(p1, this.pele, 0.0128, len, 0, -len / 2 - 0.003, 0);
-        const p2 = new THREE.Group(); p2.position.y = -len - 0.006; p1.add(p2);
-        caps(p2, this.pele, 0.0118, len * 0.8, 0, -len * 0.4 - 0.002, 0);
-        lista.push({ p1, p2 });
-      });
-      const t1 = new THREE.Group(); t1.position.set(-lado * 0.012, -0.03, 0.034); t1.rotation.set(0.4, 0, lado * 0.5); hand.add(t1);
-      esf(t1, this.pele, 0.016, 0, -0.006, 0, { s: [0.9, 1.3, 0.9], seg: 10, seg2: 8 });
-      caps(t1, this.pele, 0.0148, 0.032, 0, -0.022, 0);
-      const t2 = new THREE.Group(); t2.position.y = -0.047; t1.add(t2);
-      caps(t2, this.pele, 0.0132, 0.027, 0, -0.016, 0);
-      lista.push({ p1: t1, p2: t2, polegar: true });
-      return { sh, el, hand, lado, pele, ombro, ombroPele, mangaC, bainhaC, mangaL, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
+      const uRot = lado < 0;   // braço esquerdo espelhado: lado de fora sempre em u = 0,25 (listras do agasalho) e a dobra do cotovelo na frente
+      const peleB = tubo(sh, pele, [[0.03, 0.0], [0.022, 0.036], [0.0, 0.053], [-0.1, 0.051], [-0.2, 0.047], [-0.29, 0.043], [-0.35, 0.046], [-0.47, 0.038], [-0.54, 0.033], [-0.566, 0.0]], -BR_A, [o0, o1], { espelho: uRot });
+      const mangaC = tubo(sh, this.mtManga, [[0.036, 0.0], [0.03, 0.04], [0.012, 0.06], [-0.01, 0.065], [-0.06, 0.064], [-0.155, 0.06], [-0.178, 0.063], [-0.19, 0.062]], -BR_A, [o0, o1], { aberto: true, espelho: uRot });
+      const mangaL = tubo(sh, this.mtManga, [[0.036, 0.0], [0.03, 0.04], [0.012, 0.06], [-0.01, 0.065], [-0.1, 0.062], [-0.22, 0.057], [-0.29, 0.055], [-0.36, 0.056], [-0.46, 0.051], [-0.505, 0.052], [-0.525, 0.053], [-0.538, 0.052]], -BR_A, [o0, o1], { aberto: true, espelho: uRot });
+      const ombroPele = esf(sh, pele, 0.052, 0, -0.004, 0, { seg: 22, seg2: 16 });
+      const punho = cil(el, this.mtDet, 0.051, 0.05, 0.032, 0, -0.233, 0, { seg: 26 });
+      const hand = new THREE.Group(); hand.position.y = -0.27; hand.scale.setScalar(ESC_MAO); el.add(hand);
+      this.dedos[nome] = montarMao(hand, lado, pele, peleSom);
+      return { sh, el, hand, lado, pele: peleB, ombroPele, mangaC, mangaL, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
     };
     this.L = braco(-1, "L"); this.R = braco(1, "R");
     this.curL = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 }; this.curR = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 };
-    /* pernas: perna e calça contínuas do quadril ao tornozelo (ossos no quadril e no joelho), tênis arredondado */
+    /* pernas: perna e calça contínuas do quadril ao tornozelo (ossos no quadril e no joelho) */
     const perna = (lado) => {
       const hp = new THREE.Group(); hp.position.set(0.094 * lado, -0.01, 0); hips.add(hp);
       const kn = new THREE.Group(); kn.position.y = -0.42; hp.add(kn);
       const ft = new THREE.Group(); ft.position.y = -0.4; kn.add(ft);
       const o0 = new THREE.Bone(), o1 = new THREE.Bone(); hp.add(o0); kn.add(o1);
-      G(esf(hp, calca, 0.088, 0, -0.02, 0, { seg: 22, seg2: 16 }));
-      const peleP = tubo(hp, this.pele, [[-0.3, 0.0], [-0.32, 0.05], [-0.42, 0.048], [-0.52, 0.05], [-0.62, 0.045], [-0.78, 0.035], [-0.8, 0.0]], -0.42, [o0, o1]);
-      const calcaL = tubo(hp, calca, [[0.04, 0.0], [0.03, 0.06], [0.0, 0.088], [-0.08, 0.084], [-0.3, 0.068], [-0.42, 0.06], [-0.52, 0.06], [-0.7, 0.05], [-0.775, 0.05]], -0.42, [o0, o1], { aberto: true, kz: 1.04 });
-      const bermudaM = tubo(hp, calca, [[0.04, 0.0], [0.03, 0.06], [0.0, 0.09], [-0.08, 0.086], [-0.3, 0.072], [-0.44, 0.064]], -0.42, [o0, o1], { aberto: true, kz: 1.04 });
-      const bermuda = G(mesh(new THREE.TorusGeometry(0.064, 0.011, 8, 22), calca, kn, 0, -0.02, 0, { rx: PI / 2 }));
-      const barra = G(mesh(new THREE.TorusGeometry(0.05, 0.0095, 8, 20), calca, kn, 0, -0.355, 0, { rx: PI / 2 }));
-      const meiaM = cil(ft, meia, 0.036, 0.039, 0.07, 0, 0.012, 0, { seg: 16 });
-      // tênis grande e fofo: cabedal arredondado, bico, sola alta com faixa, língua, gola acolchoada e cadarço
-      const tn = new THREE.Group(); tn.scale.setScalar(1.22); tn.position.y = 0.0167; ft.add(tn);
-      esf(tn, sap, 0.058, 0, -0.026, 0.032, { s: [0.9, 0.66, 1.74], seg: 28, seg2: 18 });
-      esf(tn, sap, 0.046, 0, -0.008, -0.02, { s: [0.98, 0.98, 1.02], seg: 22, seg2: 14 });
-      mesh(new THREE.TorusGeometry(0.036, 0.011, 10, 24), sap, tn, 0, 0.008, -0.012, { rx: PI / 2 + 0.25 });
-      esf(tn, M("#F1F4F8", { r: 0.6 }), 0.024, 0, 0.002, 0.024, { s: [0.95, 0.45, 1.4], seg: 14, seg2: 10 });
-      mesh(new THREE.CylinderGeometry(0.06, 0.058, 0.03, 32), sola, tn, 0, -0.062, 0.04, { s: [0.95, 1, 1.82] });
-      mesh(new THREE.TorusGeometry(0.06, 0.0045, 6, 32), M("#94A3B8", { r: 0.5 }), tn, 0, -0.054, 0.04, { rx: PI / 2, s: [0.96, 1.83, 1] });
-      for (let i = 0; i < 3; i++) bloco(tn, M("#E9EDF2", { r: 0.7 }), [-0.02, 0, -0.004], [0.02, 0.006, 0.004], 0.002).position.set(0, 0.006 - i * 0.008, 0.034 + i * 0.02);
-      return { hp, kn, ft, peleP, calcaL, bermudaM, bermuda, barra, meiaM };
+      const op = { aberto: true, kz: 1.04, espelho: lado < 0, vTopo: 0.06, vLen: 0.84 };
+      const peleP = tubo(hp, pele, [[-0.08, 0.0], [-0.1, 0.07], [-0.2, 0.067], [-0.3, 0.06], [-0.42, 0.051], [-0.52, 0.053], [-0.62, 0.047], [-0.76, 0.037], [-0.8, 0.0]], -0.42, [o0, o1], { espelho: lado < 0, vTopo: 0.06, vLen: 0.84 });
+      const calcaL = tubo(hp, this.mtCalca, [[0.03, 0.0], [0.018, 0.054], [-0.01, 0.078], [-0.06, 0.084], [-0.2, 0.081], [-0.34, 0.069], [-0.42, 0.065], [-0.5, 0.067], [-0.62, 0.061], [-0.72, 0.057], [-0.755, 0.059], [-0.778, 0.059]], -0.42, [o0, o1], op);
+      const jogger = tubo(hp, this.mtCalca, [[0.03, 0.0], [0.018, 0.054], [-0.01, 0.078], [-0.06, 0.085], [-0.2, 0.083], [-0.34, 0.071], [-0.42, 0.067], [-0.5, 0.068], [-0.64, 0.059], [-0.7, 0.052], [-0.722, 0.044], [-0.738, 0.046], [-0.762, 0.046], [-0.772, 0.045]], -0.42, [o0, o1], op);
+      const bermudaM = tubo(hp, this.mtCalca, [[0.03, 0.0], [0.018, 0.054], [-0.01, 0.079], [-0.06, 0.086], [-0.3, 0.079], [-0.43, 0.073], [-0.448, 0.075], [-0.46, 0.074]], -0.42, [o0, o1], op);
+      const shortsM = tubo(hp, this.mtCalca, [[0.03, 0.0], [0.018, 0.054], [-0.01, 0.08], [-0.06, 0.088], [-0.165, 0.09], [-0.18, 0.091]], -0.42, [o0, o1], op);
+      const meiaM = cil(ft, this.meia, 0.04, 0.043, 0.07, 0, 0.012, 0, { seg: 18 });
+      const pe = new THREE.Group(); ft.add(pe);
+      return { hp, kn, ft, o0, o1, pe, peleP, calcaL, jogger, bermudaM, shortsM, meiaM };
     };
     this.PL = perna(-1); this.PR = perna(1);
-    sombra(root, true, false);
     // sombra de contato
     const st = tela(64, 64); const gr = st.g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, "rgba(0,0,0,.45)"); gr.addColorStop(1, "rgba(0,0,0,0)"); st.g.fillStyle = gr; st.g.fillRect(0, 0, 64, 64);
     this.blob = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), new THREE.MeshBasicMaterial({ map: st.t, transparent: true, depthWrite: false }));
@@ -449,168 +724,349 @@ class Boneco {
     this.mL = new THREE.Vector3(); this.mR = new THREE.Vector3();
     this.gp = new THREE.Vector3(0, -0.06, 0);
     this.pDy = 0; this.pNod = 0; this.pT = null; this.pYaw = null;
-    this.esc = 1;
-    // ossos dos tubos: liga na pose de descanso (braços e pernas retos)
+    this.esc = 1; this.barra = { x: 0, vx: 0, z: 0, vz: 0, ant: null, vel: new THREE.Vector3() };
+    // ossos: liga na pose de descanso (braços e pernas retos)
     root.updateMatrixWorld(true);
     for (const t of this.tubos) { t.m.geometry = this.geoTubo(t, 1); t.esq = new THREE.Skeleton(t.ossos); t.m.bind(t.esq, t.m.matrixWorld); }
+    this.esqTronco = new THREE.Skeleton([bS, bH, bF, bB]);
+    this.troncoM.bind(this.esqTronco, this.troncoM.matrixWorld); this.bindTronco = this.troncoM.matrixWorld.clone();
+    this.esqSaia = new THREE.Skeleton([bH, this.PL.o0, this.PR.o0]); this.bindQuadril = hips.matrixWorld.clone();
+    sombra(root, true, false);
+    this.setIcone(icone);
     this.setAparencia(aparencia, acessorio);
   }
-
-  /* --- cabelo: 0 topete, 1 curto, 2 raspado, 3 comprido, 4 cacheado, 5 black power, 6 coque, 7 moicano, 8 rabo de cavalo, 9 careca --- */
-  montarCabelo(head, hc, R) {
-    const cab = this.cab; const cortes = this.cortes = [];
-    const C = V(0, hc, 0);
-    // ponto na cabeça: th = ângulo a partir do topo, ph = em volta (0 = frente), h = altura acima do couro
-    const S = (th, ph, h = 0) => V(Math.sin(th) * Math.sin(ph), Math.cos(th), Math.sin(th) * Math.cos(ph)).multiplyScalar(R + h).add(C);
-    const nrm = (p) => p.clone().sub(C).normalize();
-    // linha do cabelo: até onde desce em cada direção (testa mais alta, nuca mais baixa)
-    const limite = (ph) => { const f = Math.cos(ph); return f > 0 ? lerp(1.32, 0.98, Math.pow(f, 1.4)) : lerp(1.32, 1.95, Math.pow(-f, 0.9)); };
-    const touca = (h = 0.012, th = 1.36, ext = 0.0) => {
-      // couro cabeludo: esfera presa na linha do cabelo (frente alta, nuca baixa), com a borda lisa
-      const g = new THREE.SphereGeometry(R + h, 56, 32, 0, TAU, 0, 2.1); const p = g.attributes.position; const v = new THREE.Vector3();
-      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const thv = Math.acos(cl(v.y / (R + h), -1, 1)); const phv = Math.atan2(v.x, v.z); const lim = limite(phv) + ext; if (thv > lim) { const q = S(lim, phv, h).sub(C); p.setXYZ(i, q.x, q.y, q.z); } }
-      g.computeVertexNormals(); assado(g, 0, hc, 0); return comCor(g, 0.7);
-    };
-    const mechaNa = (pts, r0, r1, o = {}) => mechaGeo(pts, r0 * 1.3, r1 * 1.5, { ref: (p) => nrm(p), ...o });   // mechas grossas: cabelo esculpido
-    // caminho sobre a cabeça de (th0,ph0) até (th1,ph1), subindo do couro (h0) até (h1)
-    const trilha = (th0, ph0, th1, ph1, h0, h1, n = 7, bojo = 0.012) => { const r = []; for (let i = 0; i <= n; i++) { const t = i / n; r.push(S(lerp(th0, th1, t), lerp(ph0, ph1, t), lerp(h0, h1, t) + bojo * Math.sin(PI * t))); } return r; };
-    const jit = (i, a) => (ruido(i * 3.7 + a) - 0.5);
-    const novo = (lista, extra) => { const g = new THREE.Group(); if (lista.length) { const m = mesh(juntar(lista), cab, g); m.castShadow = true; } if (extra) extra(g); cortes[slot] = g; return g; };
-
-    const F = [];
-    /* 0 topete: laterais curtas e um topete alto penteado para trás */
-    F[0] = () => { {
-      const L = [touca(0.012)];
-      for (let i = 0; i < 26; i++) { const ph = PI * 0.32 + (i / 25) * PI * 1.36 + jit(i, 1) * 0.08; L.push(mechaNa(trilha(0.45 + jit(i, 2) * 0.1, ph, limite(ph) - 0.05, ph + jit(i, 3) * 0.12, 0.03, 0.006), 0.045, 0.014)); }
-      const g = novo(L);
-      const fio = this.fio = new THREE.Group(); fio.position.copy(S(0.45, 0, 0)); g.add(fio);
-      const T = []; const o = fio.position.clone();
-      for (let i = 0; i < 16; i++) {
-        const ph = -0.75 + (i / 15) * 1.5 + jit(i, 4) * 0.06, alto = 0.07 + 0.035 * Math.cos(ph * 1.6);
-        const pts = [S(0.95, ph * 0.9, 0.006), S(0.62, ph * 0.85, alto * 0.75), S(0.3, ph * 0.7, alto), S(0.05 + jit(i, 5) * 0.1, ph * 0.5 + PI * 0.06, alto * 0.65), S(0.42, PI + ph * 0.4, 0.012)].map((p) => p.sub(o));
-        T.push(mechaGeo(pts, 0.05, 0.016, { ref: (p) => p.clone().add(o).sub(C).normalize(), bulbo: 0.25 }));
-      }
-      mesh(juntar(T), cab, fio);
-      this.fioBase = fio;
-    } };
-    /* 1 curto: penteado para a frente, franja leve */
-    F[1] = () => { {
-      const L = [touca(0.012)];
-      for (let i = 0; i < 44; i++) {
-        const ph = (i / 44) * TAU + jit(i, 6) * 0.1; const f = Math.cos(ph);
-        const fim = limite(ph) + (f > 0.5 ? 0.02 : -0.02);
-        L.push(mechaNa(trilha(0.08 + ruido(i) * 0.2, ph * 0.85 + jit(i, 7) * 0.2, fim, ph, 0.03, f > 0.5 ? 0.02 : 0.008, 7, 0.018), 0.042, 0.012));
-      }
-      novo(L);
-    } };
-    /* 2 raspado */
-    F[2] = () => { { const g = new THREE.Group(); mesh(touca(0.004, 1.36, 0.04), this.cabRaspado, g); cortes[slot] = (g); } };
-    /* 3 comprido: repartido de lado, até os ombros */
-    F[3] = () => { {
-      const cortina = new THREE.SphereGeometry(R + 0.03, 40, 18, PI - 0.5, PI + 1.0, 0.75, 1.55); const p = cortina.attributes.position;
-      for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < 0) p.setY(i, y * 1.9); const x = p.getX(i), z = p.getZ(i); if (y < 0) { const f = 1 + 0.12 * (-y / R); p.setX(i, x * f); p.setZ(i, z * f); } }
-      cortina.computeVertexNormals(); assado(cortina, 0, hc, 0);
-      const L = [touca(0.014), comCor(cortina, 0.66)];
-      const par = 0.35;
-      for (let i = 0; i < 64; i++) {
-        const lado = i % 2 ? 1 : -1; const k = Math.floor(i / 2) / 31;
-        const ph = par + lado * (0.06 + k * PI * 0.94) + jit(i, 8) * 0.05; const f = Math.cos(ph);
-        const th0 = 0.16 + ruido(i + 2) * 0.08;
-        const pts = trilha(th0, par + lado * 0.04, PI * 0.4, ph, 0.032, 0.036, 4, 0.012);
-        const lim = limite(ph); const ultimo = S(Math.min(lim, 1.45), ph, 0.04);
-        if (f > 0.6) { pts.push(S(0.92, ph, 0.045), S(1.08, ph * 1.25 + lado * 0.1, 0.035)); }   // franja de lado
-        else {
-          pts.push(ultimo); const out = nrm(ultimo).setY(0).normalize();
-          const comp = 0.3 + 0.1 * (1 - Math.abs(f)) + ruido(i) * 0.05;
-          pts.push(ultimo.clone().add(out.clone().multiplyScalar(0.035)).add(V(0, -comp * 0.5, 0)), ultimo.clone().add(out.clone().multiplyScalar(0.06)).add(V(0, -comp, f < -0.3 ? -0.02 : 0)));
-        }
-        L.push(mechaNa(pts, 0.085, 0.03, { bulbo: 0.15, seg: 24, ach: 0.4, raiz: 0.78 }));
-      }
-      novo(L);
-    } };
-    /* 4 cacheado: cachinhos em espiral por toda a cabeça */
-    F[4] = () => { {
-      const L = [touca(0.018)];
-      let n = 0;
-      for (let i = 0; i < 200 && n < 120; i++) {
-        const th = Math.acos(1 - 2 * ((i + 0.5) / 200)), ph = i * 2.39996;
-        if (th > limite(Math.atan2(Math.sin(ph), Math.cos(ph))) - 0.05) continue;
-        n++;
-        const base = S(th, ph, 0.03); const nn = nrm(base); const t1 = V(-nn.z, 0, nn.x).normalize(); if (t1.lengthSq() < 0.5) t1.set(1, 0, 0); const t2 = new THREE.Vector3().crossVectors(nn, t1);
-        const pts = []; const rr0 = 0.026 + ruido(i) * 0.012, voltas = 1.5;
-        for (let j = 0; j <= 12; j++) { const t = j / 12, a = t * voltas * TAU + i; pts.push(base.clone().add(t1.clone().multiplyScalar(Math.cos(a) * rr0)).add(t2.clone().multiplyScalar(Math.sin(a) * rr0)).add(nn.clone().multiplyScalar(t * 0.045))); }
-        L.push(mechaGeo(pts, 0.02, 0.014, { ach: 1, rad: 6, seg: 18 }));
-      }
-      novo(L);
-    } };
-    /* 5 black power: volume redondo feito de cachos grandes */
-    F[5] = () => { {
-      const L = [touca(0.02)]; const c0 = V(0, hc + 0.1, -0.08);
-      for (let i = 0; i < 170; i++) {
-        const y = 1 - 2 * ((i + 0.5) / 170), rr0 = Math.sqrt(1 - y * y), ph = i * 2.39996; const n = V(rr0 * Math.sin(ph), y, rr0 * Math.cos(ph));
-        const p = c0.clone().add(n.clone().multiply(V(0.27, 0.24, 0.26)));
-        if (p.z - C.z > 0.12 && p.y < hc + 0.12) continue;   // deixa o rosto livre
-        if (p.y < hc - 0.12) continue;
-        const sg = new THREE.IcosahedronGeometry(0.058 + ruido(i) * 0.016, 1); const sm = mergeVertices(sg); sm.computeVertexNormals(); assado(sm, p.x, p.y, p.z);
-        L.push(comCor(sm, 0.82 + ruido(i + 1) * 0.25));
-      }
-      const g = novo(L); g.userData.volume = g.children[0];
-    } };
-    /* 6 coque: penteado para trás com coque no alto */
-    F[6] = () => { {
-      const L = [touca(0.014)];
-      const alvo = V(0, hc + 0.2, -0.17);
-      for (let i = 0; i < 30; i++) { const ph = (i / 30) * TAU; const lim = limite(ph); if (Math.cos(ph) < -0.6) continue; const a = S(lim - 0.02, ph, 0.006), m = S(lim * 0.5, ph * 0.6 + PI * 0.4 * Math.sign(Math.sin(ph) || 1), 0.022); L.push(mechaNa([a, m, alvo.clone().add(V(0, -0.02, 0.02))], 0.04, 0.02)); }
-      const bun = new THREE.IcosahedronGeometry(0.095, 3); const p = bun.attributes.position; const v = new THREE.Vector3();
-      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const n = v.clone().normalize(); v.copy(n.multiplyScalar(0.095 * (1 + 0.06 * Math.sin(Math.atan2(n.x, n.z) * 7 + n.y * 9)))); p.setXYZ(i, v.x, v.y, v.z); }
-      const bunL = mergeVertices(bun); bunL.computeVertexNormals(); assado(bunL, alvo.x, alvo.y + 0.04, alvo.z - 0.03, 0.4);
-      L.push(comCor(bunL, 1.0));
-      const g = novo(L, (gg) => mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 20), M("#111827", { r: 0.5 }), gg, alvo.x, alvo.y - 0.02, alvo.z, { rx: PI / 2 + 0.4 }));
-      g.userData.volume = g.children[0];
-    } };
-    /* 7 moicano: laterais raspadas e crista do topo da testa até a nuca */
-    F[7] = () => { {
-      const g = new THREE.Group(); mesh(touca(0.004, 1.36, 0.04), this.cabRaspado, g);
-      const L = [touca(0.012, 0, -0.0).applyMatrix4(new THREE.Matrix4())];
-      L.length = 0;
-      for (let i = 0; i < 15; i++) {
-        const u = i / 14; const th = lerp(-0.95, 1.75, u); const thb = Math.abs(th), phb = th < 0 ? 0 : PI;
-        const alto = (0.07 + 0.06 * Math.sin(PI * cl(u * 1.15))) ;
-        const base = S(thb, phb, -0.005); const nn = nrm(base); const tras = (th < 0 ? V(0, 0, -1) : V(0, 0, -1));
-        const tip = base.clone().add(nn.clone().multiplyScalar(alto)).add(V(0, 0, -0.05 - 0.03 * u)).add(tras.multiplyScalar(0.0));
-        for (const s2 of [-1, 0, 1]) L.push(mechaGeo([S(thb + (th < 0 ? -1 : 1) * 0.0, phb, -0.004).add(V(s2 * 0.022, 0, 0)), base.clone().add(nn.clone().multiplyScalar(alto * 0.5)).add(V(s2 * 0.012, 0, -0.01)), tip.clone().add(V(s2 * 0.006, 0, 0))], 0.065, 0.01, { ref: V(1, 0, 0), rad: 6, seg: 10, ach: 0.8, raiz: 0.7 }));
-      }
-      const m = mesh(juntar(L), cab, g); g.userData.volume = m; cortes[slot] = (g);
-    } };
-    /* 8 rabo de cavalo: puxado para trás, rabo que balança */
-    F[8] = () => { {
-      const L = [touca(0.012)];
-      const no = V(0, hc + 0.06, -R - 0.03);
-      for (let i = 0; i < 34; i++) { const ph = (i / 34) * TAU; const lim = limite(ph); if (Math.cos(ph) < -0.7) continue; L.push(mechaNa([S(lim - 0.03, ph, 0.006), S(lim * 0.55, ph * 0.75 + (Math.sin(ph) > 0 ? 0.6 : -0.6), 0.02), no.clone().add(V(0, 0.01, 0.03))], 0.04, 0.02)); }
-      const g = novo(L, (gg) => mesh(new THREE.TorusGeometry(0.035, 0.012, 8, 18), M("#E11D48", { r: 0.5 }), gg, no.x, no.y, no.z, { rx: 0.2 }));
-      const rabo = new THREE.Group(); rabo.position.copy(no); g.add(rabo);
-      const T = [];
-      for (let i = 0; i < 9; i++) { const a = (i / 9) * TAU; const o = V(Math.cos(a) * 0.018, Math.sin(a) * 0.015, 0); T.push(mechaGeo([o.clone(), o.clone().add(V(0, 0.02, -0.07)), o.clone().multiplyScalar(1.6).add(V(0, -0.12, -0.1)), o.clone().multiplyScalar(1.2).add(V(0, -0.32, -0.06)), o.clone().multiplyScalar(0.4).add(V(0, -0.44, -0.03))], 0.032, 0.008, { ref: V(0, 0, -1), bulbo: 0.4, seg: 20 })); }
-      mesh(juntar(T), cab, rabo);
-      this.molas.rabo = { g: rabo, a: 0, v: 0, b: 0, vb: 0 };
-      g.userData.volume = rabo;
-    } };
-    /* 9 careca */
-    F[9] = () => { cortes[slot] = new THREE.Group(); };
-    // cada corte só é montado quando for usado
-    let slot = 0;
-    this.corte = (i) => { if (!cortes[i]) { slot = i; F[i](); const c = cortes[i]; c.visible = false; sombra(c, true, false); head.add(c); if (this.chapeuAtual !== undefined && c.userData.volume) c.userData.volume.visible = !this.chapeuAtual; } return cortes[i]; };
+  /* --- corpo e roupa: o tronco, a pelve e os detalhes são refeitos quando muda a roupa ou o corpo --- */
+  montarCorpo() {
+    const ap = this.ap, cfg = ROUPAS[ap.r] || ROUPAS[0], g = CORPO[ap.w], bar = BARRIGA[ap.w];
+    const saia = ap.e === 2 || !!cfg.vestido;
+    const chave = [ap.r, ap.w, ap.e, ap.j].join(",");
+    if (chave === this.corpoChave) return; this.corpoChave = chave;
+    const enf = !!cfg.enf || saia;
+    const corpo = this.corpo = corpoTronco({ g, bar, folga: cfg.folga || 0, flare: cfg.flare || 0, ini: enf ? 0.03 : (cfg.ini ?? -0.135) });
+    const velho = this.troncoM.geometry; this.troncoM.geometry = geoTronco(corpo); velho.dispose();
+    // regata: cava funda (o ombro fica de fora) com material de pele nos triângulos da cava
+    this.troncoM.material = this.mtTronco;
+    if (cfg.manga === "R") {
+      const geo = this.troncoM.geometry, p = geo.attributes.position, ix = geo.index.array; const tec = [], pel = [];
+      const cava = (x, y, z) => { if (y < 0.33) return false; const [a] = secTronco(y); const k = Math.abs(x) / (a * g); const alca = 0.6 - 0.05 * suave((y - 0.47) / 0.06); return k > alca + 0.18 * (1 - suave((y - 0.33) / 0.12)) || (y > 0.49 && Math.abs(x) < 0.07 * g && z > 0); };
+      for (let k = 0; k < ix.length; k += 3) { let n = 0; for (let q = 0; q < 3; q++) { const v = ix[k + q]; if (cava(p.getX(v), p.getY(v), p.getZ(v))) n++; } (n >= 2 ? pel : tec).push(ix[k], ix[k + 1], ix[k + 2]); }
+      geo.setIndex(tec.concat(pel)); geo.clearGroups(); geo.addGroup(0, tec.length, 0); geo.addGroup(tec.length, pel.length, 1);
+      this.troncoM.material = [this.mtTronco, this.pele];
+    }
+    // pelve (calça ou saia por baixo), largura do corpo
+    const pel = new THREE.LatheGeometry([[0, -0.1], [0.06, -0.094], [0.105, -0.074], [0.136, -0.035], [0.145, 0.01], [0.145, 0.05], [0.14, 0.09], [0, 0.094]].map(([r, y]) => new THREE.Vector2(r, y)), 40);
+    pel.scale(1.0 * g, 1, 0.7 * g); this.pelveM.geometry.dispose(); this.pelveM.geometry = pel;
+    this.cintoM.geometry.dispose(); this.cintoM.geometry = new THREE.CylinderGeometry(0.168, 0.168, 0.026, 40, 1, true).scale(1.0 * g, 1, 0.74 * g); this.cintoM.position.y = 0.068;
+    this.cintoM.visible = this.fivela.visible = enf && !saia;
+    this.fivela.position.set(0, 0.068, 0.168 * 0.74 * g + 0.004);
+    this.pelveM.visible = !saia;
+    // ombros e quadris acompanham a largura
+    this.L.sh.position.x = -0.188 * g * 0.98; this.R.sh.position.x = 0.188 * g * 0.98;
+    this.PL.hp.position.x = -0.09 * (1 + (g - 1) * 0.5); this.PR.hp.position.x = 0.09 * (1 + (g - 1) * 0.5);
+    if (this.gTubos !== g) { this.gTubos = g; for (const t of this.tubos) { const old = t.m.geometry; t.m.geometry = this.geoTubo(t, g); if (old) old.dispose(); } }
+    this.estampaPlano.position.set(-0.072 * g, 0.355, corpo.frente(-0.072 * g, 0.355, 0.006)); this.estampaPlano.rotation.y = -0.16;
+    this.montarRoupa(cfg, corpo, g);
+    this.montarSaia(saia, g, bar);
   }
-  montarBarba(head, hc, R) {
-    const b = this.barbas = [null];
-    const barba = this.barbaMat = new THREE.MeshStandardMaterial({ color: AP.c[this.ap.c], roughness: 1 });
-    const bigode = (g) => { for (const s of [-1, 1]) caps(g, barba, 0.0095, 0.048, s * 0.028, hc - 0.078, R - 0.012, { rz: PI / 2 + s * 0.25, s: [1, 1, 0.6] }); };
-    let g = new THREE.Group(); bigode(g); esf(g, barba, 0.028, 0, hc - 0.17, R - 0.06, { s: [1, 1.15, 0.5], seg: 14, seg2: 10 }); b.push(g);
-    g = new THREE.Group(); bigode(g);
-    mesh(new THREE.SphereGeometry(R + 0.008, 40, 16, PI / 2 - 1.3, 2.6, 2.0, 0.85), barba, g, 0, hc, 0);
-    b.push(g);
-    g = new THREE.Group(); for (const s of [-1, 1]) caps(g, barba, 0.012, 0.05, s * 0.03, hc - 0.076, R - 0.01, { rz: PI / 2 + s * 0.35, s: [1, 1, 0.7] }); b.push(g);
-    b.forEach((x) => { if (x) { x.visible = false; head.add(x); } });
+  montarRoupa(cfg, corpo, g) {
+    for (const c of [...this.detRoupa.children]) { this.detRoupa.remove(c); c.geometry.dispose(); }
+    const lotes = new Map(); const add = (mat, geo) => { if (!lotes.has(mat)) lotes.set(mat, []); lotes.get(mat).push(geo); };
+    const fr = (x, y, eps) => corpo.frente(x, y, eps);
+    // placa colada no peito: xy(u, t) dá o ponto (u na largura, t na altura); fica acima do tecido por eps
+    const placa = (mat, xy, eps, nx = 6, ny = 12) => {
+      const pos = [], idx = [];
+      for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) { const [x, y] = xy(i / nx, j / ny); pos.push(x, y, fr(x, y, eps + 0.002 + 0.05 * Math.max(0, y - 0.42))); }
+      const [x0, y0] = xy(0, 0), [x1, y1] = xy(1, 0), [x2, y2] = xy(0, 1); const vira = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0) < 0;
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, b = a + nx + 1; if (vira) idx.push(a, b, a + 1, a + 1, b, b + 1); else idx.push(a, a + 1, b, a + 1, b + 1, b); }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals(); add(mat, geo); return geo;
+    };
+    const faixa = (y0, y1, meia) => (u, t) => { const y = lerp(y0, y1, t); return [(u * 2 - 1) * meia(t), y]; };
+    const botao = (mat, x, y, r = 0.0068) => { const b = new THREE.SphereGeometry(r, 10, 8); b.scale(1, 1, 0.5); b.translate(x, y, fr(x, y, 0.005)); add(mat, b); };
+    const lapela = (mat, s, yb, yt, xb, xt, lb, lt, eps) => placa(mat, (u, t) => { const xi = lerp(xb, xt, t), w = lerp(lb, lt, t) * (t > 0.86 ? 1 - (t - 0.86) * 2.4 : 1); return [s * (xi + u * w), lerp(yb, yt, t)]; }, eps, 4, 14);
+    // anel em volta do tronco (barra canelada, cós): segue a forma do corpo
+    const anel = (mat, y0, y1, eps) => { const N = 64, pos = [], idx = []; for (const [k, y] of [[0, y0], [1, y0], [2, y1], [3, y1]]) for (let j = 0; j <= N; j++) { const t = -PI / 2 + (j / N) * TAU; const [x, z] = corpo.ponto(y, t); const e = k === 0 || k === 3 ? eps * 0.3 : eps; const r = Math.hypot(x, z) || 1; pos.push(x + x / r * e, y + (k === 1 ? 0.003 : k === 2 ? -0.003 : 0), z + z / r * e); } for (let i = 0; i < 3; i++) for (let j = 0; j < N; j++) { const a = i * (N + 1) + j, b = a + N + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); } const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals(); voltarParaFora(geo, V(0, 0, 1)); add(mat, geo); };
+    // gola em volta do pescoço: anel achatado com a forma do decote
+    const golaAnel = (mat, y, tubo, rx = 0.074, rz = 0.066, inclina = 0, arco = TAU, ini = 0) => { const t = new THREE.TorusGeometry(1, tubo, 10, 40, arco); t.rotateZ(ini); t.rotateX(PI / 2); t.scale(rx * g, 1, rz * g); t.rotateX(inclina); t.translate(0, y, 0.004); add(mat, t); };
+    const aba = (mat, s, y, z, w = 0.08, rx = 0.62, rz = 0.55) => { const b = new RoundedBoxGeometry(w, 0.01, 0.07, 2, 0.004); b.rotateZ(-s * rz); b.rotateX(rx); b.translate(s * 0.043 * g, y, z * g); add(mat, b); };
+    const metal = M("#9CA3AF", { r: 0.3, m: 0.8 }), btn = M("#E8EDF5", { r: 0.4 }), btnE = M("#1F2937", { r: 0.35 });
+    const gl = cfg.gola, ini = corpo.ini;
+    if (cfg.barraR) anel(this.mtDet, ini + 0.004, ini + 0.045, 0.006);
+    if (gl === "polo") { for (const s of [-1, 1]) aba(this.mtDet, s, 0.523, 0.072); golaAnel(this.mtDet, 0.536, 0.22); placa(this.mtDet, faixa(0.43, 0.515, () => 0.012), 0.002, 2, 6); for (const y of [0.49, 0.455]) botao(btn, 0, y, 0.0072); }
+    else if (gl === "redonda") golaAnel(this.mtDet, 0.538, 0.16, 0.076, 0.068, -0.12);
+    else if (gl === "capuz") {
+      const cz = new THREE.TorusGeometry(0.09, 0.036, 12, 30, PI * 1.25); cz.rotateZ(-PI * 0.125 + PI); cz.rotateX(PI / 2 - 0.25); cz.scale(g, 1, g); cz.translate(0, 0.53, -0.03); add(this.mtTronco, cz);
+      const cb = new THREE.SphereGeometry(0.105, 22, 14); cb.scale(1.05 * g, 0.62, 0.55 * g); cb.translate(0, 0.5, -0.1 * g); add(this.mtTronco, cb);
+      for (const s of [-1, 1]) { const c = new THREE.CapsuleGeometry(0.0055, 0.09, 4, 8); c.rotateX(0.1); c.translate(s * 0.032, 0.45, fr(s * 0.032, 0.45, 0.008)); add(M("#F1F5F9", { r: 0.6 }), c); }
+    }
+    else if (gl === "social" || gl === "camisa") {
+      const mt = gl === "social" ? this.branco : this.mtDet;
+      for (const s of [-1, 1]) { const b = new THREE.BufferGeometry(); const pts = [[0, 0], [0.058, 0.004], [0.034, -0.05]]; const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(0.058, 0.006); sh.quadraticCurveTo(0.05, -0.03, 0.03, -0.052); sh.closePath(); const ex = new THREE.ExtrudeGeometry(sh, { depth: 0.004, bevelEnabled: true, bevelSize: 0.003, bevelThickness: 0.002, bevelSegments: 2 }); if (s < 0) ex.scale(-1, 1, 1); ex.rotateY(s * 0.55); ex.rotateX(-0.42); ex.translate(s * 0.012 * g, 0.548, fr(s * 0.04, 0.53, 0.012)); add(mt, ex); void b; void pts; }
+      golaAnel(mt, 0.548, 0.2, 0.072, 0.064);
+      if (cfg.botoes) { placa(mt, faixa(-0.12, 0.5, () => 0.012), 0.002, 2, 18); for (const y of [0.47, 0.38, 0.29, 0.2, 0.11, 0.02].filter((y) => y > ini + 0.04)) botao(gl === "social" ? M("#CBD5E1", { r: 0.4 }) : btn, 0.0, y, 0.0062); }
+      if (cfg.gravata) { placa(this.mtGravata, faixa(0.2, 0.505, (t) => t < 0.1 ? lerp(0.002, 0.03, t / 0.1) : lerp(0.03, 0.014, (t - 0.1) / 0.9)), 0.008); const nk = new THREE.SphereGeometry(0.022, 14, 10); nk.scale(1, 0.95, 0.6); nk.translate(0, 0.512, fr(0, 0.512, 0.012)); add(this.mtGravata, nk); }
+      if (cfg.bolso === "peito") for (const s of [-1, 1]) { placa(this.mtDet, (u, t) => [s * lerp(0.055, 0.12, u), lerp(0.28, 0.36, t)], 0.004, 4, 4); placa(this.mtDet, (u, t) => [s * lerp(0.052, 0.123, u), lerp(0.355, 0.375, t)], 0.008, 4, 2); botao(btnE, s * 0.087, 0.365, 0.006); }
+    }
+    else if (gl === "jaqueta") {
+      placa(this.branco, faixa(ini + 0.01, 0.52, (t) => lerp(0.062, 0.05, t)), 0.002);
+      for (const s of [-1, 1]) placa(metal, (u, t) => [s * (0.064 + u * 0.008), lerp(ini + 0.02, 0.5, t)], 0.006, 1, 14);
+      golaAnel(this.mtDet, 0.528, 0.34, 0.082, 0.072, -0.15, PI * 1.5, PI * 0.75);
+    }
+    else if (gl === "regata") {
+      golaAnel(this.mtDet, 0.534, 0.12, 0.08, 0.07, -0.25);
+    }
+    else if (gl === "terno" || gl === "blazer") {
+      const terno = gl === "terno";
+      placa(this.branco, faixa(terno ? 0.27 : ini + 0.04, 0.54, (t) => lerp(terno ? 0.012 : 0.03, 0.082, t)), 0.003);
+      if (terno) { placa(this.mtGravata, faixa(0.225, 0.495, (t) => t < 0.1 ? lerp(0.002, 0.026, t / 0.1) : lerp(0.026, 0.013, (t - 0.1) / 0.9)), 0.007); placa(this.mtGravata, faixa(0.49, 0.524, (t) => lerp(0.013, 0.019, t)), 0.0095, 4, 3); for (const s of [-1, 1]) aba(this.branco, s, 0.532, 0.07, 0.07, 0.75, 0.75); }
+      else golaAnel(this.branco, 0.53, 0.14, 0.07, 0.062, -0.12);
+      const lap = terno ? this.mtLapela : this.mtDet;
+      for (const s of [-1, 1]) lapela(lap, s, terno ? 0.255 : 0.16, 0.535, 0.002, 0.072, 0.03, 0.052, 0.01);
+      for (const y of terno ? [0.22, 0.14] : [0.13]) botao(btnE, terno ? 0 : 0.02, y, 0.0078);
+      placa(lap, (u, t) => [-0.118 + u * 0.065, lerp(0.35, 0.356, t)], 0.006, 3, 1);
+      if (terno) placa(this.mtGravata, (u, t) => [-0.11 + u * 0.05, lerp(0.353, 0.385, t) - (u > 0.5 ? 0 : 0.008 * t)], 0.0085, 4, 4);
+      for (const s of [-1, 1]) placa(lap, (u, t) => [s * lerp(0.07, 0.135, u), lerp(0.06, 0.068, t)], 0.006, 3, 1);
+    }
+    else if (gl === "aberta") {
+      placa(this.pele, faixa(0.42, 0.54, (t) => lerp(0.004, 0.052, t)), 0.003);
+      for (const s of [-1, 1]) lapela(this.mtTronco, s, 0.39, 0.54, 0.004, 0.054, 0.03, 0.048, 0.007);
+    }
+    else if (gl === "alta") {
+      const c = new THREE.CylinderGeometry(0.068, 0.074, 0.055, 32, 1, true); c.scale(g, 1, 0.92 * g); c.translate(0, 0.565, 0.006); add(this.mtDet, c);
+      const c2 = new THREE.TorusGeometry(0.068, 0.006, 6, 32); c2.rotateX(PI / 2); c2.scale(g, 1, 0.92 * g); c2.translate(0, 0.592, 0.006); add(this.mtDet, c2);
+    }
+    else if (gl === "colete") {
+      placa(this.branco, faixa(0.33, 0.54, (t) => lerp(0.004, 0.07, t)), 0.003);
+      for (const s of [-1, 1]) { aba(this.branco, s, 0.53, 0.07, 0.075, 0.68, 0.62); lapela(this.mtDet, s, 0.315, 0.54, 0.0, 0.068, 0.014, 0.014, 0.006); }
+      golaAnel(this.branco, 0.546, 0.18, 0.07, 0.062);
+    }
+    else if (gl === "v") {
+      placa(this.pele, faixa(0.44, 0.54, (t) => lerp(0.004, 0.05, t)), 0.003);
+      for (const s of [-1, 1]) lapela(this.mtDet, s, 0.43, 0.54, 0.0, 0.05, 0.016, 0.016, 0.006);
+      golaAnel(this.mtDet, 0.54, 0.14, 0.072, 0.064, 0, PI * 1.3, PI * 0.85);
+    }
+    if (cfg.ziper) { placa(metal, faixa(ini + 0.01, 0.58, () => 0.006), 0.006, 1, 16); const pu = new RoundedBoxGeometry(0.014, 0.03, 0.006, 2, 0.002); pu.translate(0.0, 0.5, fr(0, 0.5, 0.012)); add(metal, pu); }
+    if (cfg.bolso === "canguru") { placa(this.mtTronco, (u, t) => { const y = lerp(ini + 0.06, ini + 0.2, t); const w = lerp(0.12, 0.085, t); return [(u * 2 - 1) * w, y]; }, 0.006, 8, 8); }
+    // extras do corpo: colar e mochila
+    const j = this.ap.j;
+    if (j === 2 || j === 4) { const c = new THREE.TorusGeometry(1, 0.06, 6, 40, PI); c.rotateZ(PI); c.rotateX(PI / 2 - 0.55); c.scale(0.082 * g, 1, 0.075 * g); c.translate(0, 0.53, 0.012); add(M("#E5C158", { r: 0.25, m: 0.9 }), c); const pg = new THREE.SphereGeometry(0.011, 10, 8); pg.translate(0, 0.47, fr(0, 0.47, 0.01)); add(M("#E5C158", { r: 0.25, m: 0.9 }), pg); }
+    if (j === 5) { const mc = M("#EA580C", { r: 0.7 }); const mo = new RoundedBoxGeometry(0.24, 0.27, 0.11, 3, 0.04); mo.translate(0, 0.27, -0.12 * g - 0.055); add(mc, mo); const bo = new RoundedBoxGeometry(0.17, 0.1, 0.04, 3, 0.02); bo.translate(0, 0.2, -0.12 * g - 0.12); add(mc, bo); for (const s of [-1, 1]) { const a = new THREE.TorusGeometry(0.1, 0.012, 6, 20, PI * 1.1); a.rotateY(PI / 2); a.scale(1, 1.25, g); a.translate(s * 0.1 * g, 0.42, -0.005); add(M("#7C2D12", { r: 0.7 }), a); } }
+    for (const [mat, gs] of lotes) {
+      const geo = juntar(gs.map((x) => { if (x.attributes.uv) x.deleteAttribute("uv"); return x; })); geo.computeVertexNormals(); pesosComoTronco(geo);
+      const m = new THREE.SkinnedMesh(geo, mat); m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; this.detRoupa.add(m); m.bind(this.esqTronco, this.bindTronco);
+    }
+  }
+  // saia (e parte de baixo do vestido): presa ao quadril e às duas coxas
+  montarSaia(on, g, bar) {
+    if (this.saiaM) { this.hips.remove(this.saiaM); this.saiaM.geometry.dispose(); this.saiaM = null; }
+    if (!on) return;
+    const NU = 48, NV = 18, pos = [], idx = [], si = [], sw = [];
+    for (let i = 0; i <= NV; i++) {
+      const t = i / NV, y = lerp(0.11, -0.33, t); const a = (0.166 + 0.06 * t * t + 0.035 * t) * g, b = (0.124 + 0.04 * t + bar * 0.4 * (1 - t)) * g;
+      for (let jx = 0; jx <= NU; jx++) {
+        const ang = -PI / 2 + (jx / NU) * TAU; const x = a * Math.cos(ang), z = b * Math.sin(ang) + 0.004;
+        pos.push(x * (1 + 0.012 * Math.sin(ang * 9) * t), y, z * (1 + 0.012 * Math.sin(ang * 9) * t));
+        const wL = suave((0.06 - y) / 0.32), fL = suave(0.5 - x / (0.12 * g));
+        si.push(0, 1, 2, 0); sw.push(1 - wL, wL * fL, wL * (1 - fL), 0);
+      }
+    }
+    for (let i = 0; i < NV; i++) for (let jx = 0; jx < NU; jx++) { const a = i * (NU + 1) + jx, b = a + NU + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx);
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(sw, 4)); geo.computeVertexNormals(); voltarParaFora(geo, V(0, 0, 1));
+    const cfg = ROUPAS[this.ap.r] || ROUPAS[0];
+    const m = this.saiaM = new THREE.SkinnedMesh(geo, cfg.vestido ? this.mtTronco : this.mtCalca); m.material.side = THREE.FrontSide; m.frustumCulled = false; m.castShadow = true; this.hips.add(m); m.bind(this.esqSaia, this.bindQuadril);
+  }
+  // calçado do tipo escolhido (montado na primeira vez que é usado)
+  montarCalcados(tipo) {
+    if (this.tipoPe === tipo) return; this.tipoPe = tipo;
+    const mats = { cor: this.mtSap, sola: this.mtSola, det: this.mtSapDet, cadarco: this.mtCadarco, faixa: tipo === 2 || tipo === 3 ? null : this.mtFaixa };
+    for (const P of [this.PL, this.PR]) { for (const c of [...P.pe.children]) { P.pe.remove(c); c.traverse((o) => o.geometry && o.geometry.dispose()); } const s = montarCalcado(tipo, mats); sombra(s, true, false); P.pe.add(s); }
+  }
+  /* --- cabelo esculpido: 0 topete, 1 curto, 2 raspado, 3 comprido, 4 cacheado, 5 black power, 6 coque, 7 moicano,
+     8 rabo de cavalo, 9 careca, a lateral, b franja, c ondulado, d espetado, e undercut, f tranças, g chanel ---
+     Cada corte tem o "topo" (some com chapéu, e no lugar entra uma casca rente) e o "resto" (mechas soltas, rabo, tranças). */
+  montarCorte(k) {
+    if (this.cortes[k]) return this.cortes[k];
+    const R = this.RC, hc = this.hc, head = this.head;
+    const g = new THREE.Group(); g.position.y = hc; head.add(g);
+    // linha do cabelo: até onde ele desce em cada direção (testa, têmporas, costeletas, nuca)
+    const lim = (ph) => { const f = Math.cos(ph); const b = f > 0 ? lerp(1.32, 0.98, Math.pow(f, 1.4)) : lerp(1.32, 1.95, Math.pow(-f, 0.9)); return b + 0.2 * Math.exp(-(((Math.abs(ph) - 1.22) / 0.1) ** 2)); };
+    const masc = (dl = 0, borda = 0.08, extra) => (d) => { const [th, ph] = angDe(d); return suave((lim(ph) + dl + (extra ? extra(th, ph) : 0) - th) / borda); };
+    const forma = (geo, r) => formaCabeca(geo, r);
+    const topo = [], resto = [];
+    const C = (o, mat = this.cab, onde = topo) => { const m = mesh(casca(R, { forma, ...o }), mat, g, 0, 0, 0); m.castShadow = true; onde.push(m); return m; };
+    const L = (lista, onde = resto, par = g) => { if (!lista.length) return null; const m = mesh(juntar(lista), this.cab, par, 0, 0, 0); m.castShadow = true; onde.push(m); return m; };
+    const P = (th, ph, h = 0) => dirCab(th, ph).multiplyScalar(R + h);
+    const fora = (p) => p.clone().setY(0).normalize();
+    // mechas compridas em volta (costas e laterais), caindo até "desce" abaixo do centro da cabeça
+    const cortina = (desce, o = {}) => {
+      const lista = []; const n = o.n || 16, a0 = o.a0 ?? 0.95, larg = o.larg ?? 0.062;
+      for (let i = 0; i < n; i++) {
+        const u = i / (n - 1), ph = (a0 + u * (TAU - 2 * a0)) * (i % 2 ? 1 : 1) + (ruido(i + 3) - 0.5) * 0.08;
+        const phR = ph > PI ? ph - TAU : ph; const lado = Math.abs(Math.sin(phR));
+        const dz = desce * (o.curtoFrente ? lerp(1, 0.75, Math.max(0, Math.cos(phR))) : 1) * (0.92 + 0.12 * ruido(i));
+        const p0 = P(o.th0 ?? 1.02, phR, -0.004), p1 = P(1.62, phR, 0.04 + 0.02 * lado), out = fora(p1);
+        const ond = o.onda || 0;
+        const pts = [p0, p1, p1.clone().add(V(0, -dz * 0.35, 0)).addScaledVector(out, 0.012 + ond * Math.sin(i)), p1.clone().add(V(0, -dz * 0.7, 0)).addScaledVector(out, 0.02 - ond * 0.6), p1.clone().add(V(0, -dz, 0)).addScaledVector(out, (o.cacho ?? -0.012) + ond * 0.8 * Math.cos(i))];
+        lista.push(mecha(pts, (t) => larg * (1 - 0.35 * t) * (o.volume || 1), { ach: 0.42, ref: (p) => fora(p), sulcos: 3, cor: 0.94 + 0.08 * ruido(i * 2) }));
+      }
+      return lista;
+    };
+    const sobChapeu = () => C({ h: () => 0.01, mascara: masc(), polo: dirCab(0.3, PI), sulcos: 30 }, this.cab, []);
+    let sob = null, solto = null;
+    switch (k) {
+      case 0: { // topete: laterais curtas, topete alto penteado para trás
+        C({ h: (d) => { const [th, ph] = angDe(d); const f = Math.max(0, Math.cos(ph)); return 0.016 + 0.012 * cl(1 - th / 1.3) + 0.085 * Math.exp(-(((th - 0.62) / 0.42) ** 2)) * Math.pow(f, 1.2); }, mascara: masc(0.02), polo: dirCab(1.2, 0), sulcos: 22, prof: 0.34 });
+        break; }
+      case 1: // curto: penteado para a frente a partir do redemoinho, franja leve
+        C({ h: (d) => { const [th, ph] = angDe(d); return 0.02 + 0.02 * cl(1 - th / 1.25) + 0.008 * Math.max(0, Math.cos(ph)); }, mascara: masc(0.05, 0.07), polo: dirCab(0.35, PI), sulcos: 28, prof: 0.3, onda: (d, dist) => 0.4 * Math.sin(dist * 4) });
+        break;
+      case 2: // raspado
+        C({ h: () => 0.0045, mascara: masc(0.02, 0.05) }, this.cabRaspado);
+        break;
+      case 3: { // comprido: repartido de lado, até os ombros, franja varrida
+        C({ h: (d) => { const [th, ph] = angDe(d); return 0.026 + 0.012 * cl(1 - th) + 0.025 * Math.exp(-(((th - 0.75) / 0.35) ** 2)) * cl(0.5 - 0.5 * Math.sin(ph)); }, mascara: masc(0.06, 0.08, (th, ph) => Math.max(0, Math.cos(ph + 0.4)) ** 3 * 0.12), polo: dirCab(0.25, 0.6), sulcos: 30, prof: 0.28 });
+        solto = L(cortina(0.4, { n: 18, larg: 0.066, a0: 1.25 })); break; }
+      case 4: // cacheado: calombos de cachos
+        C({ h: () => 0.03, mascara: masc(0.04), relevo: calombos(130, 0.15, 0.03, 1), relevoMax: 0.03 });
+        break;
+      case 5: { // black power: volume redondo e fofo
+        const c0 = V(0, 0.07, -0.035), rr = V(0.37, 0.33, 0.35);
+        const afro = (d) => { const a = (d.x / rr.x) ** 2 + (d.y / rr.y) ** 2 + (d.z / rr.z) ** 2, b = 2 * (d.x * -c0.x / rr.x ** 2 + d.y * -c0.y / rr.y ** 2 + d.z * -c0.z / rr.z ** 2), c = (c0.x / rr.x) ** 2 + (c0.y / rr.y) ** 2 + (c0.z / rr.z) ** 2 - 1; const t = (-b + Math.sqrt(Math.max(0, b * b - 4 * a * c))) / (2 * a); return Math.max(0.03, t - R); };
+        C({ h: afro, mascara: masc(0.04, 0.06), relevo: calombos(220, 0.1, 0.022, 2), relevoMax: 0.022, an: 90 });
+        break; }
+      case 6: { // coque: puxado para trás, coque no alto
+        C({ h: (d) => { const [th] = angDe(d); return 0.014 + 0.008 * cl(1 - th); }, mascara: masc(0.02), polo: dirCab(1.05, 0), sulcos: 34, prof: 0.25 });
+        const bun = new THREE.SphereGeometry(0.105, 32, 24); const p = bun.attributes.position; const v = new THREE.Vector3();
+        for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const n = v.clone().normalize(); const s = Math.pow(0.5 + 0.5 * Math.cos(Math.atan2(n.x, n.z) * 6 + n.y * 7), 5); v.copy(n.multiplyScalar(0.105 * (1 - 0.1 * s))); p.setXYZ(i, v.x, v.y, v.z); }
+        bun.computeVertexNormals(); bun.translate(0, 0.27, -0.12); L([comCor(bun, 0.95)], topo);
+        mesh(new THREE.TorusGeometry(0.068, 0.014, 8, 24), M("#111827", { r: 0.5 }), g, 0, 0.2, -0.1, { rx: PI / 2 + 0.6 });
+        break; }
+      case 7: { // moicano: laterais raspadas e crista do topo da testa até a nuca
+        C({ h: () => 0.0045, mascara: masc(0.02, 0.05) }, this.cabRaspado);
+        C({ h: (d) => { const [th] = angDe(d); return 0.006 + 0.1 * Math.exp(-((d.x / 0.14) ** 2)) * (0.6 + 0.4 * Math.sin(cl(th / 1.9) * PI)); }, mascara: (d) => masc(0.02)(d) * suave((0.22 - Math.abs(d.x)) / 0.05), polo: dirCab(1.0, 0), sulcos: 10, prof: 0.4, agudo: 3 });
+        break; }
+      case 8: { // rabo de cavalo: puxado para trás, rabo que balança
+        C({ h: (d) => { const [th] = angDe(d); return 0.016 + 0.008 * cl(1 - th); }, mascara: masc(0.02), polo: dirCab(1.05, 0), sulcos: 34, prof: 0.25 });
+        const no = P(1.32, PI, 0.03); const rabo = new THREE.Group(); rabo.position.copy(no); g.add(rabo);
+        mesh(new THREE.TorusGeometry(0.036, 0.013, 8, 18), M("#E11D48", { r: 0.5 }), rabo, 0, 0, 0, { rx: 0.25 });
+        L([mecha([V(0, 0, 0), V(0, 0.01, -0.07), V(0, -0.12, -0.11), V(0, -0.3, -0.075), V(0, -0.44, -0.04)], (t) => 0.05 * (1 + 0.35 * Math.sin(PI * t * 0.9)) * (1 - 0.55 * t), { ach: 0.8, ref: V(0, 0, -1), sulcos: 5, seg: 40 })], resto, rabo);
+        this.molas.rabo = { g: rabo, a: 0, v: 0, b: 0, vb: 0 };
+        break; }
+      case 9: break;   // careca
+      case 10: // lateral: repartido de lado, volume varrido para o outro lado
+        C({ h: (d) => { const [th, ph] = angDe(d); return 0.022 + 0.04 * Math.exp(-(((th - 0.6) / 0.45) ** 2)) * cl(0.6 + 0.6 * Math.cos(ph + 0.5)) + 0.01 * cl(1 - th / 1.2); }, mascara: masc(0.03), polo: dirCab(0.72, 1.05), sulcos: 26, prof: 0.34, onda: (d, dist) => 0.5 * Math.sin(dist * 3.5) });
+        break;
+      case 11: // franja: reta na testa, logo acima das sobrancelhas
+        C({ h: (d) => { const [th] = angDe(d); return 0.026 + 0.01 * cl(1 - th); }, mascara: masc(0, 0.05, (th, ph) => Math.max(0, Math.cos(ph)) ** 2 * (0.23 + 0.025 * Math.sin(ph * 26))), polo: dirCab(0.3, PI), sulcos: 34, prof: 0.3 });
+        break;
+      case 12: { // ondulado: na altura dos ombros, cheio dos lados, repartido no meio
+        C({ h: (d) => { const [th] = angDe(d); return 0.03 + 0.015 * cl(1 - th); }, mascara: masc(0.04), polo: dirCab(0.12, 0), sulcos: 28, prof: 0.3, onda: (d, dist) => 0.9 * Math.sin(dist * 6) });
+        solto = L(cortina(0.32, { n: 18, larg: 0.07, onda: 0.022, volume: 1.12, cacho: 0.01, a0: 1.15 }));
+        break; }
+      case 13: { // espetado: pontas para cima e para trás
+        C({ h: () => 0.02, mascara: masc(0.02), polo: dirCab(0.4, PI), sulcos: 26 });
+        const lista = []; for (let i = 0; i < 22; i++) { const th = 0.12 + ruido(i) * 0.95, ph = (ruido(i + 9) - 0.5) * 2 * (th < 0.5 ? PI : 1.6); const b = P(th, ph, 0.005), n = dirCab(th, ph); const tip = b.clone().addScaledVector(n, 0.05 + ruido(i + 4) * 0.025).add(V(0, 0.018, -0.012)); lista.push(mecha([b, b.clone().lerp(tip, 0.55).addScaledVector(n, 0.008), tip], (t) => 0.05 * (1 - 0.7 * t), { ach: 0.6, sulcos: 2, ref: n })); }
+        L(lista, topo); break; }
+      case 14: // undercut: lados raspados, topo comprido penteado para trás
+        C({ h: () => 0.0045, mascara: masc(0.02, 0.05) }, this.cabRaspado);
+        C({ h: (d) => { const [th] = angDe(d); return 0.03 + 0.03 * cl(1 - th / 1.0); }, mascara: (d) => { const [th, ph] = angDe(d); return masc(0.02)(d) * suave((0.62 - Math.abs(Math.sin(ph)) * Math.sin(th)) / 0.05) * suave((1.55 - th) / 0.08); }, polo: dirCab(1.1, 0), sulcos: 20, prof: 0.34 });
+        break;
+      case 15: { // tranças: repartido no meio, duas tranças atrás das orelhas
+        C({ h: (d) => { const [th] = angDe(d); return 0.018 + 0.008 * cl(1 - th); }, mascara: masc(0.02), polo: dirCab(0.1, 0), sulcos: 36, prof: 0.26 });
+        const lista = []; for (const s of [-1, 1]) { const b0 = P(1.55, s * 2.2, 0.02); lista.push(tranca([b0, b0.clone().add(V(s * 0.02, -0.12, 0.02)), b0.clone().add(V(s * 0.03, -0.28, 0.05)), b0.clone().add(V(s * 0.02, -0.44, 0.06))], 0.034, 0.024, 12)); const pt = b0.clone().add(V(s * 0.02, -0.46, 0.06)); mesh(new THREE.TorusGeometry(0.018, 0.008, 6, 14), M("#F59E0B", { r: 0.5 }), g, pt.x, pt.y + 0.02, pt.z, { rx: PI / 2 }); }
+        solto = L(lista); break; }
+      case 16: { // chanel: na altura do queixo, franja reta
+        C({ h: (d) => { const [th] = angDe(d); return 0.03 + 0.012 * cl(1 - th); }, mascara: masc(0.02, 0.05, (th, ph) => Math.max(0, Math.cos(ph)) ** 2 * 0.2), polo: dirCab(0.25, PI), sulcos: 34, prof: 0.28 });
+        solto = L(cortina(0.2, { n: 20, larg: 0.064, cacho: -0.03, a0: 1.05, volume: 1.05 }));
+        break; }
+    }
+    if (k !== 9 && k !== 2 && k !== 7 && k !== 14) sob = sobChapeu(); else if (k === 7 || k === 14) sob = C({ h: () => 0.0045, mascara: masc(0.02, 0.05) }, this.cabRaspado, []);
+    if (sob) { sob.visible = false; }
+    const corte = this.cortes[k] = { g, topo, resto, sob, solto };
+    if (solto && !this.molas.solto) this.molas.solto = { a: 0, v: 0, b: 0, vb: 0 };
+    g.visible = false; return corte;
+  }
+  /* --- barba esculpida: 1 cavanhaque, 2 barba cheia, 3 bigode, 4 rala, 5 lenhador --- */
+  montarBarba(k) {
+    if (this.barbas[k] !== undefined) return this.barbas[k];
+    if (!k) { this.barbas[k] = null; return null; }
+    const R = this.RC, g = new THREE.Group(); g.position.y = this.hc; this.head.add(g);
+    const boca = BOCA_D, forma = (geo, r) => formaCabeca(geo, r);
+    const longeBoca = (d, r = 0.14) => 1 - Math.exp(-((Math.acos(cl(d.dot(boca), -1, 1)) / r) ** 4));
+    // borda de cima da barba: da costeleta (alto, do lado) descendo até os cantos da boca
+    const mandibula = (d) => { const [th, ph] = angDe(d); const lim = lerp(2.02, 1.6, Math.pow(cl(Math.abs(ph) / 1.35), 1.1)); return suave((th - lim) / 0.07) * suave((1.5 - Math.abs(ph)) / 0.12) * suave((2.8 - th) / 0.2); };
+    const bigode = (d) => { const [th, ph] = angDe(d); return suave((0.07 - Math.abs(th - 1.84)) / 0.03) * suave((0.42 - Math.abs(ph)) / 0.08); };
+    const C = (o) => { const m = mesh(casca(R, { forma, polo: dirCab(0.05, 0), sulcos: 60, prof: 0.3, base: -0.002, ...o }), this.barbaMat, g); m.castShadow = true; return m; };
+    if (k === 1) { C({ h: () => 0.014, mascara: (d) => Math.max(suave((0.3 - Math.acos(cl(d.dot(dirCab(2.25, 0)), -1, 1))) / 0.06) * longeBoca(d, 0.12), bigode(d)) }); }
+    if (k === 2) { C({ h: (d) => 0.014 + 0.012 * suave((angDe(d)[0] - 1.9) / 0.5), mascara: (d) => Math.max(mandibula(d) * longeBoca(d), bigode(d)) }); }
+    if (k === 3) { C({ h: () => 0.018, mascara: bigode }); }
+    if (k === 4) { C({ h: () => 0.0035, mascara: (d) => Math.max(mandibula(d) * longeBoca(d, 0.11), bigode(d) * 0.8), sulcos: 0 }); }
+    if (k === 5) { C({ h: (d) => { const [th, ph] = angDe(d); return 0.02 + 0.06 * suave((th - 1.95) / 0.5) * Math.pow(Math.max(0, Math.cos(ph)), 1.5); }, mascara: (d) => Math.max(mandibula(d) * longeBoca(d, 0.13), bigode(d)), thMax: 2.9 }); }
+    g.visible = false; this.barbas[k] = g; return g;
+  }
+  /* --- óculos: 1 redondo, 2 quadrado; escuros quando o acessório de recompensa é o de óculos --- */
+  montarOculos(head, hc, R) {
+    this.lente = new THREE.MeshPhysicalMaterial({ color: "#DCEBFF", roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.14, clearcoat: 1 });
+    this.oculosG = [];
+    const aros = [M("#1F2937", { r: 0.35, m: 0.3 }), M("#DC2626", { r: 0.35, m: 0.1 })];
+    for (const tipo of [1, 2]) {
+      const g = new THREE.Group(); const aro = aros[tipo - 1];
+      const ex = 0.1, ey = hc + 0.005, ez = R + 0.052;
+      for (const s of [-1, 1]) {
+        let curva;
+        if (tipo === 1) curva = new THREE.EllipseCurve(0, 0, 0.058, 0.055, 0, TAU);
+        else { const sh = new THREE.Shape(); rrShape(sh, -0.066, -0.046, 0.132, 0.092, 0.022); curva = sh; }
+        const pts = curva.getPoints(48).map((p) => V(p.x, p.y, 0));
+        const tb = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 64, 0.0075, 8, true);
+        mesh(tb, aro, g, s * ex, ey, ez, { ry: s * 0.18 });
+        const lg = tipo === 1 ? new THREE.CircleGeometry(0.056, 28) : new THREE.ShapeGeometry(curva);
+        mesh(lg, this.lente, g, s * ex, ey, ez - 0.002, { ry: s * 0.18, cast: false }).name = "lente";
+        bloco(g, aro, [-0.006, -0.008, -0.2], [0.006, 0.008, 0], 0.003).position.set(s * (R + 0.016), ey + 0.012, ez - 0.13);
+        bloco(g, aro, [-0.05, -0.007, -0.006], [0.05, 0.007, 0.006], 0.003).position.set(s * (ex + 0.105), ey + 0.012, ez - 0.02);
+      }
+      cil(g, aro, 0.006, 0.006, 0.07, 0, ey + 0.01, ez + 0.006, { rz: PI / 2 });
+      g.visible = false; head.add(g); this.oculosG.push(g);
+    }
+  }
+  /* --- chapéus de recompensa (boné, capelo, coroa) e acessórios livres (fone, gorro, faixa, laço, boné virado) --- */
+  montarChapeus(head, hc, R) {
+    const h = this.chapeus = {};
+    let g = new THREE.Group(); const azul = M("#2563EB", { r: 0.7 });
+    mesh(new THREE.SphereGeometry(R + 0.04, 40, 18, 0, TAU, 0, 1.3), azul, g, 0, hc + 0.01, -0.01, { rx: -0.18 });
+    bloco(g, azul, [-0.15, -0.01, 0], [0.15, 0.01, 0.2], 0.01, { rx: 0.18 }).position.set(0, hc + 0.12, 0.2);
+    esf(g, M("#1E3A8A"), 0.025, 0, hc + R + 0.035, -0.02, { seg: 10, seg2: 8 });
+    h.a_bone = g;
+    g = new THREE.Group(); const preto = M("#111827", { r: 0.6 });
+    cil(g, preto, R + 0.035, R + 0.035, 0.12, 0, hc + 0.16, 0, { seg: 36 });
+    bloco(g, preto, [-0.34, -0.012, -0.34], [0.34, 0.012, 0.34], 0.01, { ry: PI / 4 }).position.set(0, hc + 0.23, 0);
+    cil(g, M("#F5B400", { r: 0.4 }), 0.008, 0.008, 0.2, 0.2, hc + 0.13, 0.12, { rz: 0.1 });
+    h.a_formatura = g;
+    g = new THREE.Group(); const ouro = M("#F5B400", { r: 0.25, m: 0.85 });
+    cil(g, ouro, R * 0.82, R * 0.86, 0.1, 0, hc + 0.22, 0, { seg: 36 });
+    for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; mesh(new THREE.ConeGeometry(0.04, 0.11, 10), ouro, g, Math.sin(a) * R * 0.8, hc + 0.31, Math.cos(a) * R * 0.8); esf(g, M(i % 2 ? "#DC2626" : "#2563EB", { r: 0.2, m: 0.3 }), 0.024, Math.sin(a) * R * 0.86, hc + 0.22, Math.cos(a) * R * 0.86, { seg: 10, seg2: 8 }); }
+    h.a_cartola = g;
+    // acessórios livres (escolhidos no perfil)
+    const ac = this.acCabeca = {};
+    g = new THREE.Group(); const fone = M("#2563EB", { r: 0.4 }), fone2 = M("#E2E8F0", { r: 0.5 });
+    mesh(new THREE.TorusGeometry(R + 0.06, 0.018, 10, 40, PI * 1.05), fone, g, 0, hc + 0.0, -0.01, { rz: -PI * 0.025, s: [1, 1.08, 1] });
+    for (const s of [-1, 1]) { cil(g, fone, 0.072, 0.072, 0.05, s * (R + 0.04), hc - 0.01, -0.005, { rz: PI / 2, seg: 28 }); cil(g, fone2, 0.058, 0.058, 0.012, s * (R + 0.068), hc - 0.01, -0.005, { rz: PI / 2, seg: 28 }); }
+    ac[1] = g;
+    g = new THREE.Group(); const gor = M("#DC2626", { r: 0.95 }); gor.normalMap = mapaNormal("trico-gorro", 128, 128, (gg, w, hh) => trama(gg, w, hh, "trico"), 3); gor.normalMap.channel = 0; gor.normalMap.repeat.set(4, 2);
+    mesh(new THREE.SphereGeometry(R + 0.045, 40, 20, 0, TAU, 0, 1.45), gor, g, 0, hc + 0.015, -0.01, { rx: -0.12, s: [1, 1.12, 1] });
+    mesh(new THREE.TorusGeometry(R + 0.03, 0.032, 10, 40), gor, g, 0, hc + 0.035, -0.01, { rx: PI / 2 - 0.12 });
+    esf(g, M("#F8FAFC", { r: 1 }), 0.055, 0, hc + R + 0.08, -0.03, { seg: 14, seg2: 12 });
+    ac[2] = g;
+    g = new THREE.Group(); mesh(new THREE.TorusGeometry(R + 0.03, 0.02, 10, 44), M("#EC4899", { r: 0.7 }), g, 0, hc + 0.075, -0.02, { rx: PI / 2 - 0.4, s: [1, 1, 1.05] }); ac[3] = g;
+    g = new THREE.Group(); const laco = M("#EF4444", { r: 0.5 });
+    for (const s of [-1, 1]) esf(g, laco, 0.05, s * 0.05, 0, 0, { s: [1, 0.7, 0.35], seg: 16, seg2: 10 }); esf(g, laco, 0.022, 0, 0, 0.004, { seg: 12, seg2: 8 });
+    g.position.set(0.13, hc + 0.2, 0.06); g.rotation.set(0.2, 0.5, -0.4); const gl2 = new THREE.Group(); gl2.add(g); ac[4] = gl2;
+    g = new THREE.Group(); const verde = M("#16A34A", { r: 0.7 });
+    mesh(new THREE.SphereGeometry(R + 0.04, 40, 18, 0, TAU, 0, 1.02), verde, g, 0, hc + 0.035, -0.01, { rx: 0.34 });
+    bloco(g, verde, [-0.13, -0.01, -0.19], [0.13, 0.01, 0], 0.01, { rx: -0.25 }).position.set(0, hc + 0.15, -0.21);
+    ac[5] = g;
+    for (const x of [...Object.values(h), ...Object.values(ac)]) { x.visible = false; sombra(x, true, false); head.add(x); }
+    // brincos e relógio
+    this.brincos = new THREE.Group(); for (const s of [-1, 1]) esf(this.brincos, M("#F5C542", { r: 0.2, m: 0.9 }), 0.014, s * (R + 0.018), hc - 0.085, 0.0, { seg: 12, seg2: 10 }); this.brincos.visible = false; head.add(this.brincos);
   }
   /* --- olhos 3D: globo brilhante, íris grande que segue o olhar, brilho fixo, pálpebras que piscam e
      apertam no sorriso, e sobrancelhas esculpidas que sobem, descem e inclinam com a emoção --- */
@@ -672,128 +1128,145 @@ class Boneco {
       o.sm.rotation.z = -o.s * ((F.dentroS || 0) * 0.42 - feliz * 0.08) + assim * 0.12;
     }
   }
-  montarOculos(head, hc, R) {
-    const g = this.oculos = new THREE.Group(); const aro = M("#1F2937", { r: 0.35, m: 0.3 });
-    this.lente = new THREE.MeshStandardMaterial({ color: "#0B1220", roughness: 0.15, metalness: 0.4, transparent: true, opacity: 0.85 });
-    const ex = 0.1, ey = hc + 0.005, ez = R + 0.045;
-    for (const s of [-1, 1]) {
-      mesh(new THREE.TorusGeometry(0.056, 0.007, 8, 28), aro, g, s * ex, ey, ez, { ry: s * 0.18 });
-      const l = mesh(new THREE.CircleGeometry(0.054, 24), this.lente, g, s * ex, ey, ez - 0.002, { ry: s * 0.18, cast: false }); l.name = "lente";
-      bloco(g, aro, [-0.006, -0.008, -0.2], [0.006, 0.008, 0], 0.003).position.set(s * (R + 0.012), ey + 0.01, ez - 0.12);
-      bloco(g, aro, [-0.05, -0.007, -0.006], [0.05, 0.007, 0.006], 0.003).position.set(s * (ex + 0.1), ey + 0.008, ez - 0.012);
-    }
-    cil(g, aro, 0.005, 0.005, 0.07, 0, ey + 0.008, ez + 0.006, { rz: PI / 2 });
-    g.visible = false; head.add(g);
-  }
-  montarChapeus(head, hc, R) {
-    const h = this.chapeus = {};
-    let g = new THREE.Group(); const azul = M("#2563EB", { r: 0.7 });
-    mesh(new THREE.SphereGeometry(R + 0.035, 36, 16, 0, TAU, 0, 1.3), azul, g, 0, hc + 0.01, -0.01, { rx: -0.18 });
-    bloco(g, azul, [-0.15, -0.01, 0], [0.15, 0.01, 0.2], 0.01, { rx: 0.18 }).position.set(0, hc + 0.12, 0.19);
-    esf(g, M("#1E3A8A"), 0.025, 0, hc + R + 0.03, -0.02, { seg: 10, seg2: 8 });
-    h.a_bone = g;
-    g = new THREE.Group(); const preto = M("#111827", { r: 0.6 });
-    cil(g, preto, R + 0.03, R + 0.03, 0.12, 0, hc + 0.16, 0, { seg: 36 });
-    bloco(g, preto, [-0.34, -0.012, -0.34], [0.34, 0.012, 0.34], 0.01, { ry: PI / 4 }).position.set(0, hc + 0.23, 0);
-    cil(g, M("#F5B400", { r: 0.4 }), 0.008, 0.008, 0.2, 0.2, hc + 0.13, 0.12, { rz: 0.1 });
-    h.a_formatura = g;
-    g = new THREE.Group(); const ouro = M("#F5B400", { r: 0.25, m: 0.85 });
-    cil(g, ouro, R * 0.82, R * 0.86, 0.1, 0, hc + 0.22, 0, { seg: 36 });
-    for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; mesh(new THREE.ConeGeometry(0.04, 0.11, 10), ouro, g, Math.sin(a) * R * 0.8, hc + 0.31, Math.cos(a) * R * 0.8); esf(g, M(i % 2 ? "#DC2626" : "#2563EB", { r: 0.2, m: 0.3 }), 0.024, Math.sin(a) * R * 0.86, hc + 0.22, Math.cos(a) * R * 0.86, { seg: 10, seg2: 8 }); }
-    h.a_cartola = g;
-    Object.values(h).forEach((x) => { x.visible = false; head.add(x); });
-  }
   // tubo de raio variável ao longo de -Y (perfil [y, raio]); peso de pele vai do osso de cima para o de baixo perto da junta
+  // uv: estampa na escala do tronco; uv1: mapa de dobras da peça (u em volta a partir da frente, girado por uRot; v ao longo)
   geoTubo(t, g) {
-    const pts = t.perfil, n = 30, rad = 22, f = 1 + (g - 1) * t.k;
+    const pts = t.perfil, n = 34, rad = 26, f = 1 + (g - 1) * t.k;
     const curva = new THREE.SplineCurve(pts.map(([y, r]) => new THREE.Vector2(r, y))); const amostra = curva.getPoints(n);
-    const pos = [], idx = [], si = [], sw = [], uv = [];
-    // estampa na mesma escala do tronco (volta do tronco ≈ 0,93 m para u de 0 a 1)
+    const pos = [], idx = [], si = [], sw = [], uv = [], uv1 = [];
     const rMed = pts.reduce((s2, q) => s2 + Math.max(0, q[1]), 0) / pts.length; const uC = (TAU * rMed) / 0.93;
     for (let i = 0; i <= n; i++) {
       const { x: r0, y } = amostra[i]; const r = Math.max(0, r0) * f;
       const w1 = suave((t.juntaY + t.banda - y) / (2 * t.banda));
-      for (let j = 0; j <= rad; j++) { const a = (j / rad) * TAU; pos.push(Math.sin(a) * r, y, Math.cos(a) * r * t.kz); si.push(0, 1, 0, 0); sw.push(1 - w1, w1, 0, 0); uv.push((j / rad) * uC, -y / 0.58); }
+      for (let j = 0; j <= rad; j++) {
+        const a = (j / rad) * TAU, sx = t.espelho ? -1 : 1; pos.push(sx * Math.sin(a) * r, y, Math.cos(a) * r * t.kz); si.push(0, 1, 0, 0); sw.push(1 - w1, w1, 0, 0);
+        uv.push((j / rad) * uC, -y / 0.58); uv1.push(j / rad, (t.vTopo - y) / t.vLen);
+      }
     }
-    for (let i = 0; i < n; i++) for (let j = 0; j < rad; j++) { const a = i * (rad + 1) + j, b = a + rad + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    for (let i = 0; i < n; i++) for (let j = 0; j < rad; j++) { const a = i * (rad + 1) + j, b = a + rad + 1; if (t.espelho) idx.push(a, a + 1, b, b, a + 1, b + 1); else idx.push(a, b, a + 1, b, b + 1, a + 1); }
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute("uv1", new THREE.Float32BufferAttribute(uv1, 2));
     geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(sw, 4));
     geo.computeVertexNormals();
-    if (t.aberto) geo.setAttribute("normal", geo.getAttribute("normal"));
     return geo;
   }
   setAparencia(v, acessorio) {
-    const ap = this.ap = lerAp(v);
-    this.pele.color.set(AP.p[ap.p]); this.peleSom.color.set(misturaCor(AP.p[ap.p], "#7A3B22", 0.12));
-    this.cab.color.set(AP.c[ap.c]); if (this.sobMat) this.sobMat.color.set(misturaCor(AP.c[ap.c], "#000000", 0.28)); this.barbaMat.color.set(misturaCor(AP.c[ap.c], AP.p[ap.p], 0.12)); this.cabRaspado.color.set(misturaCor(AP.c[ap.c], AP.p[ap.p], 0.22));
-    this.calca.color.set(AP.l[ap.l]); this.sapMat.color.set(AP.s[ap.s]); this.solaMat.color.set(ap.s === 1 ? "#1F2937" : "#F4F6F8");
-    const chapeu = this.chapeus[acessorio] ? acessorio : "";
-    this.chapeuAtual = chapeu; this.corte(ap.k);
-    this.cortes.forEach((c, i) => { if (!c) return; c.visible = i === ap.k; if (c.userData.volume) c.userData.volume.visible = !chapeu; });
-    this.barbas.forEach((b, i) => { if (b) b.visible = i === ap.b; });
+    const ap = this.ap = lerAp(v); this.acessorio = acessorio || "";
+    const corPele = AP.p[ap.p], corCab = AP.c[ap.c];
+    this.pele.color.set(corPele); this.peleSom.color.set(misturaCor(corPele, "#7A3B22", 0.14));
+    this.cab.color.set(corCab); this.cabRaspado.color.set(misturaCor(corCab, corPele, 0.35)); this.barbaMat.color.set(misturaCor(corCab, corPele, 0.08));
+    if (this.sobMat) this.sobMat.color.set(misturaCor(corCab, "#000000", 0.28));
+    if (this.irisMat) this.irisMat.color.set(AP.i[ap.i]);
+    // calçado: cor, sola e detalhes de acordo com o tipo
+    const cs = AP.s[ap.s]; this.mtSap.color.set(cs);
+    const social = ap.f === 2, bota = ap.f === 3;
+    this.mtSap.roughness = social ? 0.28 : bota ? 0.7 : 0.48; this.mtSap.metalness = social ? 0.05 : 0;
+    this.mtSola.color.set(social ? "#2A1A12" : bota ? "#3B2A1E" : ap.s === 1 ? "#1F2937" : "#F4F6F8");
+    this.mtSapDet.color.set(ap.s === 1 ? misturaCor(cs, "#94A3B8", 0.4) : "#F8FAFC");
+    this.mtFaixa.color.set(ap.f === 4 ? "#F97316" : ap.s === 1 ? "#1F2937" : misturaCor(cs, "#FFFFFF", 0.55));
+    this.montarCalcados(ap.f);
+    // cabelo, barba, óculos, chapéu de recompensa ou acessório livre
+    const chapeu = this.chapeus[this.acessorio] ? this.acessorio : "";
+    const cobre = !!chapeu || ap.h === 2 || ap.h === 5;
+    this.cortes.forEach((c) => { if (c) c.g.visible = false; });
+    const corte = this.montarCorte(ap.k); corte.g.visible = true; this.corteAtual = corte; this.cabeloSolto = corte.solto || null;
+    corte.topo.forEach((m) => { m.visible = !cobre; }); if (corte.sob) corte.sob.visible = cobre;
+    this.molas.rabo && (this.molas.rabo.g.visible = true);
+    this.barbas.forEach((b) => { if (b) b.visible = false; }); const bb = this.montarBarba(ap.b); if (bb) bb.visible = true;
     Object.entries(this.chapeus).forEach(([k, g]) => { g.visible = k === chapeu; });
-    if (this.fio) this.fio.visible = !chapeu;
-    const escuros = acessorio === "a_oculos";
-    this.oculos.visible = escuros || ap.o === 1;
-    this.lente.opacity = escuros ? 0.88 : 0.12; this.lente.color.set(escuros ? "#0B1220" : "#DCEBFF");
-    // corpo: altura (escala do boneco todo) e espessura
+    Object.entries(this.acCabeca).forEach(([k, g]) => { g.visible = !chapeu && +k === ap.h; });
+    const escuros = this.acessorio === "a_oculos";
+    this.oculosG.forEach((g, i) => { g.visible = escuros ? i === 0 : ap.o === i + 1; });
+    this.lente.opacity = escuros ? 0.88 : 0.14; this.lente.color.set(escuros ? "#0B1220" : "#DCEBFF");
+    this.brincos.visible = ap.j === 3;
+    if (!this.relogio) { const g = this.relogio = new THREE.Group(); mesh(new THREE.TorusGeometry(0.047, 0.009, 8, 26), M("#111827", { r: 0.5 }), g, 0, 0, 0, { rx: PI / 2 }); cil(g, M("#D4D4D8", { r: 0.25, m: 0.8 }), 0.02, 0.02, 0.012, -0.05, 0, 0, { rz: PI / 2, seg: 20 }); cil(g, MB("#0EA5E9"), 0.015, 0.015, 0.002, -0.0565, 0, 0, { rz: PI / 2, seg: 20 }); g.position.y = -0.235; this.L.el.add(g); }
+    this.relogio.visible = ap.j === 1 || ap.j === 4;
+    // corpo: altura (escala do boneco todo), largura, roupa
     this.esc = ALTURA[ap.a]; this.root.scale.setScalar(this.esc);
-    const g = CORPO[ap.w]; this.fGir = g;
-    for (const { m, s, k } of this.gir) { const f = 1 + (g - 1) * k; m.scale.set(s.x * f, s.y, s.z * f); }
-    for (const v of this.roupas) v.scale.set(g, 1, g);   // golas e peças do peito acompanham a largura do tronco
-    if (this.gTubos !== g) { this.gTubos = g; for (const t of this.tubos) { const old = t.m.geometry; t.m.geometry = this.geoTubo(t, g); if (old) old.dispose(); } }
-    this.barriga.visible = ap.w >= 3; this.barriga.position.z = (g / CORPO[2] - 1) * 0.1;
-    this.L.sh.position.x = -0.19 * (1 + (g - 1) * 0.6); this.R.sh.position.x = 0.19 * (1 + (g - 1) * 0.6);
-    this.PL.hp.position.x = -0.094 * (1 + (g - 1) * 0.5); this.PR.hp.position.x = 0.094 * (1 + (g - 1) * 0.5);
-    this.fivela.position.z = 0.118 * g + 0.002;
-    this.estampaPlano.position.z = 0.1265 * g + 0.004;   // acompanha a frente do tronco
+    this.fGir = CORPO[ap.w];
     this.setRoupa(ap.r, ap.e);
+    this.montarCorpo();
+    this.setCor(this.cor, true);
     this.rostoKey = "";
   }
   setRoupa(r, e) {
-    this.roupas.forEach((g, i) => { g.visible = i === r; });
-    // tecido do tronco e das mangas, tipo de manga (C curta, L comprida, R regata) e punho de camisa aparecendo
-    const cfg = ROUPAS[r] || ROUPAS[0]; const mt = this[cfg.m];
+    const cfg = ROUPAS[r] || ROUPAS[0], ap = this.ap;
     const longa = cfg.manga === "L", regata = cfg.manga === "R";
+    const tec = cfg.tec || "liso";
+    // material do tronco e das mangas: cor (perfil ou escolhida), estampa e mapa de dobras
+    const T = this.mtTronco, Mg = this.mtManga;
+    T.map = cfg.m === "xadrez" ? this.texX.t : cfg.m === "havai" ? this.texH.t : cfg.m === "listras" ? this.texL.t : cfg.m === "time" ? this.texT.t : null;
+    T.normalMap = nmTronco(tec); T.roughness = tec === "la" ? 0.62 : tec === "jeans" ? 0.88 : tec === "trico" ? 0.95 : 0.82; T.sheen = tec === "trico" ? 0.45 : 0.2;
+    Mg.map = cfg.m === "time" ? null : T.map; if (cfg.listras) Mg.map = this.texLM.t;
+    Mg.normalMap = nmManga(cfg.mangaM ? "liso" : tec, longa); Mg.roughness = cfg.mangaM ? 0.66 : T.roughness; Mg.sheen = T.sheen;
+    T.needsUpdate = true; Mg.needsUpdate = true;
     for (const B of [this.L, this.R]) {
-      B.mangaC.visible = B.bainhaC.visible = !longa && !regata; B.mangaL.visible = B.punho.visible = longa;
-      B.ombro.visible = !regata; B.ombroPele.visible = regata;
-      for (const k of ["ombro", "mangaC", "bainhaC", "mangaL"]) B[k].material = mt;
-      B.punho.material = cfg.punho ? this[cfg.punho] : mt;
+      B.mangaC.visible = !longa && !regata; B.mangaL.visible = longa;
+      B.ombroPele.visible = regata;
+      B.punho.visible = longa && (!!cfg.punho || !!cfg.punhoR);
+      B.punho.material = cfg.punho ? this[cfg.punho] : this.mtDet;
     }
-    this.torso.material = mt; this.barriga.material = mt;
     this.estampaPlano.visible = this.temIcone && !!cfg.estampa;
-    const bermuda = e === 1;
-    if (r === 6 && !bermuda) this.calca.color.set(COR_TERNO);   // terno completo: a calça acompanha o paletó
-    for (const P of [this.PL, this.PR]) { P.calcaL.visible = P.barra.visible = !bermuda; P.bermudaM.visible = P.bermuda.visible = P.peleP.visible = bermuda; P.meiaM.scale.y = bermuda ? 1.8 : 1; P.meiaM.position.y = bermuda ? 0.04 : 0.012; }
+    // parte de baixo: calça, bermuda, saia, jogger ou shorts (vestido usa saia)
+    const baixo = cfg.vestido ? 2 : e;
+    this.mtCalca.color.set(cfg.calca && baixo === 0 ? cfg.calca : AP.l[ap.l]);
+    const listra = cfg.listras && (baixo === 0 || baixo === 3); this.mtCalca.map = listra ? this.texLP.t : null;
+    if (listra) { this.desenharListraCalca(AP.l[ap.l]); this.mtCalca.color.set("#FFFFFF"); }
+    this.mtCalca.normalMap = nmPerna(cfg.calca ? "la" : AP.l[ap.l] === "#6F86B5" || AP.l[ap.l] === "#2F3B52" ? "jeans" : "liso"); this.mtCalca.needsUpdate = true;
+    const perna = baixo === 1 || baixo === 2 || baixo === 4;
+    for (const P of [this.PL, this.PR]) {
+      P.calcaL.visible = baixo === 0; P.jogger.visible = baixo === 3; P.bermudaM.visible = baixo === 1; P.shortsM.visible = baixo === 4;
+      P.peleP.visible = perna; P.meiaM.visible = (perna || baixo === 3) && ap.f !== 3 && ap.f !== 1; P.meiaM.scale.y = perna ? 1.8 : 1; P.meiaM.position.y = perna ? 0.04 : 0.012;
+    }
   }
-  setCor(cor) {
-    const c = cor || "#2457F5"; this.cor = c; this.camisa.color.set(c);
-    this.gola.color.set(c).lerp(new THREE.Color(this.ap.r === 2 ? "#000000" : "#FFFFFF"), this.ap.r === 2 ? 0.08 : 0.16);
-    if (this.gravata) this.gravata.color.set(c);
-    if (this.gravata2) this.gravata2.color.set(c);
-    if (this.lapBlazer) this.lapBlazer.color.set(misturaCor(c, "#000000", 0.22));
-    if (this.estampasCor !== c) { this.estampasCor = c; this.desenharEstampas(c); }
+  setCor(cor, forca) {
+    const c = cor || "#2457F5"; if (c === this.cor && !forca && this.corRoupa === this.ap.u) return; this.cor = c; this.corRoupa = this.ap.u;
+    const cfg = ROUPAS[this.ap.r] || ROUPAS[0];
+    // cor da roupa: a escolhida no perfil ou a cor do perfil
+    const cr = AP.u[this.ap.u] || c;
+    const base = cfg.m === "terno" ? COR_TERNO : cfg.m === "branco" ? "#F4F6FA" : cfg.m === "jeans" ? COR_JEANS : (cfg.m === "xadrez" || cfg.m === "havai" || cfg.m === "listras" || cfg.m === "time") ? "#FFFFFF" : cr;
+    this.mtTronco.color.set(base);
+    this.mtManga.color.set(cfg.mangaM === "branco" ? "#F4F6FA" : cfg.listras ? "#FFFFFF" : cfg.m === "time" ? cr : base);
+    this.mtDet.color.set(cfg.m === "terno" ? COR_TERNO : cfg.m === "jeans" ? misturaCor(COR_JEANS, "#000000", 0.12) : cfg.m === "branco" ? "#F4F6FA" : misturaCor(cr, cfg.gola === "capuz" || cfg.gola === "alta" ? "#000000" : "#FFFFFF", 0.12));
+    if (cfg.gola === "blazer") this.mtDet.color.set(misturaCor(cr, "#000000", 0.22));
+    if (cfg.gola === "v" || cfg.listras) this.mtDet.color.set("#FFFFFF");
+    this.mtGravata.color.set(c);
+    const chave = cr + "|" + c;
+    if (this.estampasCor !== chave) { this.estampasCor = chave; this.desenharEstampas(cr, c); }
   }
-  // flanela xadrez e estampa havaiana, desenhadas na cor do perfil (texturas que se repetem sem emenda)
-  desenharEstampas(c) {
-    { const { g, t } = this.texX; const esc = misturaCor(c, "#000000", 0.5), cla = misturaCor(c, "#FFFFFF", 0.6);
-      g.globalAlpha = 1; g.fillStyle = misturaCor(c, "#FFFFFF", 0.08); g.fillRect(0, 0, 256, 256);
+  // estampas desenhadas na cor da roupa (cr) e na cor do perfil (c): xadrez, havaiana, listras, camisa de time e listras do agasalho
+  desenharEstampas(cr, c) {
+    { const { g, t } = this.texX; const esc = misturaCor(cr, "#000000", 0.5), cla = misturaCor(cr, "#FFFFFF", 0.6);
+      g.globalAlpha = 1; g.fillStyle = misturaCor(cr, "#FFFFFF", 0.08); g.fillRect(0, 0, 256, 256);
       g.globalAlpha = 0.42; g.fillStyle = esc; g.fillRect(0, 72, 256, 72); g.fillRect(72, 0, 72, 256);
       g.globalAlpha = 0.3; g.fillRect(0, 196, 256, 22); g.fillRect(196, 0, 22, 256);
       g.globalAlpha = 0.85; g.fillStyle = cla; g.fillRect(0, 168, 256, 5); g.fillRect(168, 0, 5, 256);
       g.globalAlpha = 0.6; g.fillStyle = "#0B0F17"; g.fillRect(0, 106, 256, 4); g.fillRect(106, 0, 4, 256);
       g.globalAlpha = 0.06; g.fillStyle = "#000"; for (let i = -256; i < 256; i += 4) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 256, 256); g.lineTo(i + 258, 256); g.lineTo(i + 2, 0); g.fill(); }
       g.globalAlpha = 1; t.needsUpdate = true; }
-    { const { g, t } = this.texH; g.globalAlpha = 1; g.fillStyle = c; g.fillRect(0, 0, 256, 256);
-      const folha = misturaCor(misturaCor(c, "#0E5A3A", 0.6), "#000000", 0.15), flor = "#FFF7EC", miolo = "#F6B93B";
+    { const { g, t } = this.texH; g.globalAlpha = 1; g.fillStyle = cr; g.fillRect(0, 0, 256, 256);
+      const folha = misturaCor(misturaCor(cr, "#0E5A3A", 0.6), "#000000", 0.15), flor = "#FFF7EC", miolo = "#F6B93B";
       const em = (x, y, fn) => { for (const dx of [-256, 0, 256]) for (const dy of [-256, 0, 256]) { g.save(); g.translate(x + dx, y + dy); fn(); g.restore(); } };
       const fo = (x, y, a, s) => em(x, y, () => { g.rotate(a); g.fillStyle = folha; g.beginPath(); g.ellipse(0, 0, 34 * s, 12 * s, 0, 0, TAU); g.fill(); g.strokeStyle = misturaCor(folha, "#FFFFFF", 0.25); g.lineWidth = 2; g.beginPath(); g.moveTo(-30 * s, 0); g.lineTo(30 * s, 0); g.stroke(); });
       const fl = (x, y, a, s) => em(x, y, () => { g.rotate(a); g.fillStyle = flor; for (let i = 0; i < 5; i++) { g.rotate(TAU / 5); g.beginPath(); g.ellipse(0, -15 * s, 9 * s, 15 * s, 0, 0, TAU); g.fill(); } g.fillStyle = miolo; g.beginPath(); g.arc(0, 0, 6 * s, 0, TAU); g.fill(); });
       fo(40, 60, 0.6, 1); fo(170, 30, -0.4, 0.9); fo(120, 170, 1.9, 1.1); fo(220, 210, 0.3, 0.8); fo(30, 210, -1.1, 0.9);
       fl(78, 92, 0.3, 1.1); fl(200, 120, 1.2, 0.9); fl(60, 190, 0.8, 0.8); fl(170, 230, 0.1, 1);
       t.needsUpdate = true; }
+    { const { g, t } = this.texL; g.fillStyle = "#F8FAFC"; g.fillRect(0, 0, 128, 128); g.fillStyle = cr; for (let i = 0; i < 4; i++) g.fillRect(0, i * 32 + 4, 128, 15); t.needsUpdate = true; }
+    { const { g, t } = this.texLM; g.fillStyle = cr; g.fillRect(0, 0, 128, 128); g.fillStyle = "#F8FAFC"; for (const x of [24, 34]) g.fillRect(x, 0, 6, 128); t.needsUpdate = true; }
+    { // camisa de time: corpo na cor da roupa, laterais brancas, número nas costas e no peito, escudo com a cor do perfil
+      const { g, t } = this.texT; g.fillStyle = cr; g.fillRect(0, 0, 512, 512);
+      g.fillStyle = "rgba(255,255,255,.95)"; for (const x of [112, 368]) g.fillRect(x, 0, 32, 512);
+      g.fillStyle = "rgba(255,255,255,.08)"; for (let y = 0; y < 512; y += 16) g.fillRect(0, y, 512, 8);
+      g.font = "bold 150px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#FFFFFF"; g.strokeStyle = misturaCor(cr, "#000000", 0.4); g.lineWidth = 8;
+      for (const x of [0, 512]) { g.strokeText("10", x, 170); g.fillText("10", x, 170); }
+      g.font = "bold 46px system-ui, sans-serif"; g.strokeText("10", 300, 150); g.fillText("10", 300, 150);
+      g.fillStyle = c; g.beginPath(); g.moveTo(210, 128); g.lineTo(242, 128); g.lineTo(242, 160); g.quadraticCurveTo(226, 178, 210, 160); g.closePath(); g.fill(); g.strokeStyle = "#FFFFFF"; g.lineWidth = 3; g.stroke();
+      t.needsUpdate = true; }
+  }
+  // listras laterais da calça do agasalho (o fundo é a cor da calça)
+  desenharListraCalca(cor) {
+    const { g, t } = this.texLP; g.fillStyle = cor; g.fillRect(0, 0, 128, 128); g.fillStyle = "#F8FAFC"; for (const x of [26, 35]) g.fillRect(x, 0, 5, 128); t.needsUpdate = true;
   }
   setIcone(n) {
     const { g, t } = this.estampa; g.clearRect(0, 0, 128, 128);
@@ -812,7 +1285,7 @@ class Boneco {
     return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
   }
   // qMao (opcional): orientação da mão no mundo; aí o alvo do braço é o punho, para os dedos caírem no ponto certo
-  ik(B, alvo, peso, qMao) {
+  ik(B, alvo, peso, qMao, poloArg) {
     const sh = B.sh; const sp = this.spine;
     const t = sp.worldToLocal(alvo.clone());
     if (qMao) { const qs = sp.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(qMao); t.sub(this.gp.clone().multiplyScalar(ESC_MAO).applyQuaternion(qs)); }
@@ -824,7 +1297,7 @@ class Boneco {
     const u0 = v0.clone().normalize(), u1 = t.clone().normalize();
     const n0 = new THREE.Vector3().crossVectors(u0, e0).normalize();
     // cotovelo para baixo, um pouco para fora e para trás
-    const polo = V(B.lado * 0.55, -1, -0.45).normalize();
+    const polo = poloArg ? V(...poloArg).normalize() : V(B.lado * 0.55, -1, -0.45).normalize();
     let n1 = new THREE.Vector3().crossVectors(u1, polo); if (n1.lengthSq() < 1e-6) n1.set(1, 0, 0); n1.normalize();
     const m0 = new THREE.Matrix4().makeBasis(u0, n0, new THREE.Vector3().crossVectors(u0, n0));
     const m1 = new THREE.Matrix4().makeBasis(u1, n1, new THREE.Vector3().crossVectors(u1, n1));
@@ -842,8 +1315,8 @@ class Boneco {
     const alt = p.alt * lerp(1, 1 / this.esc, cl(p.sent || 0));
     this.hips.position.set(0.004 * calmo * mov, alt + p.dy / this.esc + 0.0025 * resp, p.hz);
     this.spine.rotation.set(p.lean + 0.012 * resp2, p.twist + 0.02 * calmo * mov, p.side + 0.008 * calmo * mov);
-    const f = this.fGir || 1;
-    this.torso.scale.set(1.06 * f * (1 + 0.01 * resp), 1 + 0.007 * resp, 0.74 * f * (1 + 0.022 * resp));
+    // respiração: o peito enche (osso da coluna do tronco)
+    this.bS.scale.set(1 + 0.009 * resp, 1 + 0.004 * resp, 1 + 0.02 * resp);
     const mc = Math.sin(T * 0.52 + 0.6) * 0.03 + Math.sin(T * 1.31) * 0.012;
     this.neck.rotation.set(p.nod * 0.35, p.turn * 0.4 + mc * 0.4, p.roll * 0.4);
     this.head.rotation.set(p.nod * 0.65 + 0.008 * resp, p.turn * 0.6 + mc * 0.6, p.roll * 0.6 + 0.01 * calmo * mov);
@@ -858,8 +1331,8 @@ class Boneco {
     const qL = p.kL > 0.001 && p.ikL ? this.oriMao("L", p.oriL) : null, qR = p.kR > 0.001 && p.ikR ? this.oriMao("R", p.oriR) : null;
     if ((p.kL > 0.001 && p.ikL) || (p.kR > 0.001 && p.ikR)) {
       this.root.updateMatrixWorld(true);
-      if (p.kL > 0.001 && p.ikL) this.ik(this.L, V(...p.ikL), cl(p.kL), qL);
-      if (p.kR > 0.001 && p.ikR) this.ik(this.R, V(...p.ikR), cl(p.kR), qR);
+      if (p.kL > 0.001 && p.ikL) this.ik(this.L, V(...p.ikL), cl(p.kL), qL, p.poloL);
+      if (p.kR > 0.001 && p.ikR) this.ik(this.R, V(...p.ikR), cl(p.kR), qR, p.poloR);
     }
     // gole: a mão direita leva a borda da xícara até a boca (a alça fica do lado de fora do rosto)
     const gole = cl(p.gole || 0);
@@ -908,13 +1381,24 @@ class Boneco {
         m.v += (f2 * 0.8 - 70 * m.a - 7 * m.v) * d; m.a = cl(m.a + m.v * d, -0.6, 0.6);
         m.vb += (-dyaw * 1.2 - 60 * m.b - 6 * m.vb) * d; m.b = cl(m.b + m.vb * d, -0.6, 0.6);
       }
-      const fm = this.fioM || (this.fioM = { a: 0, v: 0 });
-      fm.v += (f2 - 90 * fm.a - 9 * fm.v) * d; fm.a = cl(fm.a + fm.v * d, -0.4, 0.4);
       this.pYaw = yaw;
+      // barra da camisa: balança com a aceleração do quadril (andar, parar, girar, dançar)
+      const br = this.barra; this.hips.updateWorldMatrix(true, false); const hp = new THREE.Vector3().setFromMatrixPosition(this.hips.matrixWorld);
+      if (br.ant) {
+        const vel = hp.clone().sub(br.ant).divideScalar(d); const ac = vel.clone().sub(br.vel).divideScalar(d); br.vel.copy(vel);
+        const fw = Math.sin(yaw) * ac.x + Math.cos(yaw) * ac.z, lat = Math.cos(yaw) * ac.x - Math.sin(yaw) * ac.z;
+        br.vx += (cl(fw, -40, 40) * 0.006 - 120 * br.x - 9 * br.vx) * d; br.x = cl(br.x + br.vx * d, -0.25, 0.25);
+        br.vz += (cl(-lat, -40, 40) * 0.006 - dyaw * 0.05 - 120 * br.z - 9 * br.vz) * d; br.z = cl(br.z + br.vz * d, -0.2, 0.2);
+      }
+      br.ant = hp;
     }
     this.pDy = p.dy; this.pNod = p.nod; this.pT = T;
-    if (this.fio) { const a = this.fioM ? this.fioM.a : 0; this.fio.rotation.x = a * 0.6 + 0.015 * resp; this.fio.rotation.z = 0.02 * calmo; }
+    // barra: sobe na frente quando ele senta (coxas para a frente) e acompanha o balanço
+    { const flex = Math.max(0, ((p.lL[0] || 0) + (p.lR[0] || 0)) / 2), br = this.barra;
+      this.bF.rotation.set(br.x - 0.85 * suave((flex - 0.35) / 1.0), 0, br.z); this.bB.rotation.set(br.x * 1.3 + 0.2 * suave((flex - 0.35) / 1.0), 0, br.z); }
     const rb = this.molas.rabo; if (rb) { rb.g.rotation.x = 0.15 + rb.a * 0.8 - (p.lean + p.nod) * 0.6; rb.g.rotation.z = rb.b * 0.8 + 0.04 * calmo; }
+    // mechas compridas balançam um pouco com a cabeça
+    if (this.cabeloSolto && this.molas.solto) { const m = this.molas.solto; this.cabeloSolto.rotation.set(m.a * 0.18 - (p.lean + p.nod) * 0.25, 0, m.b * 0.15); }
     this.root.updateMatrixWorld(true);
     this.L.hand.localToWorld(this.mL.copy(this.gp)); this.R.hand.localToWorld(this.mR.copy(this.gp));
   }
@@ -935,7 +1419,7 @@ class Boneco {
     }
     const g = G[nome] || G.solto; const c = g.c.slice();
     if (nome === "tecla") for (let i = 0; i < 4; i++) c[i] += 0.32 * Math.max(0, Math.sin(T * 12.5 + i * 2.1 + (lado === "L" ? 0 : 1.3))) ** 3;
-    else if (nome === "controle") c[4] = 0.35 + 0.25 * Math.max(0, Math.sin(T * (lado === "L" ? 7 : 9.5) + (lado === "L" ? 0 : 2)));
+    else if (nome === "controle") c[4] = lado === "R" && p.botaoR != null ? 0.32 + 0.38 * p.botaoR : 0.35 + 0.25 * Math.max(0, Math.sin(T * (lado === "L" ? 7 : 9.5) + (lado === "L" ? 0 : 2)));
     else if (!g.preso) for (let i = 0; i < 5; i++) c[i] += 0.07 * Math.sin(T * (0.6 + i * 0.17) + i * 1.7 + (lado === "L" ? 0 : 3)) + (p.tamb && lado === "R" && i < 4 ? 0.35 * Math.max(0, Math.sin(T * 14 - i * 1.1)) ** 4 : 0);
     return { c, s: g.s, preso: !!g.preso };
   }
@@ -954,6 +1438,10 @@ class Boneco {
     const q = (v, n = 20) => Math.round((v || 0) * n);
     const key = ["sorr", "abre", "larg", "redondo", "assim", "dentes", "lingua", "morde", "boch"].map((k) => q(F[k])).join(",") + "|" + (F.lagrima > 0.05 ? Math.floor(((T * 0.6) % 1) * 24) : -1);
     { const fe = cl(Math.max(F.fecha || 0, bl * 0.98)); this.posarOlhos(F, cl((F.olho ?? 1) * (1 - fe), 0, 1.25), cl(F.feliz)); }
+    // volumes do rosto: bochechas sobem no sorriso, queixo desce com a boca aberta, lábios em bico no "o"
+    { const sor = Math.max(0, F.sorr || 0), ab = cl(F.abre), rd = cl(F.redondo);
+      const mi = [cl(sor * 0.95 + cl(F.feliz) * 0.35 + cl(F.boch) * 0.12), cl(ab * (0.5 + 0.5 * cl(rd + (F.dentes || 0)))), cl(rd * 0.85 + (F.morde || 0) * 0.15)];
+      for (const m of [this.cabM, this.rostoM]) { const t = m.morphTargetInfluences; t[0] = mi[0]; t[1] = mi[1]; t[2] = mi[2]; } }
     if (key === this.rostoKey) return; this.rostoKey = key;
     const { g, t } = this.rosto;
     g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 512, 384); g.restore();
@@ -972,28 +1460,35 @@ class Boneco {
     const red = cl(F.redondo);
     // vincos do sorriso
     if (sorr > 0.45 && red < 0.5) { const av = (sorr - 0.45) * 2 * (1 - red * 2); g.strokeStyle = escura ? `rgba(10,4,2,${0.3 * av})` : `rgba(140,70,50,${0.34 * av})`; g.lineWidth = 1.8; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * 22, 141); g.quadraticCurveTo(cx + s * 34, 152, cx + s * 31, 166); g.stroke(); } }
-    // boca: cantos (sorriso/assimetria), abertura, forma redonda, dentes e língua
-    const my = 161, labS = misturaCor(pele, "#8E2F2B", escura ? 0.35 : 0.42), labI = misturaCor(pele, "#B5524A", escura ? 0.28 : 0.36), linha = misturaCor(pele, "#3A0F0C", 0.7), int = "#4A1216";
-    const w = 21 * (F.larg ?? 1) * (1 - 0.45 * red) * (1 + 0.15 * Math.max(0, sorr) * (1 - red));
-    const ca = (s) => my - sorr * 7.5 + (F.assim || 0) * s * 4.5;
+    // boca: cantos (sorriso/assimetria), abertura, forma redonda, dentes e língua, com sombra por dentro (profundidade)
+    const my = 161, labS = misturaCor(pele, "#8E2F2B", escura ? 0.38 : 0.45), labI = misturaCor(pele, "#C2615A", escura ? 0.3 : 0.38), linha = misturaCor(pele, "#3A0F0C", 0.72);
+    const w = 24 * (F.larg ?? 1) * (1 - 0.45 * red) * (1 + 0.2 * Math.max(0, sorr) * (1 - red));
+    const ca = (s) => my - sorr * 8.5 + (F.assim || 0) * s * 4.5;
     const xL = cx - w, xR = cx + w, yL = ca(-1), yR = ca(1);
-    const alto = abre * (24 + 8 * red);
+    const alto = abre * (26 + 9 * red);
     if (alto < 1.6) {
       g.fillStyle = labS; g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx - w * 0.45, my - 5.5, cx, my - 3.2); g.quadraticCurveTo(cx + w * 0.45, my - 5.5, xR, yR); g.quadraticCurveTo(cx, my + 1 + sorr * 4, xL, yL); g.fill();
-      g.fillStyle = labI; g.beginPath(); g.moveTo(xL + 2, yL + 0.5); g.quadraticCurveTo(cx, my + 1.5 + sorr * 4, xR - 2, yR + 0.5); g.quadraticCurveTo(cx, my + 9 + sorr * 3.5, xL + 2, yL + 0.5); g.fill();
-      g.strokeStyle = linha; g.lineWidth = 2; g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, my + 1.2 + sorr * 5, xR, yR); g.stroke();
+      g.fillStyle = labI; g.beginPath(); g.moveTo(xL + 2, yL + 0.5); g.quadraticCurveTo(cx, my + 1.5 + sorr * 4, xR - 2, yR + 0.5); g.quadraticCurveTo(cx, my + 10 + sorr * 3.5, xL + 2, yL + 0.5); g.fill();
+      g.fillStyle = "rgba(255,255,255,.18)"; g.beginPath(); g.ellipse(cx, my + 5 + sorr * 2.5, w * 0.35, 1.6, 0, 0, TAU); g.fill();
+      g.strokeStyle = linha; g.lineWidth = 2.4; g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, my + 1.2 + sorr * 5, xR, yR); g.stroke();
       if (F.morde > 0.1) { g.fillStyle = "#FAF6F0"; g.beginPath(); g.ellipse(cx + 3, my + 2, 7 * F.morde, 2.6 * F.morde, 0, 0, TAU); g.fill(); }
       if (F.lingua > 0.1) { g.fillStyle = "#E06D78"; g.beginPath(); g.ellipse(cx + 7, my + 4 + 2 * F.lingua, 6 * F.lingua, 4 * F.lingua, 0.3, 0, TAU); g.fill(); }
     } else {
       const sup = my - 3 - abre * 2, inf = my + alto - sorr * 3;
-      const forma = () => { g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, sup - sorr * 2, xR, yR); g.quadraticCurveTo(cx + w * 0.75, inf, cx, inf); g.quadraticCurveTo(cx - w * 0.75, inf, xL, yL); g.closePath(); };
-      forma(); g.fillStyle = int; g.fill();
+      const forma = () => { g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, sup - sorr * 2, xR, yR); g.quadraticCurveTo(cx + w * 0.78, inf, cx, inf); g.quadraticCurveTo(cx - w * 0.78, inf, xL, yL); g.closePath(); };
+      forma(); const fundo = g.createRadialGradient(cx, (sup + inf) / 2 - 2, 2, cx, (sup + inf) / 2, Math.max(w, alto)); fundo.addColorStop(0, "#1E060A"); fundo.addColorStop(0.55, "#4A1218"); fundo.addColorStop(1, "#7A2630"); g.fillStyle = fundo; g.fill();
       g.save(); forma(); g.clip();
-      if (F.dentes > 0.05) { g.fillStyle = "#FAF6F0"; g.fillRect(cx - w, sup - 6, w * 2, 4 + 6.5 * F.dentes); }
-      const lg = Math.max(F.lingua || 0, abre * 0.7); if (lg > 0.1) { g.fillStyle = "#D2626A"; g.beginPath(); g.ellipse(cx, inf, w * 0.55, Math.max(3, alto * 0.4) * lg, 0, 0, TAU); g.fill(); }
+      if (F.dentes > 0.05) { const dt = g.createLinearGradient(0, sup - 6, 0, sup + 5 + 7 * F.dentes); dt.addColorStop(0, "#FFFFFF"); dt.addColorStop(1, "#DCD6CE"); g.fillStyle = dt; g.beginPath(); g.moveTo(cx - w, sup - 8); g.lineTo(cx + w, sup - 8); g.quadraticCurveTo(cx + w * 0.6, sup + 4 + 7 * F.dentes, cx, sup + 4.5 + 7 * F.dentes); g.quadraticCurveTo(cx - w * 0.6, sup + 4 + 7 * F.dentes, cx - w, sup - 8); g.fill();
+        g.strokeStyle = "rgba(150,140,130,.35)"; g.lineWidth = 0.8; for (const dx of [-0.42, -0.14, 0.14, 0.42]) { g.beginPath(); g.moveTo(cx + dx * w, sup - 6); g.lineTo(cx + dx * w * 0.96, sup + 2 + 5 * F.dentes); g.stroke(); } }
+      const lg = Math.max(F.lingua || 0, abre * 0.7); if (lg > 0.1) { const tg = g.createRadialGradient(cx, inf - 2, 1, cx, inf, w * 0.6); tg.addColorStop(0, "#F08A94"); tg.addColorStop(1, "#C24E5C"); g.fillStyle = tg; g.beginPath(); g.ellipse(cx, inf + 1, w * 0.58, Math.max(3, alto * 0.42) * lg, 0, 0, TAU); g.fill(); }
+      g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(cx - w, sup - 8, w * 2, 4);
       g.restore();
-      g.strokeStyle = labS; g.lineWidth = 3.4; forma(); g.stroke();
+      g.strokeStyle = labS; g.lineWidth = 3.6; forma(); g.stroke();
+      g.strokeStyle = labI; g.lineWidth = 4.2; g.beginPath(); g.moveTo(xL + 3, yL + 2); g.quadraticCurveTo(cx + w * 0.78, inf + 2, cx, inf + 2.2); g.stroke();
+      g.beginPath(); g.moveTo(xR - 3, yR + 2); g.quadraticCurveTo(cx - w * 0.78, inf + 2, cx, inf + 2.2); g.stroke();
     }
+    // covinhas nos cantos quando sorri
+    if (sorr > 0.35) { const k = (sorr - 0.35) / 0.65; g.strokeStyle = escura ? `rgba(10,4,2,${0.35 * k})` : `rgba(150,70,55,${0.4 * k})`; g.lineWidth = 1.8; for (const s of [-1, 1]) { const x = s < 0 ? xL : xR, y = s < 0 ? yL : yR; g.beginPath(); g.arc(x + s * 1.5, y + 1, 4.5, s < 0 ? -0.4 : PI - 1.2, s < 0 ? 1.2 : PI + 0.4); g.stroke(); } }
     if (F.lagrima > 0.05) { const k = (((T * 0.6) % 1) * 24 | 0) / 24; g.fillStyle = `rgba(120,180,250,${0.9 * (1 - k) * F.lagrima})`; const x = cx - dx - 12, y = ey + 12 + k * 60; g.beginPath(); g.moveTo(x, y - 7); g.quadraticCurveTo(x + 6, y + 3, x, y + 4.5); g.quadraticCurveTo(x - 6, y + 3, x, y - 7); g.fill(); }
     g.restore();
     t.needsUpdate = true;
@@ -1118,7 +1613,8 @@ class Filtro {
    transferência de peso quando está em pé e rosto com parâmetros contínuos que se misturam sem saltos. */
 const EXPR = {
   neutro: {},
-  contente: { sorr: 0.45, feliz: 0.3, boch: 0.3 },
+  contente: { sorr: 0.62, feliz: 0.42, boch: 0.38 },
+  sorrisao: { sorr: 0.88, abre: 0.32, dentes: 1, feliz: 0.65, boch: 0.55, sobeS: 0.18 },
   concentrado: { sorr: -0.05, larg: 0.82, assim: 0.35, dentroS: -0.3, olho: 0.9, lingua: 0.55 },
   surpreso: { abre: 0.42, redondo: 0.7, sorr: 0.1, sobeS: 0.85, olho: 1.2 },
   rindo: { sorr: 0.9, abre: 0.5, dentes: 1, feliz: 0.9, boch: 0.6, sobeS: 0.2 },
@@ -1141,9 +1637,9 @@ const EXPR = {
 };
 // repertório de cada humor: [expressão, peso, duração mín, máx]
 const REPERT = {
-  tranquilo: [["contente", 4, 3, 6], ["concentrado", 3, 3, 7], ["surpreso", 1, 0.9, 1.6], ["rindo", 1.2, 1.4, 2.6], ["bocejo", 0.6, 2.4, 3.2], ["pensativo", 1, 2.5, 4.5], ["assovia", 0.8, 2.5, 4], ["neutro", 2, 2, 4]],
-  feliz: [["contente", 3, 3, 6], ["rindo", 2, 1.5, 3], ["orgulhoso", 2, 2.5, 4.5], ["concentrado", 1.5, 2, 4], ["assovia", 1.2, 2.5, 4], ["neutro", 1, 2, 3]],
-  euforico: [["gargalhada", 3, 1.5, 3], ["grito", 2, 0.9, 1.8], ["rindo", 2, 1.5, 3], ["contente", 1.5, 2, 4]],
+  tranquilo: [["contente", 4, 3, 6], ["sorrisao", 1.4, 1.8, 3.2], ["concentrado", 3, 3, 7], ["surpreso", 1, 0.9, 1.6], ["rindo", 1.2, 1.4, 2.6], ["bocejo", 0.6, 2.4, 3.2], ["pensativo", 1, 2.5, 4.5], ["assovia", 0.8, 2.5, 4], ["neutro", 2, 2, 4]],
+  feliz: [["contente", 3, 3, 6], ["sorrisao", 3, 2, 4], ["rindo", 2, 1.5, 3], ["orgulhoso", 2, 2.5, 4.5], ["concentrado", 1.5, 2, 4], ["assovia", 1.2, 2.5, 4], ["neutro", 1, 2, 3]],
+  euforico: [["gargalhada", 3, 1.5, 3], ["sorrisao", 2, 1.5, 3], ["grito", 2, 0.9, 1.8], ["rindo", 2, 1.5, 3], ["contente", 1.5, 2, 4]],
   preocupado: [["tenso", 3, 3, 6], ["mordeLabio", 2, 1.5, 3], ["aflito", 2, 2, 4], ["resmunga", 2, 1.8, 3.5], ["suspira", 1.5, 1.8, 2.6], ["esperanca", 1, 2, 3.5], ["pensativo", 1, 2, 4]],
   triste: [["choroso", 2, 3, 6], ["vazio", 3, 3, 6], ["suspira", 2, 1.8, 2.6], ["sorrisoFraco", 0.6, 1.5, 3], ["aflito", 1, 2, 4]],
 };
@@ -1437,6 +1933,120 @@ class Nav {
   }
 }
 
+/* ---------- sinuca de verdade: física das bolas (tabelas, caçapas, choques), escolha da jogada e gravação ----------
+   Tudo em coordenadas da mesa na posição original (a mesa pode ser movida; o grupo dela leva as bolas junto).
+   Cada tacada é simulada inteira na hora de planejar (passo fixo, determinístico) e gravada a 60 quadros por
+   segundo: na hora da tacada o escritório só toca a gravação, então a bola sai exatamente quando o taco bate. */
+const SIN = { x0: 5.8, x1: 8.0, z0: 3.85, z1: 4.95, r: 0.03, y: 0.81 };
+const SIN_CORES = ["#F8FAFC", "#FACC15", "#1D4ED8", "#DC2626", "#7C3AED", "#F97316", "#16A34A", "#7F1D1D", "#111827", "#FACC15"];
+class MesaSinuca {
+  constructor(cacapas) {
+    this.cac = cacapas.map(([x, z], i) => ({ x, z, r: i < 4 ? 0.058 : 0.05 }));
+    this.bolas = this.rack(); this.intacto = true; this.seq = 0; this.planos = new Map();
+  }
+  // nove bolas em losango (1 na frente, 9 no meio) e a branca na marca de saída
+  rack() {
+    const r = SIN.r + 0.0008, ap = [7.45, 4.4], out = [{ n: 0, x: 6.35, z: 4.4, em: true }];
+    const ordem = [1, 2, 3, 4, 9, 5, 6, 7, 8], linhas = [1, 2, 3, 2, 1]; let k = 0;
+    linhas.forEach((q, i) => { for (let j = 0; j < q; j++) { const n = ordem[k++]; out.push({ n, x: ap[0] + i * r * Math.sqrt(3), z: ap[1] + (j - (q - 1) / 2) * 2 * r, em: true }); } });
+    return out;
+  }
+  copia(est) { return est.map((b) => ({ ...b })); }
+  // simula a partir de um estado com a branca saindo na velocidade (vx, vz); devolve quadros (60/s) e o resultado
+  simular(est, vx, vz) {
+    const B = this.copia(est).map((b) => ({ ...b, vx: 0, vz: 0, cai: -1, cx: 0, cz: 0 })), r = SIN.r, dt = 1 / 240, e = 0.95, eb = 0.8, atr = 0.62;
+    const branca = B.find((b) => b.n === 0); branca.vx = vx; branca.vz = vz;
+    const quadros = []; const caidas = []; let primeiro = -1; let t = 0;
+    const grava = () => quadros.push(B.map((b) => [b.x, b.z, b.em ? 1 : 0, b.cai]));
+    grava();
+    for (let passo = 0; passo < 240 * 12; passo++) {
+      let mexe = false;
+      for (const b of B) {
+        if (!b.em) continue; const s = Math.hypot(b.vx, b.vz); if (s < 1e-4) { b.vx = b.vz = 0; continue; }
+        mexe = true; const ns = Math.max(0, s - atr * dt); b.vx *= ns / s; b.vz *= ns / s; b.x += b.vx * dt; b.z += b.vz * dt;
+        // caçapa: a bola cai se o centro chega perto da boca
+        const c = this.cac.find((q) => Math.hypot(b.x - q.x, b.z - q.z) < q.r); if (c) { b.em = false; b.cai = t; b.cx = c.x; b.cz = c.z; b.x = c.x; b.z = c.z; b.vx = b.vz = 0; caidas.push(b.n); continue; }
+        if (b.x < SIN.x0 + r) { b.x = 2 * (SIN.x0 + r) - b.x; b.vx = -b.vx * eb; b.vz *= 0.96; }
+        if (b.x > SIN.x1 - r) { b.x = 2 * (SIN.x1 - r) - b.x; b.vx = -b.vx * eb; b.vz *= 0.96; }
+        if (b.z < SIN.z0 + r) { b.z = 2 * (SIN.z0 + r) - b.z; b.vz = -b.vz * eb; b.vx *= 0.96; }
+        if (b.z > SIN.z1 - r) { b.z = 2 * (SIN.z1 - r) - b.z; b.vz = -b.vz * eb; b.vx *= 0.96; }
+      }
+      for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) {
+        const a = B[i], b = B[j]; if (!a.em || !b.em) continue;
+        const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz); if (d >= 2 * r || d < 1e-6) continue;
+        const nx = dx / d, nz = dz / d, vr = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
+        if (vr > 0) { const j2 = vr * (1 + e) / 2; a.vx -= j2 * nx; a.vz -= j2 * nz; b.vx += j2 * nx; b.vz += j2 * nz; if (primeiro < 0 && (a.n === 0 || b.n === 0)) primeiro = a.n === 0 ? b.n : a.n; }
+        const corr = (2 * r - d) / 2 + 1e-5; a.x -= nx * corr; a.z -= nz * corr; b.x += nx * corr; b.z += nz * corr;
+      }
+      t += dt; if (passo % 4 === 3) grava();
+      if (!mexe && t > 0.3) break;
+    }
+    grava();
+    const final = B.map((b) => ({ n: b.n, x: b.x, z: b.z, em: b.em }));
+    return { quadros, final, caidas, primeiro, dur: t };
+  }
+  // o caminho de a até b está livre (nenhuma bola, fora as ignoradas, a menos de "folga" da reta)?
+  livre(est, ax, az, bx, bz, ign, folga) {
+    const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+    return est.every((q) => { if (!q.em || ign.includes(q.n)) return true; const t = cl(((q.x - ax) * dx + (q.z - az) * dz) / L2); return Math.hypot(ax + dx * t - q.x, az + dz * t - q.z) > folga; });
+  }
+  // escolhe a próxima tacada a partir do estado atual. ok(x, z): o lugar onde o jogador fica é alcançável?
+  planejar(ok, aleat = Math.random) {
+    const id = ++this.seq; let pre = this.copia(this.bolas), rack = false;
+    const obj = pre.filter((b) => b.em && b.n > 0);
+    if (obj.length < 3) { pre = this.rack(); rack = true; }
+    const saida = rack || this.intacto; this.intacto = false;
+    const br = pre.find((b) => b.n === 0);
+    if (!br.em) { br.em = true; br.x = 6.35; br.z = 4.4; while (!this.livre(pre, br.x, br.z, br.x, br.z, [0], 2.2 * SIN.r)) br.z += 0.07; }
+    const r = SIN.r; let melhor = null;
+    // onde ele fica: atrás da branca, um pouco à direita da linha; se não couber, chega mais perto da mesa
+    const posJogador = (u, d = 0.92) => { const dir = [u[1], -u[0]]; return [br.x - u[0] * d - dir[0] * 0.13, br.z - u[1] * d - dir[1] * 0.13]; };
+    const fora = (p) => p[0] < 5.55 || p[0] > 8.25 || p[1] < 3.6 || p[1] > 5.2;
+    const distOk = (u) => [0.92, 0.82, 0.72].find((d) => { const p = posJogador(u, d); return fora(p) && ok(p[0], p[1], Math.atan2(u[0], u[1])); });
+    const pode = (u) => distOk(u) != null;
+    let jogada = null;
+    if (saida) {   // saída: forte na bola da frente, quase reta
+      const alvo = pre.find((b) => b.n === 1); const a = Math.atan2(alvo.z - br.z, alvo.x - br.x) + (aleat() - 0.5) * 0.02;
+      const u = [Math.cos(a), Math.sin(a)]; if (pode(u)) jogada = { u, v: 6.6 + aleat() * 0.6, alvo: 1, cacapa: -1, quebra: true };
+    }
+    if (!jogada) {
+      const cands = [];
+      for (const b of pre) {
+        if (!b.em || b.n === 0) continue;
+        for (let ci = 0; ci < this.cac.length; ci++) {
+          const c = this.cac[ci]; const bp = [c.x - b.x, c.z - b.z], dbp = Math.hypot(...bp); if (dbp < 0.05) continue; const nb = [bp[0] / dbp, bp[1] / dbp];
+          const G = [b.x - nb[0] * 2 * r, b.z - nb[1] * 2 * r]; const ag = [G[0] - br.x, G[1] - br.z], d1 = Math.hypot(...ag); if (d1 < 0.08) continue;
+          const u = [ag[0] / d1, ag[1] / d1]; const cosc = u[0] * nb[0] + u[1] * nb[1]; if (cosc < 0.42) continue;
+          if (ci >= 4 && Math.abs(nb[1]) < 0.82) continue;   // caçapa do meio: só entra bola que vem de frente
+          if (!this.livre(pre, br.x, br.z, G[0], G[1], [0, b.n], 2 * r + 0.004)) continue;
+          if (!this.livre(pre, b.x, b.z, c.x, c.z, [b.n], 2 * r + 0.004)) continue;
+          if (!pode(u)) continue;
+          const nota = cosc * 2.2 - d1 * 0.35 - dbp * 0.45 + aleat() * 0.5;
+          cands.push({ u, nota, d1, dbp, cosc, alvo: b.n, cacapa: ci });
+        }
+      }
+      cands.sort((a, b) => b.nota - a.nota);
+      const c = cands[Math.floor(aleat() * Math.min(2, cands.length))];
+      if (c) jogada = { u: c.u, v: cl(1.15 + 0.85 * (c.d1 + c.dbp) / Math.max(c.cosc, 0.55), 1.4, 3.4), alvo: c.alvo, cacapa: c.cacapa };
+    }
+    if (!jogada) {   // sem jogada limpa: bate firme na bola mais perto que dá para alcançar
+      const lista = pre.filter((b) => b.em && b.n > 0).map((b) => { const d = Math.hypot(b.x - br.x, b.z - br.z); return { b, d, u: [(b.x - br.x) / d, (b.z - br.z) / d] }; }).sort((a, b) => a.d - b.d);
+      for (const q of lista) if (pode(q.u)) { jogada = { u: q.u, v: 2.2, alvo: q.b.n, cacapa: -1 }; break; }
+      if (!jogada) for (let a = 0; a < TAU; a += 0.2) { const u = [Math.cos(a), Math.sin(a)]; if (pode(u)) { jogada = { u, v: 1.8, alvo: -1, cacapa: -1 }; break; } }
+      if (!jogada) jogada = { u: [-1, 0], v: 1.5, alvo: -1, cacapa: -1 };
+    }
+    // às vezes erra um pouquinho a mira (gente de verdade)
+    const erro = jogada.quebra ? 0 : (aleat() < 0.3 ? (aleat() < 0.5 ? -1 : 1) * (0.022 + aleat() * 0.03) : (aleat() - 0.5) * 0.008);
+    const a0 = Math.atan2(jogada.u[1], jogada.u[0]) + erro; const u = [Math.cos(a0), Math.sin(a0)];
+    const sim = this.simular(pre, u[0] * jogada.v, u[1] * jogada.v);
+    const acertou = sim.caidas.some((n) => n > 0) && !sim.caidas.includes(0);
+    const plano = { id, pre, rack, u, jogada, sim, acertou, branca: sim.caidas.includes(0), stance: posJogador(u, distOk(u) ?? 0.92), yaw: Math.atan2(u[0], u[1]), tip: [br.x - u[0] * 0.035, br.z - u[1] * 0.035] };
+    this.planos.set(id, plano); if (this.planos.size > 6) this.planos.delete(this.planos.keys().next().value);
+    this.bolas = sim.final;   // a próxima jogada parte de onde esta termina
+    return plano;
+  }
+}
+
 /* ---------- roteiros (um por humor), montados a partir de onde os móveis estão ---------- */
 const A = (vel, destinos, x = {}) => ({ tipo: "andar", vel, destinos, ...x });
 const F = (dur, pose, x = {}) => ({ tipo: "acao", dur, pose, ...x });
@@ -1452,8 +2062,8 @@ function poseTacada(tl, T) {
   if (tl > 1.1 && tl < 3.5) back = 0.5 - 0.5 * Math.cos((tl - 1.1) * TAU * 0.75);
   else if (tl >= 3.5 && tl < 3.85) back = suave(fase(tl, 3.5, 3.85));
   else if (tl >= 3.85 && tl < TACADA) back = 1 - io(fase(tl, 3.85, TACADA));
-  const r = emPe(T, { lean: 0.78 * w, hz: -0.1 * w, nod: -0.45 * w, alt: 0.89 - 0.08 * w, lL: [0.3 * w, 0.22 * w], lR: [-0.1 * w, 0.08 * w], olhar: [0, -1.2 * w], boca: "foco", taco: w, recuo: back * w, twist: -0.12 * w });
-  r.bolas = tl < TACADA ? "ini" : "jogo"; return r;
+  const r = emPe(T, { lean: 0.98 * w, hz: -0.15 * w, nod: -0.62 * w, alt: 0.89 - 0.1 * w, lL: [0.42 * w, 0.36 * w], lR: [-0.14 * w, 0.06 * w], olhar: [0, -0.4 * w], boca: "foco", sob: "tenso", taco: w, recuo: back * w, twist: -0.16 * w, side: 0.05 * w });
+  return r;
 }
 function poseFesta(tt, T) {
   const r = emPe(T, { olhos: "F", boca: "aberta", boch: 0.8 });
@@ -1488,7 +2098,7 @@ const partida = (dur, vibras) => F(dur, (k, tl, T) => {
   r.aR = r.aR.map((x, i) => lerp(x, [2.7, 0.5, 0.4][i], yes)); r.aL = r.aL.map((x, i) => lerp(x, [2.5, 0.55, 0.5][i], yes));
   r.lean -= 0.08 * yes; r.nod -= 0.25 * yes; r.dy = 0.04 * yes * Math.abs(Math.sin(tl * 9));
   return r;
-}, { tv: "jogo", props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) });
+}, { tv: "jogo", vibras, props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) });
 const pegaControle = (e) => F(1.6, (k, tl, T) => {
   const a = jan(tl, 0, 1.15, 0.4); const c = e.casaDe("controle").pos;
   const r = mistura(sofaSent(T), jogando(T, 0), suave(fase(tl, 0.75, 1.6))); r.ikR = [c.x, c.y + 0.035, c.z]; r.kR = a; r.oriR = "baixo"; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
@@ -1497,8 +2107,8 @@ const largaControle = (e) => F(1.5, (k, tl, T) => {
   const a = jan(tl, 0.15, 1.5, 0.4); const c = e.casaDe("controle").pos;
   const r = mistura(jogando(T, 0), sofaSent(T), suave(fase(tl, 0, 0.6))); r.ikR = [c.x, c.y + 0.035, c.z]; r.kR = a; r.oriR = "baixo"; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
 }, { props: { controle: (k, tl) => tl < 0.8 ? "LR" : "casa" } });
-const pegaTaco = () => F(1.5, (k, tl, T) => emPe(T, { taco: lerp(-1, 0, suave(fase(tl, 0.2, 1.2))), lean: 0.12 * jan(tl, 0, 1.5, 0.4), boca: "leve" }), { bolas: "ini" });
-const largaTaco = () => F(1.6, (k, tl, T) => emPe(T, { taco: lerp(0, -1, suave(fase(tl, 0.3, 1.3))), lean: 0.15 * jan(tl, 0, 1.6, 0.4) }), { bolas: "ini" });
+const pegaTaco = () => F(1.5, (k, tl, T) => emPe(T, { taco: lerp(-1, 0, suave(fase(tl, 0.2, 1.2))), lean: 0.12 * jan(tl, 0, 1.5, 0.4), boca: "leve" }));
+const largaTaco = () => F(1.6, (k, tl, T) => emPe(T, { taco: lerp(0, -1, suave(fase(tl, 0.3, 1.3))), lean: 0.15 * jan(tl, 0, 1.6, 0.4) }));
 
 const ROTEIROS = {
   tranquilo: (L, e, ciclo = 0) => {
@@ -1514,10 +2124,10 @@ const ROTEIROS = {
       F(5.6, (k, tl, T) => {
         const c = e.casaDe("xicara").pos, bico = e.bico(); const alc = jan(tl, 0, 5.3, 0.45), ida = suave(fase(tl, 0.9, 1.7)), volta = suave(fase(tl, 4.3, 5.3));
         const alvo = c.clone().add(V(0, 0.06, 0)).lerp(bico, ida); const bt = e.botaoCafe(), aperta = jan(tl, 1.9, 2.9, 0.25);
-        return emPe(T, { ikR: [alvo.x, alvo.y, alvo.z], kR: alc * (1 - volta), aR: [0.6, -0.25, 1.75], ikL: [bt.x, bt.y - 0.02 * Math.max(0, Math.sin((tl - 2.1) * 9)), bt.z], kL: aperta, lean: 0.14 * alc, nod: 0.28, olhar: [0, 1] });
+        return emPe(T, { ikR: [alvo.x, alvo.y, alvo.z], kR: alc * (1 - volta), aR: [0.6, -0.25, 1.75], ikL: [bt.x + 0.012 - 0.012 * Math.max(0, Math.sin((tl - 2.1) * 9)), bt.y, bt.z], kL: aperta, gestoL: aperta > 0.2 ? "aponta" : "", oriL: aperta > 0.2 ? [-1, -0.25, 0.1] : null, lean: 0.14 * alc, nod: 0.28, olhar: [0, 1] });
       }, { ate: L.cafeP, props: { xicara: (k, tl) => tl < 0.75 ? "casa" : "R" }, fx: "cafe", foco: (e) => e.bico() }),
       F(4.4, (k, tl, T) => { const g = jan(tl, 0.6, 1.8, 0.35) + jan(tl, 2.6, 3.7, 0.35);
-        return emPe(T, { aR: [0.6 + 0.75 * g, -0.25, 1.75 + 0.4 * g], gole: g, nod: -0.25 * g, olhos: g > 0.5 ? "Z" : "A", boca: g > 0.5 ? "reta" : "sorriso", boch: 0.35 }); }, { props: { xicara: "R" } }),
+        return emPe(T, { aR: [0.6 + 0.75 * g, -0.25, 1.75 + 0.4 * g], gole: g, nod: -0.25 * g, olhos: g > 0.5 ? "Z" : "A", boca: g > 0.5 ? "reta" : "sorriso", boch: 0.35 }); }, { fx: "gole", props: { xicara: "R" } }),
       F(1.6, (k, tl, T) => { const c = e.casaDe("xicara").pos; const a = jan(tl, 0, 1.6, 0.45); return emPe(T, { ikR: [c.x, c.y + 0.06, c.z], kR: a, aR: [0.6, -0.25, 1.75], lean: 0.14 * a, nod: 0.25 }); }, { props: { xicara: (k, tl) => tl < 0.85 ? "R" : "casa" } }),
       A(1.1, [L.sofaP]), sentar, pegaControle(e),
     ] : [
@@ -1528,21 +2138,29 @@ const ROTEIROS = {
     ];
     return { inicio: L.sofaS, aprox: L.sofaP, sentado: true, sentPose: sofaSent, padrao: { boca: "leve", boch: 0.15 }, passos, entrada: [sentar, pegaControle(e)], saida: [largaControle(e), levantar] };
   },
-  feliz: (L, e, ciclo = 0) => {
-    const passos = [
-      F(2.6, (k, tl, T) => { const r = Math.sin(tl * 9) * 0.12 * jan(tl, 0.4, 2.2); return emPe(T, { taco: 0, aL: [1.4 + r, 0.1, 1.9], nod: -0.25, olhar: [0, -1.5], boca: "leve" }); }, { bolas: "ini", foco: (e) => e.pto("sinuca", 7.62, 0.81, 4.52) }),
-      F(5.6, (k, tl, T) => poseTacada(tl, T)),
-      F(3.0, (k, tl, T) => { const v = vibra(tl, 3.0); return emPe(T, { ...v, taco: 0, aL: v.aR, aR: undefined, bolas: "fim" }); }),
-    ];
-    if (ciclo % 2 === 0) passos.push(
-      A(1.25, [L.monP], { taco: 0, bolas: "fim" }),
-      F(4.6, (k, tl, T) => { const up = jan(tl, 1.4, 3.6, 0.4); const nod = Math.sin(tl * 6) * 0.1 * jan(tl, 0.3, 1.3);
-        return emPe(T, { taco: 0, aL: [lerp(0, 1.3, up), -0.15, lerp(0.2, 1.7, up)], lean: 0.1, nod: 0.05 + nod, boca: up > 0.5 ? "aberta" : "sorriso", olhos: up > 0.5 ? "F" : "A" }); }, { bolas: "fim", ate: L.monP, foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22) }),
-      A(1.25, [L.sinP], { taco: 0, bolas: "fim" }));
-    else passos.push(F(3.2, (k, tl, T) => emPe(T, { taco: 0, nod: 0.2, olhar: [0.6 * Math.sin(tl * 1.5), -1], boca: "sorriso", aL: [0.3, 0.25, 1.2 * jan(tl, 0, 3.2, 0.5)], side: 0.05 * Math.sin(tl * 2) }), { bolas: "fim" }));
-    // a bola encaçapada volta para a mesa e a branca rola para o lugar dela
-    passos.push(F(2.2, (k, tl, T) => emPe(T, { taco: 0, lean: 0.2 * jan(tl, 0, 2.2, 0.5), nod: 0.3, olhar: [0, -1.3], aL: [lerp(0.2, 1.1, jan(tl, 0, 2.2, 0.5)), 0.1, 0.6] }), { bolas: "volta" }));
-    return { inicio: L.sinP, aprox: L.sinP, sentado: false, padrao: { boca: "sorriso", boch: 0.35 }, passos, entrada: [pegaTaco()], saida: [largaTaco()] };
+  // sinuca de verdade: a cada ciclo ele escolhe a jogada pelo jeito que as bolas estão, anda até o lugar dela,
+  // passa giz ou ensaia a mira, bate, acompanha a bola e reage ao resultado (comemora ou lamenta)
+  feliz: (L, e, ciclo = 0, chave = "") => {
+    const pl = e.planoSinuca(chave || String(ciclo)), id = pl.id, P = pl.lugar, b = (f) => f + "|" + id;
+    const foco = (ee) => ee.pto("sinuca", pl.tip[0] + pl.u[0] * 0.4, 0.81, pl.tip[1] + pl.u[1] * 0.4);
+    const passos = [A(1.15, [P], { taco: 0, bolas: b("pre") }), F(0.45, (k, tl, T) => emPe(T, { taco: 0 }), { ate: P, bolas: b("pre") })];
+    if (pl.rack) passos.push(F(2.6, (k, tl, T) => { const w = jan(tl, 0.1, 2.5, 0.5); return emPe(T, { taco: 0, lean: 0.55 * w, nod: 0.3 * w, olhar: [0, -1.4], aL: [lerp(0.2, 1.25, w), 0.15 + 0.2 * Math.sin(tl * 5) * w, lerp(0.3, 0.6, w)], boca: "leve" }); }, { bolas: b("rack"), foco }));
+    // antes de bater: giz no taco (às vezes) e uma olhada na mesa
+    if (ciclo % 3 === 1) passos.push(F(2.2, (k, tl, T) => { const w = jan(tl, 0.1, 2.1, 0.4); const giro = Math.sin(tl * 9) * 0.12 * w; return emPe(T, { taco: 0, aL: [lerp(0.2, 2.2, w), lerp(0.12, -0.55, w) + giro, lerp(0.2, 1.5, w)], gestoL: w > 0.4 ? "pinca" : "", nod: -0.15 * w, turn: 0.3 * w, olhar: [0.6 * w, 0.4 * w], boca: "foco" }); }, { bolas: b("pre") }));
+    else passos.push(F(1.6 + (ciclo % 2) * 0.8, (k, tl, T) => emPe(T, { taco: 0, nod: 0.28, lean: 0.12, olhar: [0.5 * Math.sin(tl * 1.3), -1.2], boca: "foco", sob: "tenso" }), { bolas: b("pre"), foco }));
+    passos.push(F(5.6, (k, tl, T) => poseTacada(tl, T), { bolas: b("jogo"), foco }));
+    // reação depois que as bolas param
+    if (pl.acertou) {
+      const v = ciclo % 3;
+      if (v === 0) passos.push(F(2.8, (k, tl, T) => { const q = vibra(tl, 2.8); return emPe(T, { ...q, taco: 0, aL: q.aR, aR: undefined, gestoL: q.gestoR, gestoR: "" }); }, { bolas: b("pos") }));
+      else if (v === 1) passos.push(F(2.6, (k, tl, T) => { const w = jan(tl, 0.1, 2.5, 0.35); return emPe(T, { taco: 0, aL: [lerp(0.2, 1.55, w), lerp(0.12, -0.25, w), lerp(0.2, 0.15, w)], gestoL: w > 0.3 ? "aponta" : "", turn: 0.35 * w, olhos: "F", boca: "aberta", boch: 0.6, dy: 0.02 * Math.abs(Math.sin(tl * 7)) * w }); }, { bolas: b("pos") }));
+      else passos.push(F(2.6, (k, tl, T) => { const w = jan(tl, 0.1, 2.5, 0.35); return emPe(T, { taco: 0, aL: [lerp(0.2, 0.9, w), 0.2, lerp(0.2, 1.7, w)], gestoL: w > 0.3 ? "joinha" : "", nod: -0.08 * w, olhos: "F", boca: "sorriso", boch: 0.6, side: 0.06 * Math.sin(tl * 4) * w }); }, { bolas: b("pos") }));
+    } else {
+      const v = ciclo % 2;
+      if (v === 0) passos.push(F(2.8, (k, tl, T) => { const w = jan(tl, 0.15, 2.6, 0.4); return emPe(T, { taco: 0, aL: [lerp(0.2, 2.75, w), lerp(0.12, -0.35, w), lerp(0.2, 2.35, w)], nod: -0.22 * w + 0.12 * Math.sin(tl * 3) * w, lean: -0.08 * w, boca: "o", sob: "triste", olhos: "A" }); }, { bolas: b("pos") }));
+      else passos.push(F(2.4, (k, tl, T) => { const w = jan(tl, 0.1, 2.3, 0.4); return emPe(T, { taco: 0, turn: 0.22 * Math.sin(tl * 7) * w, nod: 0.2 * w, boca: "reta", sob: "tenso", aL: [lerp(0.2, 0.5, w), 0.35, lerp(0.2, 1.2, w)] }); }, { bolas: b("pos") }));
+    }
+    return { inicio: P, aprox: P, sentado: false, deAtual: true, padrao: { boca: "sorriso", boch: 0.35 }, passos, entrada: [pegaTaco()], saida: [largaTaco()] };
   },
   euforico: (L, e, ciclo = 0) => ({ inicio: L.danca, aprox: L.danca, sentado: false, padrao: { olhos: "F", boch: 0.8 }, entrada: [], saida: [], passos: [
     F(3.6, (k, tl, T) => poseFesta(tl, T), { fx: "globo" }),
@@ -1675,7 +2293,7 @@ const ITEM_ANIM = {
     ] },
   dardos: { humores: ["tranquilo", "feliz", "euforico", "preocupado"], ic: "target",
     lugar: () => [2.45, 5.95, -PI / 2],
-    passos: (e) => [F(1.1, (k, tl, T) => { const bl = e.bolso("L"); const a = jan(tl, 0, 0.8, 0.25); return emPe(T, { ikL: [bl.x, bl.y, bl.z], kL: a, aL: [0.55 * suave(fase(tl, 0.5, 1.1)), 0.05, 1.2 * suave(fase(tl, 0.5, 1.1))], olhar: [0, -0.2] }); }, { props: { aljava: (k, tl) => tl < 0.5 ? "casa" : "L" } })]
+    passos: (e) => { const pd = e.planejarDardos(); return [F(1.1, (k, tl, T) => { const bl = e.bolso("L"); const a = jan(tl, 0, 0.8, 0.25); return emPe(T, { ikL: [bl.x, bl.y, bl.z], kL: a, aL: [0.55 * suave(fase(tl, 0.5, 1.1)), 0.05, 1.2 * suave(fase(tl, 0.5, 1.1))], olhar: [0, -0.2] }); }, { props: { aljava: (k, tl) => tl < 0.5 ? "casa" : "L" } })]
       .concat([0, 1, 2].map((i) => F(1.7, (k, tl, T) => {
         // a mão direita tira um dardo da esquerda, mira e arremessa
         const pega = jan(tl, 0, 0.42, 0.14); const ml = e.boneco.mL;
@@ -1684,7 +2302,9 @@ const ITEM_ANIM = {
         const aR = tl < 0.8 ? a0.map((v, j) => lerp(v, a1[j], prep)) : tl < 1.2 ? a1.map((v, j) => lerp(v, a2[j], vai)) : a2.map((v, j) => lerp(v, a0[j], volta));
         return emPe(T, { aR, ikR: [ml.x, ml.y + 0.02, ml.z], kR: pega, aL: [0.55, 0.05, 1.2], twist: -0.15 * prep + 0.25 * vai - 0.1 * volta, lean: 0.06 * vai, boca: "foco", olhar: [0, -0.2], lL: [0.18 * prep, 0.1], fxk: i + (tl >= 0.92 ? 0.5 : 0) });
       }, { fx: "dardo", props: { dardo: (k, tl) => tl < 0.25 || tl >= 0.92 ? "casa" : "R", aljava: "L" } })))
-      .concat([F(1.6, (k, tl, T) => emPe(T, { ...vibra(tl, 1.6), aL: [0.55 * (1 - suave(fase(tl, 0, 0.6))), 0.05, 1.2 * (1 - suave(fase(tl, 0, 0.6)))] }), { fx: "dardo", props: { aljava: "casa" } })]) },
+      .concat([pd.ruim
+        ? F(2.0, (k, tl, T) => { const w = jan(tl, 0.1, 1.9, 0.35); return emPe(T, { aR: [lerp(0.2, 0.7, w), 0.3, lerp(0.2, 1.6, w)], gestoR: "aberta", aL: [0.55 * (1 - suave(fase(tl, 0, 0.6))), 0.05, 1.2 * (1 - suave(fase(tl, 0, 0.6)))], turn: 0.18 * Math.sin(tl * 6) * w, boca: "reta", sob: "tenso" }); }, { fx: "dardo", props: { aljava: "casa" } })
+        : F(pd.mosca ? 2.2 : 1.6, (k, tl, T) => emPe(T, { ...vibra(tl, pd.mosca ? 2.2 : 1.6), dy: pd.mosca ? 0.07 * Math.abs(Math.sin(tl * 8)) * jan(tl, 0, 2.2, 0.3) : 0, aL: [0.55 * (1 - suave(fase(tl, 0, 0.6))), 0.05, 1.2 * (1 - suave(fase(tl, 0, 0.6)))] }), { fx: "dardo", props: { aljava: "casa" } })]); } },
   globo: { humores: ["tranquilo", "feliz", "euforico"], ic: "disco-ball",
     lugar: (e) => e.lugares().danca,
     passos: () => [F(6.2, (k, tl, T) => poseFesta(tl % 3.1 + (tl > 3.1 ? 1.05 : 0), T), { fx: "globo" })] },
@@ -1696,6 +2316,13 @@ const NOVIDADE = (ic) => [
 ];
 
 /* ---------- a cena ---------- */
+// paletas da sala (o primeiro é o original); o chão é um tom multiplicado na madeira
+export const CORES_SALA = {
+  chao: ["#FFFFFF", "#9C7356", "#C9C9C9", "#E3B49A", "#B8C4D6", "#6B5D53"],
+  parede: ["#EEF1F6", "#F5EBDD", "#DDE9DD", "#DCE6F2", "#F2DEDE", "#FFF4CC", "#E7DDF2", "#3B4252"],
+  sofa: ["#0F766E", "#1E3A8A", "#7F1D1D", "#374151", "#92400E", "#6D28D9", "#A8A29E", "#166534"],
+  poltrona: ["#B45309", "#1E3A8A", "#7F1D1D", "#374151", "#0F766E", "#BE185D", "#A8A29E", "#CA8A04"],
+};
 export function criar(container, dados) { return new Escritorio(container, dados); }
 
 // caixa orientada (centro, meia largura, giro) para colisão entre móveis e navegação
@@ -1762,7 +2389,8 @@ class Escritorio {
       ao._overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { if (!o.visible) return; const mt = o.material; if (o.isPoints || o.isLine || o.isSprite || o.isInstancedMesh || (o.isMesh && mt && (mt.transparent || mt.isMeshBasicMaterial || mt.isShadowMaterial))) { o.visible = false; cache.push(o); } }); };
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
       ao.blendIntensity = 1;
-      const ss = ao.setSize.bind(ao); ao.setSize = (w, h) => ss(Math.max(2, w * 0.5 | 0), Math.max(2, h * 0.5 | 0));
+      const forte = (navigator.hardwareConcurrency || 4) >= 8, fr = forte ? 0.75 : 0.5;   // computador forte: oclusão com mais resolução
+      const ss = ao.setSize.bind(ao); ao.setSize = (w, h) => ss(Math.max(2, w * fr | 0), Math.max(2, h * fr | 0));
       c.addPass(ao); c.addPass(new OutputPass());
       this.ao = true;
     } catch (err) { console.warn("Oclusão de ambiente indisponível:", err); this.composer = null; this.ao = false; }
@@ -1813,6 +2441,7 @@ class Escritorio {
   posicionar(m, x, z, ri) { m.x = x; m.z = z; m.ri = ((ri % 8) + 8) % 8; m.outer.position.set(x, 0, z); m.outer.rotation.y = this.giro(m); }
   layoutAtual() {
     const out = { m: {}, off: [...(this.off || [])].sort() };
+    if (this.cores && Object.keys(this.cores).length) out.c = { ...this.cores };
     for (const id in this.moveis) { const m = this.moveis[id]; if (Math.abs(m.x - m.P[0]) > 0.005 || Math.abs(m.z - m.P[1]) > 0.005 || m.ri) out.m[id] = [Math.round(m.x * 100) / 100, Math.round(m.z * 100) / 100, m.ri]; }
     return out;
   }
@@ -1822,8 +2451,21 @@ class Escritorio {
     for (const id in this.moveis) { const m = this.moveis[id]; this.posicionar(m, m.P[0], m.P[1], 0); }
     const mv = L.m && typeof L.m === "object" ? L.m : {};
     for (const id in mv) { const m = this.moveis[id], v = mv[id]; if (!m || !Array.isArray(v) || v.length < 3 || !v.every(isFinite)) continue; const [x, z] = this.prender(m, +v[0], +v[1], v[2] | 0); this.posicionar(m, x, z, v[2] | 0); }
+    this.aplicarCores(L.c && typeof L.c === "object" ? L.c : {});
     if (!inicio) this.mudouLayout();
   }
+  // cores do chão, das paredes e dos estofados (índices nas paletas de CORES_SALA)
+  aplicarCores(c) {
+    this.cores = {};
+    for (const parte in CORES_SALA) {
+      const i = Number.isInteger(c[parte]) && c[parte] > 0 && c[parte] < CORES_SALA[parte].length ? c[parte] : 0; if (i) this.cores[parte] = i;
+      const cor = CORES_SALA[parte][i], ms = this.matCores && this.matCores[parte]; if (!ms) continue;
+      if (parte === "chao") ms[0].color.set(cor);
+      else if (parte === "parede") { ms[0].color.set(cor); ms[1].color.set(misturaCor(cor, "#000000", 0.035)); }
+      else { ms[0].color.set(cor); ms[1].color.set(misturaCor(cor, "#FFFFFF", 0.1)); if (ms[2]) ms[2].color.set(misturaCor(cor, "#FFFFFF", 0.28)); ms.forEach((m) => m.sheenColor && m.sheenColor.set(misturaCor(cor, "#FFFFFF", 0.35))); }
+    }
+  }
+  setCorSala(parte, i) { this.aplicarCores({ ...(this.cores || {}), [parte]: i }); this.sujo = true; this.avisarLayout(); }
   // refaz a grade de navegação e o roteiro sempre que um móvel muda
   mudouLayout() {
     const n = this.nav; n.limpar();
@@ -1853,7 +2495,8 @@ class Escritorio {
     this.hemi = new THREE.HemisphereLight("#E3EBFF", "#B08A64", 0.9); sc.add(this.hemi);
     const k = this.key = new THREE.DirectionalLight("#FFF4E3", 1.8);
     k.position.set(11, 12, 11); k.target.position.set(4, 0, 3.5); sc.add(k, k.target);
-    k.castShadow = true; k.shadow.mapSize.set(2048, 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 6; k.shadow.blurSamples = 12;
+    const forte = !(window.matchMedia && window.matchMedia("(pointer: coarse)").matches) && (navigator.hardwareConcurrency || 4) >= 8;
+    k.castShadow = true; k.shadow.mapSize.set(forte ? 4096 : 2048, forte ? 4096 : 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 6; k.shadow.blurSamples = 12;
     Object.assign(k.shadow.camera, { left: -7.5, right: 7.5, top: 7, bottom: -7, near: 2, far: 40 });
     this.fill = new THREE.DirectionalLight("#CFE0FF", 0.35); this.fill.position.set(-4, 6, 8); sc.add(this.fill);
     // contraluz frio: separa o boneco e os móveis do fundo
@@ -1863,9 +2506,10 @@ class Escritorio {
     const piso = tela(1024, 1024); this.desenharPiso(piso);
     piso.t.wrapS = piso.t.wrapT = THREE.RepeatWrapping; piso.t.repeat.set(W / 4.5, D / 4.5);
     this.chao = mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: piso.t, roughness: 0.42, metalness: 0 }), sc, W / 2, 0, D / 2, { rx: -PI / 2, cast: false });
+    this.matCores = { chao: [this.chao.material] };
     bloco(sc, M("#8A5A34", { r: 0.8 }), [-T_PAR, -0.22, -T_PAR], [W + 0.05, -0.001, D + 0.05], 0.02, { cast: false });
     bloco(sc, M("#E6E3DD", { r: 0.9 }), [-T_PAR - 0.06, -0.3, -T_PAR - 0.06], [W + 0.11, -0.2, D + 0.11], 0.04, { cast: false });
-    const pFundo = PAR("#EEF1F6"), pEsq = PAR("#E5E9F1"), topo = M("#C9D1DD", { r: 0.9 });
+    const pFundo = PAR("#EEF1F6").clone(), pEsq = PAR("#E5E9F1").clone(), topo = M("#C9D1DD", { r: 0.9 }); this.matCores.parede = [pFundo, pEsq];
     bloco(sc, pFundo, [-T_PAR, 0, -T_PAR], [W, H, 0], 0.005);
     const JZ0 = 0.95, JZ1 = 2.65, JY0 = 0.92, JY1 = 2.38;
     bloco(sc, pEsq, [-T_PAR, 0, 0], [0, H, JZ0], 0.005); bloco(sc, pEsq, [-T_PAR, 0, JZ1], [0, H, D], 0.005);
@@ -1926,7 +2570,7 @@ class Escritorio {
 
     // sofá (de frente para a TV)
     { const g = this.movel("sofa", [3.2, 3.05], [box(3.2, 3.05, 1.24, 0.47)], { nome: "Sofá" });
-      const sf = TEC("#0F766E"), sf2 = TEC("#14857B"), alm = TEC("#2BB3A3", { rep: [2, 2] });
+      const sf = TEC("#0F766E").clone(), sf2 = TEC("#14857B").clone(), alm = TEC("#2BB3A3", { rep: [2, 2] }).clone(); this.matCores.sofa = [sf, sf2, alm];
       bloco(g, sf, [2.0, 0.08, 2.6], [4.4, 0.42, 3.5], 0.06);
       bloco(g, sf, [2.0, 0.08, 3.22], [4.4, 0.98, 3.52], 0.08);
       bloco(g, sf2, [1.96, 0.08, 2.58], [2.2, 0.66, 3.52], 0.07); bloco(g, sf2, [4.2, 0.08, 2.58], [4.44, 0.66, 3.52], 0.07);
@@ -1938,7 +2582,7 @@ class Escritorio {
     // poltrona perto da janela
     { const g = this.movel("poltrona", [0.92, 3.2], [box(0.92, 3.2, 0.5, 0.44, PI / 4)], { nome: "Poltrona" });
       const pol = new THREE.Group(); pol.position.set(0.92, 0, 3.2); pol.rotation.y = PI / 4; g.add(pol);
-      const pc = TEC("#B45309"), pc2 = TEC("#D97706");
+      const pc = TEC("#B45309").clone(), pc2 = TEC("#D97706").clone(); this.matCores.poltrona = [pc, pc2];
       bloco(pol, pc, [-0.42, 0.1, -0.36], [0.42, 0.4, 0.4], 0.06); bloco(pol, pc, [-0.42, 0.1, -0.44], [0.42, 1.05, -0.2], 0.08, { rx: 0.1 });
       bloco(pol, pc2, [-0.5, 0.1, -0.4], [-0.32, 0.62, 0.4], 0.07); bloco(pol, pc2, [0.32, 0.1, -0.4], [0.5, 0.62, 0.4], 0.07);
       bloco(pol, M("#F59E0B", { r: 1 }), [-0.32, 0.38, -0.25], [0.32, 0.5, 0.38], 0.05);
@@ -1956,9 +2600,27 @@ class Escritorio {
       const arm = M("#F8FAFC", { r: 0.5 });
       bloco(g, arm, [0.02, 0, 4.35], [0.58, 0.88, 5.45], 0.02); bloco(g, M("#334155", { r: 0.35 }), [0.0, 0.88, 4.32], [0.62, 0.92, 5.48], 0.01);
       bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.4], [0.585, 0.82, 4.88], 0.004); bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.92], [0.585, 0.82, 5.4], 0.004);
+      // máquina de espresso: corpo, reservatório, cabeça do grupo com porta-filtro, bicos, bandeja e painel com botão aceso
       const cf = new THREE.Group(); cf.position.set(0.24, 0.92, 4.9); g.add(cf);
-      bloco(cf, M("#111827", { r: 0.3, m: 0.3 }), [-0.14, 0, -0.14], [0.14, 0.38, 0.14], 0.03); bloco(cf, M("#D1D5DB", { r: 0.25, m: 0.8 }), [-0.04, 0.24, -0.13], [0.2, 0.34, 0.13], 0.02);
-      bloco(cf, M("#374151", { r: 0.4, m: 0.5 }), [0.06, 0.0, -0.05], [0.2, 0.012, 0.05], 0.004);   // grade da máquina
+      const inox = M("#D1D5DB", { r: 0.2, m: 0.85 }), pretoC = M("#111827", { r: 0.32, m: 0.2 });
+      bloco(cf, pretoC, [-0.14, 0, -0.15], [0.12, 0.43, 0.15], 0.035);
+      bloco(cf, inox, [-0.13, 0.43, -0.14], [0.11, 0.45, 0.14], 0.01);
+      bloco(cf, new THREE.MeshPhysicalMaterial({ color: "#7DD3FC", transparent: true, opacity: 0.38, roughness: 0.05 }), [-0.16, 0.08, -0.12], [-0.12, 0.4, 0.12], 0.015);
+      bloco(cf, inox, [0.04, 0.26, -0.11], [0.2, 0.35, 0.11], 0.025);
+      cil(cf, inox, 0.036, 0.032, 0.035, 0.16, 0.24, 0, { seg: 24 });
+      bloco(cf, pretoC, [0.17, 0.214, -0.012], [0.33, 0.232, 0.012], 0.006, { rz: -0.12 });
+      for (const z of [-0.012, 0.012]) cil(cf, inox, 0.005, 0.0035, 0.03, 0.16, 0.208, z, { seg: 10 });
+      bloco(cf, inox, [0.03, 0.0, -0.11], [0.23, 0.018, 0.11], 0.006);
+      for (let i = 0; i < 6; i++) bloco(cf, M("#4B5563", { r: 0.4, m: 0.6 }), [0.045 + i * 0.03, 0.018, -0.09], [0.055 + i * 0.03, 0.021, 0.09], 0.001);
+      // painel frontal: botão grande (anel de luz), botão de vapor e visor
+      this.anelCafe = new THREE.MeshStandardMaterial({ color: "#F59E0B", emissive: "#F59E0B", emissiveIntensity: 0.6, toneMapped: false });
+      this.btnCafe = cil(cf, M("#F3F4F6", { r: 0.3 }), 0.019, 0.019, 0.012, 0.126, 0.395, 0.075, { rz: PI / 2, seg: 22 });
+      mesh(new THREE.TorusGeometry(0.023, 0.004, 8, 24), this.anelCafe, cf, 0.122, 0.395, 0.075, { ry: PI / 2, cast: false });
+      cil(cf, M("#9CA3AF", { r: 0.3 }), 0.012, 0.012, 0.01, 0.124, 0.395, -0.075, { rz: PI / 2, seg: 18 });
+      const vis = tela(64, 32); vis.g.fillStyle = "#082F49"; vis.g.fillRect(0, 0, 64, 32); vis.g.fillStyle = "#67E8F9"; vis.g.font = "bold 15px monospace"; vis.g.fillText("92°C", 12, 22);
+      mesh(new THREE.PlaneGeometry(0.06, 0.03), new THREE.MeshBasicMaterial({ map: vis.t, toneMapped: false }), cf, 0.1215, 0.395, 0, { ry: PI / 2, cast: false });
+      // jato de café (aparece quando ele aperta o botão)
+      this.jatoCafe = cil(g, new THREE.MeshStandardMaterial({ color: "#4A2511", roughness: 0.2, emissive: "#2A1206", emissiveIntensity: 0.3 }), 0.0035, 0.0035, 1, 0.4, 1.0, 4.9, { cast: false }); this.jatoCafe.visible = false;
       this.vapor = []; for (let i = 0; i < 4; i++) { const v = brilho("#FFFFFF", 0.1, 0.0); v.material.blending = THREE.NormalBlending; v.position.set(0.38, 1.0, 4.9); g.add(v); this.vapor.push(v); }
       for (let i = 0; i < 3; i++) cil(g, M(["#F43F5E", "#FACC15", "#38BDF8"][i]), 0.035, 0.03, 0.08, 0.38, 0.96, 5.2 + i * 0.09); }
     // quadro
@@ -2026,9 +2688,16 @@ class Escritorio {
       const pkt = M("#0B0B0B", { r: 0.9 });
       this.cacapas = [[sin.x0 + 0.11, sin.z0 + 0.11], [sin.x1 - 0.11, sin.z0 + 0.11], [sin.x0 + 0.11, sin.z1 - 0.11], [sin.x1 - 0.11, sin.z1 - 0.11], [(sin.x0 + sin.x1) / 2, sin.z0 + 0.09], [(sin.x0 + sin.x1) / 2, sin.z1 - 0.09]];
       for (const [x, z] of this.cacapas) cil(g, pkt, 0.055, 0.055, 0.012, x, 0.785, z, { cast: false });
-      const bola = (cor) => esf(g, M(cor, { r: 0.15 }), 0.03, 0, 0, 0, { seg: 20, seg2: 14 });
-      [["#DC2626", 6.25, 3.98], ["#1D4ED8", 6.4, 4.85], ["#111827", 6.95, 3.95], ["#7C3AED", 6.05, 4.15]].forEach(([c, x, z]) => bola(c).position.set(x, 0.81, z));
-      this.bB = bola("#F8FAFC"); this.bA = bola("#FACC15");
+      // bolas numeradas (a 9 é listrada) com física de verdade (4b-sinuca.js)
+      this.mesaSin = new MesaSinuca(this.cacapas); this.bolasM = [];
+      for (let n = 0; n <= 9; n++) {
+        const tx = tela(128, 64), gg = tx.g, cor = SIN_CORES[n];
+        gg.fillStyle = n === 9 ? "#F8FAFC" : cor; gg.fillRect(0, 0, 128, 64); if (n === 9) { gg.fillStyle = cor; gg.fillRect(0, 18, 128, 28); }
+        if (n > 0) for (const cx of [32, 96]) { gg.fillStyle = "#FFFFFF"; gg.beginPath(); gg.ellipse(cx, 32, 9, 12, 0, 0, TAU); gg.fill(); gg.fillStyle = "#111"; gg.font = "bold 15px system-ui"; gg.textAlign = "center"; gg.textBaseline = "middle"; gg.fillText(String(n), cx, 33); }
+        const m = esf(g, new THREE.MeshPhysicalMaterial({ map: tx.t, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05 }), 0.03, 0, 0.81, 0, { seg: 24, seg2: 16 });
+        m.rotation.set(ruido(n) * 6, ruido(n + 3) * 6, 0); this.bolasM.push(m);
+      }
+      this.mesaSin.vista = this.mesaSin.copia(this.mesaSin.bolas); this.mostrarBolas(this.mesaSin.vista, -1);
       this.pendLuz = new THREE.PointLight("#FFE3A8", 0, 3.2, 1.6); this.pendLuz.position.set(6.9, 1.95, 4.4); g.add(this.pendLuz);
       // giz no canto da mesa
       bloco(g, M("#3B82F6", { r: 0.8 }), [8.0, 0.84, 4.95], [8.04, 0.86, 4.99], 0.003); }
@@ -2041,14 +2710,38 @@ class Escritorio {
     const dec = this.dec = {};
     // fliperama (contra a parede do fundo, entre o painel e a mesa)
     { const g = this.movel("fliperama", [5.29, 0.5], [box(5.29, 0.5, 0.34, 0.42)], { nome: "Fliperama", decor: "fliperama" }); dec.fliperama = this.moveis.fliperama;
-      const s = this.pedaco(g, [8.52, 0.5], [5.29, 0.5]); const fp = M("#7C3AED", { r: 0.5 });
-      bloco(s, fp, [8.18, 0, 0.15], [8.86, 1.8, 0.8], 0.03); bloco(s, M("#1F2937"), [8.2, 0.95, 0.72], [8.84, 1.05, 1.0], 0.02, { rx: 0.15 });
-      this.arcade = tela(128, 128);
-      mesh(new THREE.PlaneGeometry(0.56, 0.46), new THREE.MeshBasicMaterial({ map: this.arcade.t, toneMapped: false }), s, 8.52, 1.3, 0.805, { rx: -0.12, cast: false });
-      bloco(s, new THREE.MeshStandardMaterial({ color: "#F472B6", emissive: "#F472B6", emissiveIntensity: 0.9 }), [8.2, 1.66, 0.6], [8.84, 1.78, 0.81], 0.02);
-      this.joy = new THREE.Group(); this.joy.position.set(8.36, 1.07, 0.88); s.add(this.joy); cil(this.joy, M("#111827"), 0.008, 0.008, 0.07, 0, 0.035, 0); esf(this.joy, M("#EF4444", { r: 0.3 }), 0.025, 0, 0.075, 0);
-      this.botoesArc = [esf(s, M("#FACC15", { r: 0.3 }), 0.02, 8.6, 1.07, 0.9), esf(s, M("#22C55E", { r: 0.3 }), 0.02, 8.68, 1.07, 0.88)];
-      this.arcMao = [new THREE.Object3D(), new THREE.Object3D()]; this.arcMao[0].position.set(8.36, 1.17, 0.9); this.arcMao[1].position.set(8.64, 1.12, 0.9); this.arcMao.forEach((o) => s.add(o));
+      const s = this.pedaco(g, [8.52, 0.5], [5.29, 0.5]);
+      // gabinete clássico: laterais com perfil (painel de controle saliente, tela inclinada, letreiro), filete de neon
+      const corpo = M("#1E1B4B", { r: 0.5 }), lateral = M("#6D28D9", { r: 0.42 }), preto = M("#0B0B12", { r: 0.55 });
+      const neon = new THREE.MeshStandardMaterial({ color: "#22D3EE", emissive: "#22D3EE", emissiveIntensity: 1.8, toneMapped: false });
+      const perfilA = [[0.15, 0], [0.8, 0], [0.8, 0.9], [0.99, 0.98], [0.99, 1.045], [0.8, 1.1], [0.775, 1.2], [0.705, 1.6], [0.77, 1.64], [0.77, 1.86], [0.15, 1.86]];
+      const shp = new THREE.Shape(); perfilA.forEach(([z, y], i) => (i ? shp.lineTo(z, y) : shp.moveTo(z, y))); shp.closePath();
+      for (const x of [8.18, 8.825]) {
+        const ex = new THREE.ExtrudeGeometry(shp, { depth: 0.035, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.005, bevelSegments: 2 }); ex.rotateY(-PI / 2); ex.translate(x + 0.035, 0, 0); mesh(ex, lateral, s);
+        const cam = new THREE.CurvePath(); for (let i = 0; i < perfilA.length; i++) { const a = perfilA[i], b = perfilA[(i + 1) % perfilA.length]; cam.add(new THREE.LineCurve3(V(0, a[1], a[0]), V(0, b[1], b[0]))); }
+        for (const dx of [-0.003, 0.038]) mesh(new THREE.TubeGeometry(cam, 220, 0.005, 6, true), neon, s, x + dx, 0, 0, { cast: false });
+      }
+      bloco(s, corpo, [8.21, 0, 0.16], [8.825, 0.92, 0.79], 0.01); bloco(s, corpo, [8.21, 0.9, 0.16], [8.825, 1.86, 0.64], 0.01);
+      bloco(s, M("#111827", { r: 0.5 }), [8.21, 1.1, 0.6], [8.825, 1.2, 0.79], 0.01);
+      bloco(s, M("#374151", { r: 0.4, m: 0.6 }), [8.39, 0.3, 0.775], [8.65, 0.62, 0.79], 0.01);   // porta das fichas
+      for (const x of [8.46, 8.58]) bloco(s, new THREE.MeshStandardMaterial({ color: "#EF4444", emissive: "#EF4444", emissiveIntensity: 1.4 }), [x - 0.02, 0.5, 0.788], [x + 0.02, 0.56, 0.796], 0.004);
+      const deck = mesh(new RoundedBoxGeometry(0.645, 0.06, 0.25, 2, 0.012), preto, s, 8.5025, 1.025, 0.885, { rx: 0.3 });
+      void deck;
+      // joystick e botões em cima do painel
+      this.joy = new THREE.Group(); this.joy.position.set(8.36, 1.072, 0.9); s.add(this.joy); cil(this.joy, M("#111827", { r: 0.3 }), 0.022, 0.026, 0.008, 0, 0.0, 0); cil(this.joy, M("#9CA3AF", { m: 0.8, r: 0.3 }), 0.006, 0.006, 0.07, 0, 0.035, 0); esf(this.joy, M("#EF4444", { r: 0.25 }), 0.024, 0, 0.075, 0);
+      const corBt = ["#FACC15", "#22C55E", "#38BDF8", "#F43F5E"];
+      this.botoesArc = corBt.map((c, i) => { const bt = cil(s, new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.3 }), 0.018, 0.018, 0.016, 8.56 + (i % 2) * 0.07, 1.07, 0.92 - Math.floor(i / 2) * 0.06 + (i % 2) * 0.008, { rx: 0.3 }); return bt; });
+      this.botoesArc.forEach((bt, i) => { bt.userData.y0 = bt.position.y; mesh(new THREE.TorusGeometry(0.02, 0.003, 6, 18), M("#111827"), s, bt.position.x, bt.position.y - 0.004, bt.position.z, { rx: PI / 2 + 0.3 }); });
+      // tela inclinada com moldura e brilho
+      this.arcade = tela(256, 256); this.arcade.g.scale(2, 2);
+      bloco(s, preto, [8.215, 1.18, 0.64], [8.82, 1.63, 0.735], 0.012, { rx: -0.17 });
+      mesh(new THREE.PlaneGeometry(0.48, 0.38), new THREE.MeshBasicMaterial({ map: this.arcade.t, toneMapped: false }), s, 8.5025, 1.405, 0.748, { rx: -0.17, cast: false });
+      const halo = brilho("#A78BFA", 0.9, 0.22); halo.position.set(8.5, 1.4, 0.95); s.add(halo);
+      // letreiro aceso
+      const mq = tela(256, 64); { const q = mq.g; const gr2 = q.createLinearGradient(0, 0, 256, 0); gr2.addColorStop(0, "#F472B6"); gr2.addColorStop(1, "#A78BFA"); q.fillStyle = gr2; q.fillRect(0, 0, 256, 64); q.fillStyle = "#FFF"; q.font = "bold 30px system-ui"; q.textAlign = "center"; q.shadowColor = "#FFF"; q.shadowBlur = 8; q.fillText("RADAR ARCADE", 128, 43); }
+      mesh(new THREE.PlaneGeometry(0.58, 0.19), new THREE.MeshBasicMaterial({ map: mq.t, toneMapped: false }), s, 8.5025, 1.745, 0.768, { cast: false });
+      bloco(s, preto, [8.21, 1.62, 0.62], [8.825, 1.86, 0.765], 0.008);
+      this.arcMao = [new THREE.Object3D(), new THREE.Object3D()]; this.arcMao[0].position.set(8.36, 1.175, 0.9); this.arcMao[1].position.set(8.6, 1.115, 0.9); this.arcMao.forEach((o) => s.add(o)); this.arcMaoBase = this.arcMao.map((o) => o.position.clone());
       sombra(s); }
     // cofre (na parede da direita, porta virada para a sala)
     { const g = this.movel("cofre", [8.54, 1.63], [box(8.54, 1.63, 0.36, 0.34), box(7.92, 1.12, 0.12, 0.12)], { nome: "Cofre", decor: "cofre" }); dec.cofre = this.moveis.cofre;
@@ -2122,7 +2815,7 @@ class Escritorio {
       mesh(new THREE.CircleGeometry(0.22, 32), new THREE.MeshStandardMaterial({ map: t.t, roughness: 0.8 }), g, 0.012, 1.75, 5.95, { ry: PI / 2, cast: false });
       this.dardos = [];
       for (let i = 0; i < 3; i++) { const dd = new THREE.Group(); cil(dd, M("#9CA3AF", { m: 0.8, r: 0.3 }), 0.003, 0.001, 0.05, 0, 0.025, 0); cil(dd, M("#1D4ED8"), 0.006, 0.006, 0.08, 0, -0.04, 0); mesh(new THREE.ConeGeometry(0.02, 0.04, 4), M("#FACC15", { ds: true }), dd, 0, -0.09, 0, { rx: PI }); dd.scale.setScalar(1.7); sc.add(dd); dd.visible = false; this.dardos.push(dd); }
-      this.dardosAlvo = [[0.07, 1.77, 5.93], [0.07, 1.7, 6.0], [0.07, 1.78, 6.02]]; }
+      this.dardosAlvo = [[0.07, 1.77, 5.93], [0.07, 1.7, 6.0], [0.07, 1.78, 6.02]]; this.dardosCentro = V(0.012, 1.75, 5.95); }
     // cachorro: objeto à parte (a caminha é o móvel)
 
     // confete
@@ -2143,7 +2836,13 @@ class Escritorio {
     // objetos que o boneco pega (ficam sempre na cena: ou no lugar deles ou na mão)
     this.itens = {};
     this.itens.controle = this.fazerControle(); sc.add(this.itens.controle);
-    const xi = new THREE.Group(); cil(xi, M("#FFFFFF", { r: 0.3 }), 0.042, 0.036, 0.1, 0, 0.05, 0); cil(xi, M("#6B3E1F", { r: 0.2 }), 0.038, 0.038, 0.004, 0, 0.096, 0); mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 14), M("#FFFFFF"), xi, 0.045, 0.05, 0, {}); sombra(xi, true, false);
+    // xícara com café de verdade: o nível sobe quando enche e desce a cada gole
+    const xi = new THREE.Group(); const porc = M("#FFFFFF", { r: 0.25 });
+    mesh(new THREE.CylinderGeometry(0.042, 0.035, 0.1, 28, 1, true), porc, xi, 0, 0.05, 0); mesh(new THREE.CylinderGeometry(0.039, 0.033, 0.098, 28, 1, true), M("#F1F5F9", { r: 0.3, ds: true }), xi, 0, 0.051, 0);
+    cil(xi, porc, 0.035, 0.035, 0.006, 0, 0.003, 0); mesh(new THREE.TorusGeometry(0.0405, 0.0035, 6, 28), porc, xi, 0, 0.1, 0, { rx: PI / 2 });
+    mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 14), porc, xi, 0.045, 0.05, 0, {});
+    this.cafeLiq = cil(xi, new THREE.MeshStandardMaterial({ color: "#3B1D0B", roughness: 0.15 }), 0.036, 0.036, 0.004, 0, 0.09, 0, { cast: false }); this.cafeLiq.visible = false;
+    sombra(xi, true, false);
     this.itens.xicara = xi; sc.add(xi);
     const nota = new THREE.Mesh(this.notaGeo, this.notaMat); nota.castShadow = true; this.itens.nota = nota; sc.add(nota);
     const maco = new THREE.Group(); for (let i = 0; i < 6; i++) { const n = new THREE.Mesh(this.notaGeo, this.notaMat); n.position.y = i * 0.005; n.rotation.y = (i % 3 - 1) * 0.08; maco.add(n); } sombra(maco, true, false); this.itens.maco = maco; sc.add(maco);
@@ -2235,6 +2934,50 @@ class Escritorio {
     this.tacoBase = { tip: [Bc[0] - u[0] * 0.035, Bc[1] - u[1] * 0.035], u, el: 0.16 };
     this.sinP = this.lugar("sinuca", [raiz[0], raiz[1], yaw]);
   }
+  // próxima jogada de sinuca (uma por ciclo da rotina; a mesma chave devolve o mesmo plano)
+  planoSinuca(chave) {
+    if (this.planoChave === chave && this.planoAtual) return this.planoAtual;
+    // o lugar dele: dentro da sala e longe dos outros móveis (pode ficar colado na mesa)
+    const ok = (x, z, yaw) => {
+      const w = this.lugar("sinuca", [x, z, yaw]); if (w[0] < 0.32 || w[0] > W - 0.32 || w[1] < 0.32 || w[1] > D - 0.25) return false;
+      for (const id in this.moveis) { const m = this.moveis[id]; if (id === "sinuca" || m.piso || !this.ativo(m)) continue;
+        for (const bx of this.caixasDe(m)) { const [lx, lz] = giraXZ(w[0] - bx.c[0], w[1] - bx.c[1], -bx.r); if (Math.abs(lx) < bx.h[0] + 0.2 && Math.abs(lz) < bx.h[1] + 0.2) return false; } }
+      return true;
+    };
+    const pl = this.mesaSin.planejar(ok); pl.lugar = this.lugar("sinuca", [pl.stance[0], pl.stance[1], pl.yaw]);
+    this.planoChave = chave; this.planoAtual = pl; return pl;
+  }
+  // bolas: estado parado (lista de bolas) ou um quadro da gravação; tSim = tempo dentro da gravação (para a queda na caçapa)
+  mostrarBolas(est, tSim, quadro) {
+    const r = SIN.r, ant = this.bolaAnt || (this.bolaAnt = []);
+    for (let n = 0; n <= 9; n++) {
+      const m = this.bolasM[n]; let x, z, em, cai = -1;
+      if (quadro) { const q = quadro.find((_, i) => (this.bolaOrdem ? this.bolaOrdem[i] : i) === n) || quadro[n]; [x, z, em, cai] = q; }
+      else { const b = est.find((q) => q.n === n); if (!b) { m.visible = false; continue; } x = b.x; z = b.z; em = b.em ? 1 : 0; }
+      if (em) { m.visible = true; m.scale.setScalar(1); m.position.set(x, SIN.y, z); }
+      else if (cai >= 0 && tSim - cai < 0.3) { const k = (tSim - cai) / 0.3; m.visible = true; m.position.set(x, SIN.y - 0.07 * k, z); m.scale.setScalar(1 - 0.4 * k); }
+      else m.visible = false;
+      // rola: gira em volta do eixo perpendicular ao movimento
+      const a = ant[n]; if (a && m.visible) { const dx = x - a[0], dz = z - a[1], d = Math.hypot(dx, dz); if (d > 1e-5 && d < 0.3) { const eixo = V(dz / d, 0, -dx / d); m.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(eixo, d / r)); } }
+      ant[n] = [x, z];
+    }
+  }
+  // o que mostrar na mesa neste quadro (fase|id do plano vem do passo da rotina)
+  mostrarSinuca(p, tl) {
+    const [fase, idS] = String(p.bolas || "").split("|"); const pl = idS ? this.mesaSin.planos.get(+idS) : null;
+    if (!pl) { this.mostrarBolas(this.mesaSin.vista, -1); return; }
+    this.bolaOrdem = pl.sim.final.map((b) => b.n);
+    if (fase === "pre") this.mostrarBolas(pl.pre, -1);
+    else if (fase === "rack") {   // as bolas somem e o losango aparece arrumado
+      const k = fase2(tl, 0.4, 2.2);
+      if (k < 0.5) { const v = this.mesaSin.vista; this.mostrarBolas(v, -1); this.bolasM.forEach((m) => m.scale.multiplyScalar(1 - k * 2)); }
+      else { this.mostrarBolas(pl.pre, -1); this.bolasM.forEach((m) => m.scale.multiplyScalar((k - 0.5) * 2)); }
+    }
+    else if (fase === "jogo") {
+      const tt = Math.max(0, tl - TACADA); const Q = pl.sim.quadros; const i = Math.min(Q.length - 1, Math.floor(tt * 60));
+      this.mostrarBolas(null, tt, Q[i]); if (i === Q.length - 1) this.mesaSin.vista = pl.sim.final;
+    } else { this.mostrarBolas(pl.sim.final, 99); this.mesaSin.vista = pl.sim.final; }
+  }
   // pontas do taco (mundo) para cada estado: -1 encostado na mesa, 0 na mão (em pé), 1 na tacada
   tacoPontas(p) {
     const b = this.boneco, root = b.root; const t = p.taco, rec = p.recuo || 0;
@@ -2253,6 +2996,8 @@ class Escritorio {
     return { butt: a, tip: c, ax, apoioBridge: this.pto("sinuca", tb.tip[0], 0.8, tb.tip[1]).addScaledVector(ax, 0.26).setY(0.795), dedos: ax.clone().negate().setY(-0.15) };
   }
   aplicarTaco(p) {
+    const [, idS] = String(p.bolas || "").split("|"); const pl = idS ? this.mesaSin.planos.get(+idS) : null;
+    if (pl) this.tacoBase = { tip: pl.tip, u: pl.u, el: 0.14 };
     const T = this.tacoPontas(p); const taco = this.itens.taco; taco.visible = true;
     const dir = T.tip.clone().sub(T.butt); const L = dir.length() || 1; dir.divideScalar(L);
     taco.position.copy(T.butt); taco.quaternion.setFromUnitVectors(V(0, 1, 0), dir);
@@ -2260,9 +3005,68 @@ class Escritorio {
     // mão direita no cabo: em pé segura alto, na tacada segura atrás
     const g = lerp(0.98, 0.5, cl(t)); const pg = T.butt.clone().addScaledVector(dir, g);
     p.ikR = [pg.x, pg.y, pg.z]; p.kR = Math.max(p.kR || 0, k);
+    if (t > 0.3) p.poloR = [0.35, 0.75, -1];   // na tacada, cotovelo para cima e para trás, antebraço caindo reto até o cabo
     if (t > 0.02) { const br = T.apoioBridge; p.ikL = [br.x, br.y, br.z]; p.kL = Math.max(p.kL || 0, cl(t)); p.oriL = [T.dedos.x, T.dedos.y, T.dedos.z]; }
     p.item = t > 0.5 ? "tacoShot" : t > -0.5 ? "tacoV" : p.item;
   }
+  /* balões de pensamento: de tempos em tempos ele pensa no humor, na carteira, numa ação ou no que está fazendo */
+  pensamento(p, T, dt, cab, fx, st) {
+    if (!this.pensa) {
+      const tx = tela(512, 288); const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx.t, transparent: true, depthWrite: false, depthTest: false, toneMapped: false }));
+      sp.renderOrder = 10; sp.visible = false; this.scene.add(sp); this.pensa = { tx, sp, prox: T + 4 + Math.random() * 4, ini: -99, dur: 4.2, chave: "" };
+    }
+    const P = this.pensa, ocupado = p.balao > 0.05 || this.edit || this.reduz;
+    if (T < P.ini - 1 || T > P.prox + 60) { P.prox = T + 3; P.ini = -99; }   // relógio pulou (testes)
+    if (!ocupado && T >= P.prox) {
+      const op = this.ideias(p, fx, st); const it = op[Math.floor(Math.random() * op.length)];
+      if (it) { this.desenharPensamento(it); P.ini = T; P.prox = T + 12 + Math.random() * 8; } else P.prox = T + 5;
+    }
+    const k = (T - P.ini) / P.dur; const vis = k >= 0 && k <= 1 && !ocupado; P.sp.visible = vis;
+    if (vis) {
+      const ent = sai(cl(k / 0.07)), sai2 = 1 - suave(cl((k - 0.88) / 0.12)), esc = b2(ent) * sai2;
+      P.sp.position.set(cab.x, cab.y + 0.74 + 0.025 * Math.sin(T * 2.2), cab.z); P.sp.scale.set(1.02 * esc, 0.574 * esc, 1); P.sp.material.opacity = sai2;
+    }
+    function b2(t) { return t < 1 ? 1 + 0.12 * Math.sin(PI * t) : 1; }
+  }
+  // o que ele pode estar pensando agora
+  ideias(p, fx, st) {
+    const h = this.h, d = this.d || {}, out = [];
+    const sent = { tranquilo: ["smiley", "Tudo calmo hoje", "#7C3AED"], feliz: ["smiley", "Dia bom!", "#16A34A"], euforico: ["confetti", "Que dia!!", "#D97706"], preocupado: ["smiley-nervous", "Hmm… vermelho", "#EA580C"], triste: ["smiley-sad", "Paciência, vai passar", "#2563EB"] }[h];
+    if (sent) out.push({ ic: sent[0], txt: sent[1], cor: sent[2] });
+    if (d.pct != null && isFinite(d.pct) && !d.sim) { const v = d.pct; out.push({ ic: v >= 0 ? "chart-line-up" : "chart-line-down", txt: "Carteira " + (v > 0 ? "+" : "") + v.toFixed(2).replace(".", ",") + "%", cor: v >= 0 ? "#16A34A" : "#DC2626" }); }
+    const at = (d.ativos || []).filter((a) => a.vd != null && isFinite(a.vd));
+    if (at.length) { const a = at[Math.floor(Math.random() * at.length)]; out.push({ ic: "coins", txt: a.t + " " + (a.vd >= 0 ? "▲" : "▼") + " " + Math.abs(a.vd).toFixed(2).replace(".", ",") + "%", cor: a.vd >= 0 ? "#16A34A" : "#DC2626" }); }
+    const bolas = String(p.bolas || "");
+    if (bolas.startsWith("pre")) out.push({ ic: "target", txt: "Essa entra!", cor: "#16A34A" }, { ic: "target", txt: "Mira na caçapa…", cor: "#0F766E" });
+    if (p.item === "controle") out.push({ ic: "lightning", txt: "Bora zerar essa fase!", cor: "#7C3AED" });
+    if (p.item === "tecla") out.push({ ic: "chart-line-up", txt: "Analisando a carteira…", cor: "#2563EB" });
+    if (fx === "cafe" || fx === "gole") out.push({ ic: "sparkle", txt: "Cafezinho!", cor: "#92400E" });
+    if (h === "triste") out.push({ ic: "trophy", txt: "Longo prazo.", cor: "#2563EB" });
+    void st; return out;
+  }
+  desenharPensamento(it) {
+    const { g, t } = this.pensa.tx; g.clearRect(0, 0, 512, 288);
+    // nuvem: vários círculos, contorno suave, e bolinhas descendo até a cabeça
+    const bol = [[120, 112, 70], [200, 82, 78], [300, 84, 80], [380, 112, 66], [330, 150, 62], [190, 152, 66], [256, 140, 74], [120, 150, 52], [400, 150, 46]];
+    g.save(); g.shadowColor = "rgba(15,23,42,.25)"; g.shadowBlur = 14; g.shadowOffsetY = 5; g.fillStyle = "#FFFFFF";
+    for (const [x, y, r] of bol) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+    for (const [x, y, r] of [[200, 228, 16], [178, 258, 10]]) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+    g.restore();
+    g.font = "bold 40px system-ui, sans-serif"; let tam = 40; while (g.measureText(it.txt).width > 300 && tam > 24) { tam -= 2; g.font = `bold ${tam}px system-ui, sans-serif`; }
+    const w = g.measureText(it.txt).width, x0 = 256 - (w + 62) / 2;
+    if (window.RI) window.RI.desenhar(g, it.ic, x0 + 24, 120, 52, it.cor);
+    g.fillStyle = "#1F2937"; g.textBaseline = "middle"; g.fillText(it.txt, x0 + 62, 122); g.textBaseline = "alphabetic";
+    g.fillStyle = it.cor; g.fillRect(x0 + 62, 148, Math.min(w, 120), 4);
+    t.needsUpdate = true;
+  }
+  // onde cada dardo vai cravar (o plano é sorteado quando a visita ao alvo é montada)
+  planejarDardos() {
+    const habil = { euforico: 0.045, feliz: 0.06, tranquilo: 0.075, preocupado: 0.1, triste: 0.12 }[this.h] || 0.08;
+    const pts = [0, 1, 2].map(() => { const a = Math.random() * TAU, r = Math.min(0.2, Math.abs(Math.sqrt(-2 * Math.log(Math.random() + 1e-9)) * habil * 0.7)); return [Math.cos(a) * r, Math.sin(a) * r]; });
+    const dist = pts.map(([y, z]) => Math.hypot(y, z)); this.dardosPlano = { pts, dist, mosca: dist.some((d) => d < 0.035), ruim: dist.every((d) => d > 0.12) };
+    return this.dardosPlano;
+  }
+  pontoDardo(i) { const pl = this.dardosPlano || this.planejarDardos(); const [dy, dz] = pl.pts[i] || [0, 0]; return this.dardosCentro.clone().add(V(0.02, dy, dz)); }
   teclado() { return { L: this.pto("mesa", 6.62, 0.822, 0.645), R: this.pto("mesa", 6.97, 0.822, 0.645) }; }
   mundo(o) { return o.getWorldPosition(new THREE.Vector3()); }
   alvoCao() { return this.mundo(this.cao.cab).add(V(0, 0.05, 0)); }
@@ -2293,7 +3097,7 @@ class Escritorio {
       }
     } else this.serieAlvo = null;
     if (!d.sim && d.pct != null && isFinite(d.pct)) { const l = this.hist[this.hist.length - 1]; if (!l || Math.abs(l.v - d.pct) > 1e-6) { this.hist.push({ v: d.pct, t: Date.now() }); if (this.hist.length > 60) this.hist.shift(); } }
-    if (d.layout !== undefined && !this.salvando && !this.arrasto) { const n = (L) => JSON.stringify({ m: (L && L.m) || {}, off: [...((L && L.off) || [])].sort() }); if (n(d.layout) !== n(this.layoutAtual())) { this.aplicarLayout(d.layout, true); this.navOk = false; } }
+    if (d.layout !== undefined && !this.salvando && !this.arrasto) { const n = (L) => JSON.stringify({ m: (L && L.m) || {}, off: [...((L && L.off) || [])].sort(), c: (L && L.c) || {} }); if (n(d.layout) !== n(this.layoutAtual())) { this.aplicarLayout(d.layout, true); this.navOk = false; } }
     this.tem = d.tem || {};
     if (!this.dir) this.dir = new Diretor(this);
     const mudou = this.aplicarDecor(!d.tudo && !d.sim);
@@ -2331,7 +3135,7 @@ class Escritorio {
     this.log((on ? "colocou " : "guardou ") + (this.moveis[id] ? this.moveis[id].nome.toLowerCase() : id));
   }
   avisarLayout() { if (typeof this.d.onLayout === "function") { this.salvando = true; try { this.d.onLayout(this.layoutAtual()); } finally { this.salvando = false; } } }
-  restaurar() { const off = [...this.off]; this.aplicarLayout({ off }); this.avisarLayout(); this.log("restaurou os móveis"); }
+  restaurar() { const off = [...this.off]; this.aplicarLayout({ off, c: this.cores }); this.avisarLayout(); this.log("restaurou os móveis"); }
   aplicarHumor() {
     const L = LUZ[this.h];
     this.cfg = L;
@@ -2502,25 +3306,13 @@ class Escritorio {
     const naMaoL = Object.keys(this.prop).find((n) => this.prop[n].h === "L");
     if (!["tecla", "tacoV", "tacoShot"].includes(p.item)) p.item = naMaoR === "joga" ? "" : naMaoR || "";
     if (naMaoL) p.mL = Math.max(p.mL || 0, 0.9);
+    if (p.item === "controle" && this.h === "tranquilo") p.botaoR = JOGO_TV.estado(T).botao ? 1 : 0;
     b.aplicar(p, T, dt); b.desenharRosto(this.vida.rosto(p, { T, dt, humor: this.h, facePropria: !!r.pose._fp }), T);
     b.blob.position.set(pf.x, 0.004, pf.z); b.blob.material.opacity = cl(1 - (p.dy || 0) * 2, 0.3, 1);
     this.moverProps(p, tl, fxk, dt);
     if (this.itens.celular.visible) this.desenharCel(T);
-    // bolas da sinuca (coordenadas da própria mesa)
-    const B = this.bolas, yb = 0.81;
-    const est = this.h === "feliz" ? p.bolas || "ini" : "ini";
-    if (est === "ini") { this.bB.position.set(B.R[0], yb, B.R[1]); this.bA.position.set(B.Y[0], yb, B.Y[1]); this.bA.visible = true; this.bA.scale.setScalar(1); }
-    else if (est === "jogo") {
-      const k1 = fase(tl, TACADA, TACADA + 0.28), k2 = fase(tl, TACADA + 0.28, TACADA + 1.0), k3 = fase(tl, TACADA + 1.0, TACADA + 1.15);
-      const cb = k2 > 0 ? [lerp(B.C[0], B.fimB[0], sai(k2)), lerp(B.C[1], B.fimB[1], sai(k2))] : [lerp(B.R[0], B.C[0], k1), lerp(B.R[1], B.C[1], k1)];
-      this.bB.position.set(cb[0], yb, cb[1]);
-      this.bA.position.set(lerp(B.Y[0], B.pk[0], sai(k2)), yb - 0.06 * k3, lerp(B.Y[1], B.pk[1], sai(k2))); this.bA.scale.setScalar(1 - 0.6 * k3); this.bA.visible = k3 < 1;
-      this.bA.rotation.x += dt * 20 * (k2 > 0 && k2 < 1 ? 1 : 0);
-    } else if (est === "volta") {   // a bola sai da caçapa e as duas rolam de volta para o lugar
-      const k = fase(tl, 0.3, 1.9), sobe = fase(k, 0, 0.18), rola = suave(fase(k, 0.15, 1));
-      this.bB.position.set(lerp(B.fimB[0], B.R[0], suave(fase(tl, 0.2, 1.5))), yb, lerp(B.fimB[1], B.R[1], suave(fase(tl, 0.2, 1.5))));
-      this.bA.visible = k > 0; this.bA.scale.setScalar(lerp(0.4, 1, sobe)); this.bA.position.set(lerp(B.pk[0], B.Y[0], rola), yb - 0.06 * (1 - sobe), lerp(B.pk[1], B.Y[1], rola)); this.bA.rotation.x -= dt * 12 * (rola > 0 && rola < 1 ? 1 : 0);
-    } else { this.bB.position.set(B.fimB[0], yb, B.fimB[1]); this.bA.visible = false; }
+    // bolas da sinuca (física gravada da jogada; coordenadas da própria mesa)
+    this.mostrarSinuca(this.h === "feliz" ? p : {}, tl);
     /* efeitos das recompensas */
     // cachorro
     if (this.cao.g.visible) {
@@ -2548,7 +3340,13 @@ class Escritorio {
     }
     // fliperama
     const jogando = fx === "arcade";
-    if (this.dec.fliperama.outer.visible) { this.joy.rotation.set(jogando ? Math.sin(T * 9) * 0.35 : 0, 0, jogando ? Math.sin(T * 7.3) * 0.35 : 0); this.botoesArc.forEach((bt, i) => { bt.position.y = 1.07 - (jogando && Math.sin(T * 13 + i * 2) > 0.6 ? 0.008 : 0); }); }
+    if (this.dec.fliperama.outer.visible) {
+      const ns = JOGO_NAVE.estado(T); const inc = jogando ? cl(ns.vx * 0.035, -0.4, 0.4) : 0;
+      this.joyInc = lerp(this.joyInc || 0, inc, Math.min(1, dt * 14)); this.joy.rotation.set(jogando ? 0.08 * Math.sin(T * 5) : 0, 0, -this.joyInc);
+      this.arcMao[0].position.copy(this.arcMaoBase[0]).add(V(Math.sin(this.joyInc) * 0.07, 0, 0));
+      this.botoesArc.forEach((bt, i) => { const ap = jogando && ns.atira && i === 0; bt.position.y = bt.userData.y0 - (ap ? 0.007 : 0); bt.material.emissiveIntensity = ap ? 1.6 : 0.35; });
+      this.arcMao[1].position.copy(this.arcMaoBase[1]).add(V(0, jogando && ns.atira ? -0.012 : 0, 0));
+    }
     // cofre
     if (this.dec.cofre.outer.visible) { const ang = fx === "cofre" || fx === "moedaJoga" ? p.porta : 0; this.cofrePorta.rotation.y = -ang; this.cofreBrilho.material.opacity = cl(ang / 1.9) * 0.85; }
     // porquinho: a moeda cai no cofrinho
@@ -2567,10 +3365,14 @@ class Escritorio {
     // dardos
     if (this.dec.dardos.visible) {
       if (fx === "dardo" && fxk < 0.01 && tl < 0.15) { this.dardos.forEach((dd) => { dd.visible = false; }); this.voos = []; }
-      if (fx === "dardo" && fxk % 1 > 0.4) { const i = Math.floor(fxk); const key = st.t0 + ":" + i; if (this.dardoKey !== key && i < 3) { this.dardoKey = key; (this.voos ||= []).push({ i, de: b.mR.clone(), t: 0 }); } }
+      if (fx === "dardo" && fxk % 1 > 0.4) { const i = Math.floor(fxk); const key = st.t0 + ":" + i; if (this.dardoKey !== key && i < 3) { this.dardoKey = key;
+        const alvo = this.pontoDardo(i), de = b.mR.clone(), Tv = 0.36, g = V(0, -9.8, 0); const v0 = alvo.clone().sub(de).sub(g.clone().multiplyScalar(0.5 * Tv * Tv)).divideScalar(Tv);
+        (this.voos ||= []).push({ i, de, v0, alvo, Tv, t: 0 }); } }
       for (const v of this.voos || []) {
-        v.t += dt; const k = cl(v.t / 0.32); const a = V(...this.dardosAlvo[v.i]); const pos = v.de.clone().lerp(a, k); pos.y += Math.sin(PI * k) * 0.18;
-        const dd = this.dardos[v.i]; dd.visible = true; dd.position.copy(pos); dd.rotation.set(0, 0, -PI / 2 + (1 - k) * 0.4);
+        v.t += Math.min(dt, 0.05); const dd = this.dardos[v.i]; dd.visible = true; const t = Math.min(v.t, v.Tv), g = V(0, -9.8, 0);
+        const vel = v.v0.clone().addScaledVector(g, t); const dir = vel.clone().normalize();
+        if (v.t < v.Tv) { dd.position.copy(v.de).addScaledVector(v.v0, t).addScaledVector(g, 0.5 * t * t).addScaledVector(dir, -0.07); dd.quaternion.setFromUnitVectors(V(0, 1, 0), dir).multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), t * 30)); v.dir = dir; }
+        else { const dx = v.t - v.Tv, w = 0.16 * Math.exp(-dx * 8) * Math.sin(dx * 46); const d0 = v.dir || dir; dd.position.copy(v.alvo).addScaledVector(d0, -0.068); dd.quaternion.setFromUnitVectors(V(0, 1, 0), d0).premultiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), w)); }
       }
     } else this.dardos.forEach((dd) => { dd.visible = false; });
     // globo de festa
@@ -2596,6 +3398,7 @@ class Escritorio {
       if (p.balaoT !== this.balaoT) { this.balaoT = p.balaoT; const { g, t } = this.balao; g.clearRect(0, 0, 128, 128); g.fillStyle = "#FFF"; g.strokeStyle = "#CBD5E1"; g.lineWidth = 3; rr(g, 8, 8, 112, 86, 22); g.fill(); g.stroke(); g.beginPath(); g.moveTo(40, 92); g.lineTo(34, 120); g.lineTo(62, 93); g.fill(); if (window.RI) window.RI.desenhar(g, p.balaoT, 64, 51, 60, p.balaoT === "chart-line-down" ? "#DC2626" : p.balaoT === "smiley-nervous" ? "#F59E0B" : "#7C3AED"); t.needsUpdate = true; }
       this.balaoS.position.set(cab.x + 0.25, cab.y + 0.6, cab.z); this.balaoS.scale.setScalar(0.42 * p.balao); this.balaoS.material.opacity = p.balao;
     }
+    this.pensamento(p, T, dt, cab, fx, st);
     // notas jogadas
     if (p.solta && p.solta !== this.ultSolta) { this.ultSolta = p.solta; for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(this.notaGeo, this.notaMat); m.castShadow = true; m.position.copy(b.mR); this.scene.add(m); const fw = V(Math.sin(pf.y), 0, Math.cos(pf.y)); this.notas.push({ m, v: V(fw.x * 0.6 + (Math.random() - 0.5) * 1.2, 2.2 + Math.random() * 1.2, fw.z * 0.6 + (Math.random() - 0.5) * 1.2), rv: V(Math.random() * 6, Math.random() * 6, Math.random() * 6), vida: 0 }); } }
     if (!p.solta) this.ultSolta = 0;
@@ -2609,7 +3412,18 @@ class Escritorio {
     const agora = new Date(); const sg = agora.getSeconds() + agora.getMilliseconds() / 1000, mi = agora.getMinutes() + sg / 60, ho = (agora.getHours() % 12) + mi / 60;
     this.pS.rotation.z = -sg / 60 * TAU; this.pM.rotation.z = -mi / 60 * TAU; this.pH.rotation.z = -ho / 12 * TAU;
     (this.plantas || []).forEach((f, i) => { f.rotation.z = Math.sin(T * 0.8 + i) * 0.03; f.rotation.x = Math.sin(T * 0.6 + i * 2) * 0.02; });
-    this.vapor.forEach((v, i) => { const k = (T * 0.35 + i / 4) % 1; v.position.set(0.38 + Math.sin(T * 2 + i) * 0.02, 1.0 + k * 0.4, 4.9); v.material.opacity = 0.35 * Math.sin(PI * k); v.scale.setScalar(0.06 + k * 0.12); });
+    // café: o botão acende quando ele aperta, o café escorre do bico, a xícara enche, solta vapor e esvazia nos goles
+    { const casa = this.prop.xicara && this.prop.xicara.h === "casa";
+      if (fx === "cafe") { this.cafeNivel = fase(tl, 2.55, 4.15); if (tl > 2.5) this.cafeQuente = T; }
+      else if (fx === "gole") this.cafeNivel = 1 - 0.36 * fase(tl, 0.7, 1.7) - 0.36 * fase(tl, 2.7, 3.6);
+      else if (casa) this.cafeNivel = 0;
+      const nv = this.cafeNivel || 0; this.cafeLiq.visible = nv > 0.02; this.cafeLiq.position.y = 0.012 + 0.08 * nv; this.cafeLiq.scale.setScalar(0.92 + 0.1 * nv);
+      const jorra = fx === "cafe" && tl > 2.45 && tl < 4.2; this.jatoCafe.visible = jorra;
+      if (jorra) { const topo = 1.128, fundo = 0.945 + 0.08 * nv; this.jatoCafe.scale.set(1 + 0.15 * Math.sin(T * 40), topo - fundo, 1); this.jatoCafe.position.set(0.4, (topo + fundo) / 2, 4.9); }
+      this.anelCafe.emissiveIntensity = fx === "cafe" && tl > 1.95 && tl < 4.2 ? 2.4 + 0.6 * Math.sin(T * 10) : 0.55;
+      const xw = this.itens.xicara.getWorldPosition(new THREE.Vector3()); const quente = nv > 0.05 && T - (this.cafeQuente ?? -99) < 30;
+      this.vapor.forEach((v, i) => { const k = (T * 0.45 + i / 4) % 1; v.position.copy(v.parent.worldToLocal(xw.clone().add(V(Math.sin(T * 2 + i) * 0.015, 0.1 + k * 0.22, Math.cos(T * 1.7 + i) * 0.015)))); v.material.opacity = quente ? 0.32 * Math.sin(PI * k) : 0; v.scale.setScalar(0.04 + k * 0.1); });
+    }
     const digitando = p.item === "tecla";
     this.teclas.material.emissiveIntensity = digitando ? 0.4 + 0.3 * Math.abs(Math.sin(T * 14)) : 0.25;
     this.monLuz.intensity = 1.0 + 0.25 * Math.sin(T * 2.2) + (performance.now() - (this.ultimaAcao || 0) < 900 ? 0.8 : 0);
@@ -2624,9 +3438,9 @@ class Escritorio {
     // telas (com taxa menor para poupar bateria)
     const perto = this.camModo === "tela";
     if (this.reduz || T - (this.tMon || -9) > (perto ? 1 / 30 : 1 / 8) || this.sujo) { this.tMon = T; this.desenharMonitor(T); }
-    if (this.reduz || T - (this.tTv || -9) > 1 / 15) { this.tTv = T; this.desenharTV(T, this.h === "tranquilo" ? "jogo" : "news"); }
+    if (this.reduz || T - (this.tTv || -9) > 1 / 20) { this.tTv = T; this.tvVitoria = st.vibras ? Math.max(0, ...st.vibras.map((v) => jan(tl, v, v + 1.3))) : 0; this.desenharTV(T, this.h === "tranquilo" ? "jogo" : "news"); }
     if (this.reduz || T - (this.tCeu || -9) > 1 / 8) { this.tCeu = T; this.desenharCeu(T); }
-    if (this.dec.fliperama.outer.visible && (this.reduz || T - (this.tArc || -9) > (jogando ? 1 / 20 : 1 / 6))) { this.tArc = T; this.desenharArcade(T * (jogando ? 2 : 1)); }
+    if (this.dec.fliperama.outer.visible && (this.reduz || T - (this.tArc || -9) > (jogando ? 1 / 24 : 1 / 6))) { this.tArc = T; this.desenharArcade(T); }
     // contornos do modo de edição
     if (this.edit) for (const id in this.moveis) {
       const m = this.moveis[id], mk = m.marca; mk.visible = this.ativo(m); if (!mk.visible) continue;
@@ -2654,7 +3468,7 @@ class Escritorio {
     return null;
   }
   bico() { return this.pto("cafe", 0.4, 0.99, 4.9); }
-  botaoCafe() { return this.pto("cafe", 0.36, 1.3, 4.97); }
+  botaoCafe() { return this.pto("cafe", 0.392, 1.315, 4.975); }
   bolso(lado = "R") { return this.boneco.root.localToWorld(V(lado === "R" ? 0.17 : -0.17, 0.84, 0.05)); }
   // st.props: { nome: "casa" | "R" | "L" | "LR" | "joga" | "cofrinho" | (k, tl) => ... }
   decidirProps(st, k, tl) {
@@ -2781,15 +3595,7 @@ class Escritorio {
   desenharTV(T, modo) {
     const { g, t } = this.tv; const W_ = 512, H_ = 288;
     if (modo === "jogo") {
-      const gr = g.createLinearGradient(0, 0, 0, H_); gr.addColorStop(0, "#1E1B4B"); gr.addColorStop(1, "#4338CA"); g.fillStyle = gr; g.fillRect(0, 0, W_, H_);
-      for (let i = 0; i < 30; i++) { g.fillStyle = "rgba(255,255,255,.7)"; g.fillRect((i * 83 - T * 10) % W_ + (i * 83 - T * 10 < 0 ? W_ : 0), (i * 37) % 160, 2, 2); }
-      const off = (T * 120) % 64;
-      g.fillStyle = "#16A34A"; g.fillRect(0, 232, W_, 56); g.fillStyle = "#22C55E"; for (let x = -off; x < W_; x += 64) g.fillRect(x, 232, 32, 8);
-      const plats = [[200, 170], [380, 140], [560, 180]]; g.fillStyle = "#A16207"; plats.forEach(([x, y]) => { const px = ((x - T * 120) % 600 + 600) % 600 - 80; g.fillRect(px, y, 80, 14); g.fillStyle = "#FACC15"; g.beginPath(); g.arc(px + 40, y - 20 + Math.sin(T * 6) * 3, 8, 0, TAU); g.fill(); g.fillStyle = "#A16207"; });
-      const j = Math.abs(Math.sin(T * 3.2)); const hy = 196 - j * 70;
-      g.fillStyle = "#EF4444"; g.fillRect(110, hy, 26, 36); g.fillStyle = "#1D4ED8"; g.fillRect(110, hy + 22, 26, 14); g.fillStyle = "#F1C19A"; g.fillRect(114, hy - 14, 18, 16);
-      const ex = ((420 - T * 160) % 560 + 560) % 560 - 40; g.fillStyle = "#7C2D12"; g.beginPath(); g.ellipse(ex, 220, 18, 12, 0, PI, 0); g.fill(); g.fillRect(ex - 18, 220, 36, 12);
-      g.fillStyle = "#FFF"; g.font = "bold 20px monospace"; g.fillText("MOEDAS × " + String(Math.floor(T * 2) % 1000).padStart(3, "0"), 16, 30); g.fillText("1-1", 450, 30);
+      JOGO_TV.desenhar(g, W_, H_, T, { cor: this.d.cor, vitoria: this.tvVitoria || 0 });
     } else {
       const sobe = this.h === "feliz" || this.h === "euforico";
       const cor = sobe ? "#22C55E" : "#EF4444";
@@ -2816,11 +3622,7 @@ class Escritorio {
     return { itens, w: itens.length * 160 };
   }
   desenharArcade(T) {
-    const { g, t } = this.arcade; g.fillStyle = "#0B0B1A"; g.fillRect(0, 0, 128, 128);
-    for (let i = 0; i < 5; i++) { const x = (i * 30 + T * 40) % 140 - 10; g.fillStyle = ["#F43F5E", "#22C55E", "#FACC15", "#38BDF8", "#A855F7"][i]; g.fillRect(x, 20 + i * 14, 10, 8); }
-    g.fillStyle = "#22C55E"; g.fillRect(56 + Math.sin(T * 3) * 30, 108, 16, 8);
-    if (Math.floor(T * 4) % 2) { g.fillStyle = "#FFF"; g.fillRect(64 + Math.sin(T * 3) * 30, 90 - ((T * 120) % 80), 2, 8); }
-    g.fillStyle = "#FDE047"; g.font = "bold 12px monospace"; g.fillText("HI " + String(Math.floor(T * 37) % 99999).padStart(5, "0"), 8, 12);
+    const { g, t } = this.arcade; JOGO_NAVE.desenhar(g, 128, 128, T);
     t.needsUpdate = true;
   }
   // valores do gráfico neste instante (no meio da transição entre a forma antiga e a nova)
@@ -2947,6 +3749,102 @@ class Escritorio {
 
 }
 
+/* ---------- jogos de verdade na TV e no fliperama ----------
+   Os dois são funções do tempo (determinísticos): o mesmo T desenha sempre a mesma cena, então funcionam
+   mesmo quando o relógio pula, e o boneco aperta o botão exatamente quando o herói pula ou a nave atira. */
+const hash = (n) => { const s = Math.sin(n * 91.345 + 47.853) * 43758.5453; return s - Math.floor(s); };
+
+// plataforma: o herói (com a camisa na cor do perfil) corre, pula buracos e inimigos, pega moedas
+const JOGO_TV = {
+  vel: 150, tile: 32, chao: 236, pulo: 0.62, altura: 92,
+  // o que tem em cada coluna do mundo: buraco, inimigo, moeda no alto, bloco
+  coluna(i) {
+    if (i < 6) return { buraco: false };
+    const h = hash(i * 1.37), h2 = hash(i * 7.11 + 3);
+    const buraco = h < 0.09 && hash((i - 1) * 1.37) >= 0.09;   // buracos de duas colunas
+    const buraco2 = hash((i - 1) * 1.37) < 0.09 && hash((i - 2) * 1.37) >= 0.09;
+    return { buraco: buraco || buraco2, inimigo: !buraco && !buraco2 && h2 < 0.08, moeda: h2 > 0.82, bloco: h2 > 0.93 };
+  },
+  // pulos: começa um pouco antes de cada buraco e de cada inimigo
+  pulos(ini, fim) {
+    const out = []; const T = this.tile, v = this.vel;
+    for (let i = Math.floor(ini * v / T) - 2; i <= Math.ceil(fim * v / T) + 6; i++) {
+      const c = this.coluna(i), ca = this.coluna(i - 1);
+      if ((c.buraco && !ca.buraco) || c.inimigo) { const xo = i * T; const t = (xo - 120 - 34) / v; out.push(t); }
+    }
+    return out.sort((a, b) => a - b);
+  },
+  estado(T) {
+    const camX = T * this.vel, ps = this.pulos(T - 2, T + 0.2);
+    let y = 0, pulando = -1; for (const t0 of ps) { const k = (T - t0) / this.pulo; if (k >= 0 && k < 1) { y = 4 * k * (1 - k) * this.altura; pulando = T - t0; } }
+    const moedas = Math.floor(camX / this.tile / 4.8);
+    return { camX, y, pulando, moedas, botao: pulando >= 0 && pulando < 0.14 };
+  },
+  desenhar(g, W, H, T, o = {}) {
+    const st = this.estado(T), ti = this.tile, ch = this.chao;
+    // céu, sol, nuvens e morros em camadas (parallax)
+    const ceu = g.createLinearGradient(0, 0, 0, H); ceu.addColorStop(0, "#38BDF8"); ceu.addColorStop(1, "#BAE6FD"); g.fillStyle = ceu; g.fillRect(0, 0, W, H);
+    g.fillStyle = "rgba(255,255,255,.9)"; for (let i = 0; i < 6; i++) { const x = ((i * 170 - st.camX * 0.15) % (W + 160) + W + 160) % (W + 160) - 80, y = 40 + (i % 3) * 22; g.beginPath(); g.ellipse(x, y, 34, 14, 0, 0, TAU); g.ellipse(x + 26, y - 8, 22, 14, 0, 0, TAU); g.ellipse(x - 24, y - 4, 18, 11, 0, 0, TAU); g.fill(); }
+    for (const [vel, cor, amp, base] of [[0.3, "#4ADE80", 50, 200], [0.55, "#22C55E", 34, 214]]) { g.fillStyle = cor; g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += 8) { const wx = x + st.camX * vel; g.lineTo(x, base - amp * (0.5 + 0.5 * Math.sin(wx * 0.011)) * (0.6 + 0.4 * Math.sin(wx * 0.003))); } g.lineTo(W, H); g.fill(); }
+    // chão em blocos, com buracos; moedas girando; blocos de ?; inimigos andando
+    const i0 = Math.floor(st.camX / ti) - 1;
+    for (let i = i0; i < i0 + W / ti + 3; i++) {
+      const c = this.coluna(i), x = i * ti - st.camX;
+      if (!c.buraco) { g.fillStyle = "#A16207"; g.fillRect(x, ch, ti, H - ch); g.fillStyle = "#22C55E"; g.fillRect(x, ch, ti, 9); g.fillStyle = "rgba(0,0,0,.15)"; g.fillRect(x + ti - 2, ch + 9, 2, H - ch); g.fillStyle = "#854D0E"; g.fillRect(x + 6, ch + 18, 6, 6); g.fillRect(x + 20, ch + 30, 5, 5); }
+      if (c.moeda) { const w = Math.abs(Math.cos(T * 5 + i)) * 7 + 1; g.fillStyle = "#FACC15"; g.beginPath(); g.ellipse(x + 16, ch - 70, w, 9, 0, 0, TAU); g.fill(); g.strokeStyle = "#CA8A04"; g.lineWidth = 2; g.stroke(); }
+      if (c.bloco) { g.fillStyle = "#F59E0B"; g.fillRect(x + 2, ch - 120, 28, 28); g.strokeStyle = "#92400E"; g.lineWidth = 2; g.strokeRect(x + 2, ch - 120, 28, 28); g.fillStyle = "#FFF"; g.font = "bold 20px monospace"; g.fillText("?", x + 10, ch - 99); }
+      if (c.inimigo) { const pass = x < 120 - 20; const ex = x + Math.sin(T * 3 + i) * 6; if (!pass) { g.fillStyle = "#7C2D12"; g.beginPath(); g.ellipse(ex + 16, ch - 12, 15, 12, 0, PI, 0); g.fill(); g.fillRect(ex + 1, ch - 12, 30, 10); g.fillStyle = "#FFF"; g.fillRect(ex + 8, ch - 20, 5, 6); g.fillRect(ex + 19, ch - 20, 5, 6); g.fillStyle = "#000"; g.fillRect(ex + 10, ch - 18, 2, 3); g.fillRect(ex + 21, ch - 18, 2, 3); }
+        else { g.fillStyle = "#7C2D12"; g.fillRect(ex + 2, ch - 5, 28, 5); } }
+    }
+    // herói: camisa na cor do perfil, calça, boné; pernas alternam correndo
+    const hx = 120, hy = ch - 34 - st.y, run = Math.sin(T * 18) > 0; const cor = o.cor || "#2457F5";
+    g.fillStyle = "#1E3A8A"; if (st.y > 1) { g.fillRect(hx + 2, hy + 24, 8, 10); g.fillRect(hx + 16, hy + 20, 8, 10); } else { g.fillRect(hx + (run ? 2 : 6), hy + 24, 8, 10); g.fillRect(hx + (run ? 16 : 12), hy + 24, 8, 10); }
+    g.fillStyle = cor; g.fillRect(hx, hy + 8, 26, 18); g.fillStyle = "#F1C19A"; g.fillRect(hx + 4, hy - 8, 18, 16); g.fillStyle = "#111"; g.fillRect(hx + 16, hy - 4, 3, 4);
+    g.fillStyle = cor; g.fillRect(hx + 2, hy - 12, 22, 6); g.fillRect(hx + 18, hy - 8, 10, 3);
+    if (st.pulando >= 0 && st.pulando < 0.2) { g.fillStyle = "rgba(255,255,255,.7)"; for (let k = 0; k < 3; k++) { g.beginPath(); g.arc(hx + 4 + k * 9, ch - 2, 3 + st.pulando * 20, 0, TAU); g.fill(); } }
+    // placar
+    g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(0, 0, W, 36); g.fillStyle = "#FFF"; g.font = "bold 18px monospace";
+    g.fillText("★ " + String(Math.floor(st.camX / 10)).padStart(6, "0"), 12, 25); g.fillText("● ×" + String(st.moedas % 100).padStart(2, "0"), 190, 25); g.fillText("FASE " + (1 + Math.floor(T / 40) % 4) + "-" + (1 + Math.floor(T / 10) % 4), W - 120, 25);
+    // momento de comemorar (o boneco levanta os braços no sofá)
+    if (o.vitoria > 0) { const k = o.vitoria; g.fillStyle = `rgba(0,0,0,${0.35 * k})`; g.fillRect(0, 0, W, H); g.save(); g.translate(W / 2, H / 2 - 10); g.scale(0.7 + 0.3 * k, 0.7 + 0.3 * k); g.fillStyle = "#FACC15"; g.strokeStyle = "#7C2D12"; g.lineWidth = 6; g.font = "bold 44px system-ui"; g.textAlign = "center"; g.strokeText("FASE COMPLETA!", 0, 0); g.fillText("FASE COMPLETA!", 0, 0); g.restore(); g.textAlign = "left";
+      for (let i = 0; i < 24; i++) { const a = i / 24 * TAU + T, r = 60 + 80 * ((T * 1.3 + hash(i)) % 1); g.fillStyle = ["#F43F5E", "#FACC15", "#22C55E", "#38BDF8"][i % 4]; g.fillRect(W / 2 + Math.cos(a) * r, H / 2 + Math.sin(a) * r * 0.6, 5, 5); } }
+    return st;
+  },
+};
+
+// nave do fliperama: a nave segue o próximo inimigo, atira em intervalos e os inimigos explodem
+const JOGO_NAVE = {
+  inimigo(i) { const fila = Math.floor(i / 6), col = i % 6; return { t0: i * 0.55, x: 16 + col * 19 + (fila % 2) * 9, fila }; },
+  estado(T) {
+    // alvo: o inimigo vivo mais antigo; cada inimigo morre 1,2 s depois de aparecer
+    const iAlvo = Math.max(0, Math.floor((T - 0.9) / 0.55) + 1); const a = this.inimigo(iAlvo), b = this.inimigo(iAlvo + 1);
+    const k = cl(((T - 0.9) / 0.55) % 1 * 2.2); const x = lerp(a.x, b.x, suave(k));
+    const vx = (b.x - a.x) * (k > 0 && k < 1 ? 1 : 0);
+    const tiro = ((T - 0.9) / 0.55) % 1; const atira = tiro > 0.55 && tiro < 0.72;
+    return { x, vx, atira, iAlvo };
+  },
+  desenhar(g, W, H, T) {
+    const st = this.estado(T);
+    g.fillStyle = "#05030F"; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 40; i++) { const y = ((hash(i) * H + T * (20 + hash(i + 9) * 60)) % H); g.fillStyle = `rgba(255,255,255,${0.3 + hash(i + 2) * 0.7})`; g.fillRect(hash(i + 5) * W, y, 1.5, 1.5); }
+    // inimigos: descem em formação; os já abatidos viram explosão
+    for (let i = Math.max(0, st.iAlvo - 2); i < st.iAlvo + 10; i++) {
+      const e = this.inimigo(i); const idade = T - e.t0; if (idade < 0) continue;
+      const morte = e.t0 + 0.9 + 0.55 * 0 + 0.55 * (i - Math.floor((e.t0) / 0.55)) ; const tMorte = 0.9 + 0.55 * (i + 1) - 0.55 * 0.3;
+      const y = 14 + Math.min(idade, 3) * 14 + e.fila * 0; const x = e.x + Math.sin(T * 2 + i) * 4;
+      if (T < tMorte) { g.fillStyle = ["#F43F5E", "#22C55E", "#A855F7", "#FACC15"][i % 4]; g.fillRect(x - 6, y - 4, 12, 8); g.fillRect(x - 8, y, 3, 5); g.fillRect(x + 5, y, 3, 5); g.fillStyle = "#000"; g.fillRect(x - 3, y - 2, 2, 2); g.fillRect(x + 1, y - 2, 2, 2); }
+      else if (T - tMorte < 0.35) { const k = (T - tMorte) / 0.35; for (let q = 0; q < 8; q++) { const a = q / 8 * TAU; g.fillStyle = q % 2 ? "#FDE047" : "#FB923C"; g.fillRect(x + Math.cos(a) * 14 * k, y + Math.sin(a) * 14 * k, 3 * (1 - k) + 1, 3 * (1 - k) + 1); } }
+      void morte;
+    }
+    // tiros
+    for (let q = 0; q < 3; q++) { const tt = ((T - 0.9) / 0.55) % 1 - 0.55 - q * 0.0; if (tt > 0 && tt < 0.45) { const by = 104 - tt / 0.45 * 80; g.fillStyle = "#67E8F9"; g.fillRect(st.x - 1, by, 2, 7); } }
+    // nave
+    g.fillStyle = "#38BDF8"; g.beginPath(); g.moveTo(st.x, 100); g.lineTo(st.x - 8, 114); g.lineTo(st.x + 8, 114); g.fill(); g.fillStyle = "#F43F5E"; g.fillRect(st.x - 2, 114, 4, 3 + (Math.floor(T * 20) % 2) * 2);
+    g.fillStyle = "#FDE047"; g.font = "bold 8px monospace"; g.fillText("1UP " + String(st.iAlvo * 100).padStart(6, "0"), 3, 9); g.fillStyle = "#F472B6"; g.fillText("HI 099999", 78, 9);
+    return st;
+  },
+};
+
 /* ---------- diretor: monta a fila de passos (rotina do humor, visitas às recompensas, transições) ---------- */
 class Diretor {
   constructor(e) { this.e = e; this.t = 0; this.fila = []; this.ant = null; this.entrar = true; this.ciclo = 0; this.novos = []; this.rodada = 0; this.itemAtual = ""; }
@@ -2954,7 +3852,7 @@ class Diretor {
   replanejar() { this.entrar = true; }
   // item recém-liberado: ele larga o que está fazendo e vai ver
   novidade(id) { if (ITEM_ANIM[id] && !this.novos.includes(id)) { this.novos.push(id); if (!this.e.reduz) this.entrar = true; } }
-  rotina() { return (ROTEIROS[this.h] || ROTEIROS.tranquilo)(this.L, this.e, this.ciclo); }
+  rotina() { return (ROTEIROS[this.h] || ROTEIROS.tranquilo)(this.L, this.e, this.ciclo, (this.ent || 0) + ":" + this.ciclo); }
   // transforma passos em uma fila com tempos e caminhos calculados
   compilar(passos, de, t0, extra = {}) {
     const nav = this.e.nav; let pos = de.slice(); let t = t0; const out = [];
@@ -2999,7 +3897,7 @@ class Diretor {
   encher() {
     const e = this.e;
     if (this.entrar) {
-      this.entrar = false; this.L = e.lugares();
+      this.entrar = false; this.L = e.lugares(); this.ent = (this.ent || 0) + 1;
       const rt = this.rotina(); this.padrao = rt.padrao;
       const pos = e.posF ? [e.posF.x, e.posF.z, e.posF.y] : rt.inicio.slice();
       const snap = this.ultimaPose ? { ...this.ultimaPose } : null;
@@ -3037,7 +3935,7 @@ class Diretor {
       return;
     }
     this.ultimoBloco = "rotina";
-    this.anexar(this.compilar(rt.passos, rt.inicio, t0));
+    this.anexar(this.compilar(rt.passos, rt.deAtual ? de : rt.inicio, t0));
     this.ciclo++;
   }
   anexar(c) { this.fila.push(...c.out); }
@@ -3124,6 +4022,7 @@ export function vitrine(el, d) {
     if (!el.isConnected) { destruir(); return; }
     const agora = performance.now(), T = window.__ofVitT != null ? window.__ofVitT : (agora - t0) / 1000, dt = Math.min(0.05, (agora - tAnt) / 1000); tAnt = agora;
     if (!arrastando && agora - ultimoToque > 2500) yaw += dt * 0.35;
+    if (window.__ofVitYaw != null) yaw = window.__ofVitYaw;   // páginas de teste
     // ciclo: parado, acena, joinha, sorri
     const c = T % 12; let p;
     if (c < 3.5) p = emPe(T, { olhar: [Math.sin(T * 0.7) * 0.6, 0] });
@@ -3135,7 +4034,7 @@ export function vitrine(el, d) {
     p = vida.passo(p, { T, dt, humor: "feliz", cabeca: cab, yawCorpo: yaw, alvos: [{ nome: "camera", pos: cam.position.clone(), peso: 2 }, { nome: "lado", pos: V(Math.sin(yaw + 1) * 3, 1.4, Math.cos(yaw + 1) * 3), peso: 1 }], legsLivres: true, nariz: cab.clone().add(V(Math.sin(yaw) * 0.15, -0.02, Math.cos(yaw) * 0.15)) });
     p = filtro.passo(p, dt);
     b.aplicar(p, T, dt); b.desenharRosto(vida.rosto(p, { T, dt, humor: "feliz", facePropria: c >= 3.5 && c < 6 }), T);
-    const e = b.esc; const vc = window.__ofVitCam; if (vc) { cam.position.set(0, vc[0], vc[1]); cam.lookAt(0, vc[2], 0); } else { cam.position.set(0, 1.0 * e, 4.2 * (0.6 + 0.4 * e)); cam.lookAt(0, 0.9 * e, 0); }
+    const e = b.esc; const vc = window.__ofVitCam; if (vc) { cam.position.set(0, vc[0], vc[1]); cam.lookAt(0, vc[2], 0); } else { cam.position.set(0, 1.05 * e, 4.65 * (0.6 + 0.4 * e)); cam.lookAt(0, 0.97 * e, 0); }
     r.render(sc, cam);
     raf = requestAnimationFrame(quadro);
   }
