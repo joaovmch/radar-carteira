@@ -3092,7 +3092,7 @@ class Escritorio {
       const v = sp.map((q) => q[1]); const a0 = this.serieAlvo;
       if (!a0 || a0.v.length !== v.length || a0.v.some((x, i) => Math.abs(x - v[i]) > 1e-6)) {
         const atual = a0 ? this.serieAgora() : null;
-        this.serieDe = atual ? reamostra(atual, v.length) : v.map(() => 0);   // na primeira vez, sobe a partir da linha do zero
+        this.serieDe = atual ? (atual.length + 1 === v.length ? atual.concat([atual[atual.length - 1]]) : atual.length === v.length ? atual : reamostra(atual, v.length)) : v.map(() => 0);   // ponto novo no fim: só o fim anda   // na primeira vez, sobe a partir da linha do zero
         this.serieAlvo = { v, ts: sp.map((q) => q[0]), hoje: !!d.serie.hoje }; this.serieT0 = performance.now(); this.sujo = true;
       }
     } else this.serieAlvo = null;
