@@ -318,29 +318,45 @@
 
   /* ---------- Gráficos interativos (perfil do ativo e evolução da carteira) ---------- */
   const PERIODOS = [["1M", 23], ["3M", 66], ["6M", 130], ["1A", 9999]];
+  const INTRA = [["Hoje", "dia"], ["5D", "5d"]];   // ao longo do dia (cotações a cada 2 minutos no pregão)
   const CH = {};
   const G = { W: 640, H: 180, P: 6 };
+  const ehIntra = (per) => INTRA.some((x) => x[0] === per);
+  // opt.intra: série [ts, valor] com pontos ao longo do dia (opcional)
   function chartBox(key, serie, opt) {
     if (!serie || serie.length < 3) return "";
     const ant = CH[key] || {};
-    CH[key] = { serie, per: ant.per || "1A", fmt: opt.fmt, cor: opt.cor || null, anim: !ant.drawn && !reduz, drawn: ant.drawn };
-    return `<div class="g-per" role="group" aria-label="Período" data-chart="${key}">${PERIODOS.map(([p]) => `<button type="button" data-per="${p}" aria-pressed="${p === CH[key].per}">${p}</button>`).join("")}</div>
+    const intra = opt.intra && opt.intra.length ? opt.intra : null;
+    let per = ant.per || "1A"; if (ehIntra(per) && !intra) per = "1A";
+    CH[key] = { serie, intra, per, fmt: opt.fmt, cor: opt.cor || null, anim: !ant.drawn && !reduz, drawn: ant.drawn };
+    const bts = (intra ? INTRA : []).concat(PERIODOS);
+    return `<div class="g-per" role="group" aria-label="Período" data-chart="${key}">${bts.map(([p]) => `<button type="button" data-per="${p}" aria-pressed="${p === CH[key].per}">${p}</button>`).join("")}</div>
       <div class="chart-wrap" data-cw="${key}">${chartSvg(key)}<div class="g-tip" hidden></div></div>`;
   }
-  function recorte(key) { const c = CH[key]; const n = (PERIODOS.find((p) => p[0] === c.per) || PERIODOS[3])[1]; return c.serie.slice(-Math.min(n, c.serie.length)); }
+  const diaSP = (ts) => new Date(ts * 1000).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  function recorte(key) {
+    const c = CH[key];
+    if (ehIntra(c.per) && c.intra) {
+      if (c.per === "5D") return c.intra;
+      const ult = diaSP(c.intra[c.intra.length - 1][0]);   // hoje, ou o último pregão se hoje ainda não teve
+      return c.intra.filter((p) => diaSP(p[0]) === ult);
+    }
+    const n = (PERIODOS.find((p) => p[0] === c.per) || PERIODOS[3])[1]; return c.serie.slice(-Math.min(n, c.serie.length));
+  }
   function chartSvg(key) {
     const c = CH[key], serie = recorte(key); const { W, H, P } = G;
-    if (serie.length < 2) return "";
+    if (serie.length < 2) return ehIntra(c.per) ? `<p class="hint" style="margin:14px 0;${c.cor ? "color:rgba(255,255,255,.8)" : ""}">O gráfico do dia vai se formando durante o pregão: o Radar guarda as cotações a cada 2 minutos. Volte depois da abertura da bolsa.</p>` : "";
     const ys = serie.map((p) => p[1]), min = Math.min(...ys), max = Math.max(...ys), rng = max - min || 1;
     const x = (i) => P + i * (W - 2 * P) / (serie.length - 1), y = (v) => H - P - (v - min) / rng * (H - 2 * P);
     const d = serie.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
     const sobe = ys[ys.length - 1] >= ys[0]; const cor = c.cor || (sobe ? "var(--up)" : "var(--down)");
     const longo = (serie[serie.length - 1][0] - serie[0][0]) > 100 * 86400;
-    const f = (ts) => new Date(ts * 1000).toLocaleDateString("pt-BR", longo ? { month: "short", year: "2-digit" } : { day: "2-digit", month: "short" });
+    const hora = (ts) => new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+    const f = (ts) => c.per === "Hoje" ? hora(ts) : c.per === "5D" ? new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", timeZone: "America/Sao_Paulo" }) + " " + hora(ts) : new Date(ts * 1000).toLocaleDateString("pt-BR", longo ? { month: "short", year: "2-digit" } : { day: "2-digit", month: "short" });
     const varP = (ys[ys.length - 1] / ys[0] - 1) * 100;
     const anim = c.anim; c.anim = false; c.drawn = true;
     const gid = "gr-" + key;
-    return `<p class="g-res">No período: <b class="${cls(varP)}">${pct(varP)}</b> <span class="hint">(${esc(c.fmt(ys[0]))} → ${esc(c.fmt(ys[ys.length - 1]))})</span></p>
+    return `<p class="g-res">${c.per === "Hoje" ? "Hoje" : "No período"}: <b class="${cls(varP)}">${pct(varP)}</b> <span class="hint">(${esc(c.fmt(ys[0]))} → ${esc(c.fmt(ys[ys.length - 1]))})</span></p>
     <svg class="chart" data-svg="${key}" viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="Valor no período, de ${esc(c.fmt(ys[0]))} para ${esc(c.fmt(ys[ys.length - 1]))}">
       <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${cor}" stop-opacity=".28"/><stop offset="1" stop-color="${cor}" stop-opacity="0"/></linearGradient></defs>
       <path class="${anim ? "ar" : ""}" d="${d} L${x(serie.length - 1).toFixed(1)} ${H - P} L${P} ${H - P} Z" fill="url(#${gid})"/>
@@ -368,7 +384,8 @@
       linha.setAttribute("x1", cx); linha.setAttribute("x2", cx); ponto.setAttribute("cx", cx); ponto.setAttribute("cy", cy);
       mira.setAttribute("visibility", "visible");
       const desde = (v / ys[0] - 1) * 100;
-      tip.innerHTML = `<span>${esc(new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }))}</span><b>${esc(fmt(v))}</b><small class="${cls(desde)}">${esc(pct(desde))} no período</small>`;
+      const intra = ehIntra(CH[key].per);
+      tip.innerHTML = `<span>${esc(new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: intra ? undefined : "numeric", timeZone: "America/Sao_Paulo" }) + (intra ? " · " + new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : ""))}</span><b>${esc(fmt(v))}</b><small class="${cls(desde)}">${esc(pct(desde))} ${intra && CH[key].per === "Hoje" ? "desde a abertura" : "no período"}</small>`;
       tip.hidden = false;
       const escala = r.width / W, xTela = cx * escala, larg = tip.offsetWidth;
       tip.style.left = Math.max(0, Math.min(r.width - larg, xTela - larg / 2)) + "px";
@@ -467,6 +484,28 @@
     const serie = dias.map((d, i) => { let tot = 0; comps.forEach((c, j) => { const v = c.mp.get(d); if (v != null) ult[j] = v; if (ult[j] != null) tot += ult[j] * c.mult; }); return [Date.parse(d + "T15:00:00Z") / 1000, Math.round((tot + rfDia[i]) * 100) / 100]; });
     return { serie: serie.length > 5 ? serie : null, fora, rf: temRF };
   }
+  // Cotações ao longo do dia (tabela cotacoes_hist, gravada pelo banco a cada atualização de preço)
+  S.intra = null; S.intraT = 0;
+  async function carregarIntradia() {
+    const tk = [...new Set(S.carteira.map((p) => p.ticker))]; if (!tk.length) { S.intra = null; return; }
+    S.intraT = Date.now();
+    const desde = new Date(Date.now() - 7 * 864e5).toISOString();
+    const { data, error } = await sb.from("cotacoes_hist").select("ticker,em,preco").in("ticker", tk).gte("em", desde).order("em").limit(20000);
+    if (error) { S.intra = null; return; }
+    const por = {}; (data || []).forEach((r) => { (por[r.ticker] ||= []).push([Date.parse(r.em) / 1000, Number(r.preco)]); });
+    S.intra = por;
+  }
+  function pedirIntradia() { if (Date.now() - S.intraT > 110000 && S.user) carregarIntradia().then(() => { if (S.intra) renderHero(); }); }
+  // soma da carteira em blocos de 5 minutos, carregando o último preço conhecido de cada ativo
+  function serieIntradia(rfFixo) {
+    if (!S.intra) return null;
+    const f = fx(); const pos = S.carteira.map((p) => ({ t: p.ticker, mult: Number(p.qtd) * (moedaDe(p.ticker) === "USD" ? (f || 0) : 1), h: S.intra[p.ticker] || [] })).filter((x) => x.h.length && x.mult);
+    if (!pos.length) return null;
+    const B = 300, blocos = [...new Set(pos.flatMap((x) => x.h.map(([ts]) => Math.floor(ts / B) * B)))].sort((a, b) => a - b);
+    const idx = pos.map(() => 0), ult = pos.map((x) => x.h[0][1]);
+    const out = blocos.map((b) => { let tot = 0; pos.forEach((x, i) => { while (idx[i] < x.h.length && Math.floor(x.h[idx[i]][0] / B) * B <= b) { ult[i] = x.h[idx[i]][1]; idx[i]++; } tot += ult[i] * x.mult; }); return [b, Math.round((tot + (rfFixo || 0)) * 100) / 100]; });
+    return out.length > 1 ? out : null;
+  }
   function renderHero() {
     const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
     if (!S.carteira.length && !rfV) {
@@ -501,7 +540,8 @@
     const box = $("#hero-chart");
     if (!serie) { box.innerHTML = `<p class="hint" style="color:rgba(255,255,255,.8);margin-top:14px">O gráfico aparece assim que o histórico dos seus ativos for carregado (alguns minutos depois de adicioná-los).</p>`; return; }
     if (box.querySelector(".g-tip:not([hidden])")) return; // não redesenha com o dedo/mouse em cima
-    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff" }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${comRF ? ", com a renda fixa incluída (o saldo de hoje recalculado pelo CDI de cada dia)" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
+    pedirIntradia();
+    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff", intra: serieIntradia(RF ? RF.bruto : 0) }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${comRF ? ", com a renda fixa incluída (o saldo de hoje recalculado pelo CDI de cada dia)" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
     ligarGrafico("hero");
   }
 
@@ -1151,7 +1191,7 @@
 
       <section class="panel" aria-labelledby="emp-desemp">
         <h3 id="emp-desemp">Desempenho</h3>
-        ${chartBox("emp", e.serie, { fmt: M })}
+        ${chartBox("emp", e.serie, { fmt: M, intra: S.intra && S.intra[t] && S.intra[t].length > 1 ? S.intra[t] : null })}
         <div class="rets">${[["1 mês", ds.ret1m], ["3 meses", ds.ret3m], ["6 meses", ds.ret6m], ["12 meses", ds.ret12m]].map(([l, v]) => `<div><span>${l}</span><b class="${cls(v)}">${pct(v)}</b></div>`).join("")}</div>
         <p class="hint" style="margin:10px 0 0">Passe o mouse ou o dedo sobre o gráfico para ver a cotação de cada dia${fora ? " (em dólar)" : ""}. ${ds.min52 != null ? `No último ano variou de ${esc(M(ds.min52))} a ${esc(M(ds.max52))}. ` : ""}${ds.volAnual != null ? `Oscilação anual de ${esc(num(ds.volAnual, 0))}% (${ds.volAnual > 45 ? "bem arriscado" : ds.volAnual > 28 ? "risco médio" : "mais estável"}).` : ""}</p>
       </section>

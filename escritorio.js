@@ -32,7 +32,7 @@
   const IC = (n, o) => (window.RI ? window.RI.svg(n, o) : "");
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const MOD = "./escritorio3d.js?v=20261030-1";
+  const MOD = "./escritorio3d.js?v=20261031-1";
   let mod = null, carregando = null, inst = null, modo = null, ultimo = null, render2d = null, el0 = null;
   const pendentes = []; let secao = "";
   function temWebGL() {

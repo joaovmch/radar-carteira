@@ -6,7 +6,7 @@ class Diretor {
   replanejar() { this.entrar = true; }
   // item recém-liberado: ele larga o que está fazendo e vai ver
   novidade(id) { if (ITEM_ANIM[id] && !this.novos.includes(id)) { this.novos.push(id); if (!this.e.reduz) this.entrar = true; } }
-  rotina() { return (ROTEIROS[this.h] || ROTEIROS.tranquilo)(this.L, this.e); }
+  rotina() { return (ROTEIROS[this.h] || ROTEIROS.tranquilo)(this.L, this.e, this.ciclo); }
   // transforma passos em uma fila com tempos e caminhos calculados
   compilar(passos, de, t0, extra = {}) {
     const nav = this.e.nav; let pos = de.slice(); let t = t0; const out = [];
@@ -38,8 +38,8 @@ class Diretor {
     const passos = [A(1.15, [alvo]), F(0.5, (k, tl, T) => emPe(T), { ate: alvo })];
     if (novo) passos.push(...NOVIDADE(ia.ic + ":f"));
     passos.push(...ia.passos(e));
-    passos.push(A(1.15, [rt.sentado ? rt.aprox : rt.inicio]));
-    if (rt.sentado) passos.push(F(1.3, sentarDe((T) => emPe(T), rt.sentPose), { ate: rt.inicio }));
+    passos.push(A(1.15, [rt.aprox]));
+    if (rt.sentado || rt.entrada.length) passos.push(...rt.entrada);
     else passos.push(F(0.5, (k, tl, T) => emPe(T), { ate: rt.inicio }));
     return passos;
   }
@@ -64,10 +64,11 @@ class Diretor {
       const passos = [];
       if (sentado) { const ond = this.aprox || pos; passos.push(F(1.2, (k, tl, T) => { const r = mistura(snapPose, emPe(T), suave(k)); r.lean += 0.4 * Math.sin(PI * k); return r; }, { ate: e.nav.perto(ond[0], ond[1]).concat([pos[2]]) })); }
       else passos.push(F(0.35, (k, tl, T) => mistura(snapPose, emPe(T), suave(k))));
+      e.guardarProps();
       if (novo) { passos.push(...this.visita(novo, true, rt)); this.itemNovo = novo; }
       else {
         passos.push(A(1.15, [rt.aprox]));
-        if (rt.sentado) passos.push(F(1.3, sentarDe((T) => emPe(T), rt.sentPose), { ate: rt.inicio }));
+        if (rt.entrada.length) passos.push(...rt.entrada);
         else passos.push(F(0.5, (k, tl, T) => emPe(T), { ate: rt.inicio }));
       }
       this.aprox = rt.aprox;
@@ -81,14 +82,15 @@ class Diretor {
     if (!id && this.ciclo > 0 && disp.length && !this.e.reduz && this.ultimoBloco !== "item") { id = disp[this.rodada % disp.length]; this.rodada++; }
     if (id) {
       const passos = [];
-      if (rt.sentado) passos.push(F(1.3, levantarDe((T) => emPe(T), rt.sentPose), { ate: rt.aprox }));
+      passos.push(...rt.saida);
       passos.push(...this.visita(id, novo, rt));
       this.anexar(this.compilar(passos, de, t0, { item_: id }));
       this.ultimoBloco = "item";
       return;
     }
-    this.ciclo++; this.ultimoBloco = "rotina";
+    this.ultimoBloco = "rotina";
     this.anexar(this.compilar(rt.passos, rt.inicio, t0));
+    this.ciclo++;
   }
   anexar(c) { this.fila.push(...c.out); }
   avaliarPasso(s, tl, T) {
@@ -126,7 +128,8 @@ class Diretor {
     if (this.entrar) this.encher();
     let guarda = 0;
     while ((!this.fila.length || this.fimFila().t < this.t + 2) && guarda++ < 40) this.encher();
-    while (this.fila.length > 1 && this.t >= this.fila[0].t0 + this.fila[0].dur) this.ant = this.fila.shift();
+    // passos que terminaram: aplica o estado final dos objetos (mesmo se o quadro pulou o passo inteiro)
+    while (this.fila.length > 1 && this.t >= this.fila[0].t0 + this.fila[0].dur) { this.ant = this.fila.shift(); e.decidirProps(this.ant, 1, this.ant.dur); }
     const s = this.fila[0]; if (!s) return { pose: emPe(this.t), pos: [4.5, 3.5, 0], s: null, tl: 0 };
     const T = this.t; const tl = Math.min(T - s.t0, s.dur);
     const r = this.avaliarPasso(s, tl, T);
@@ -137,7 +140,7 @@ class Diretor {
       r.pos = [lerp(a.pos[0], r.pos[0], w), lerp(a.pos[1], r.pos[1], w), a.pos[2] + difAng(a.pos[2], r.pos[2]) * w];
     }
     this.itemAtual = s.item_ || "";
-    this.ultimaPose = r.pose; r.s = s; r.tl = tl;
+    this.ultimaPose = r.pose; r.s = s; r.tl = tl; r.k = s.dur ? cl(tl / s.dur) : 1;
     return r;
   }
 }

@@ -203,7 +203,7 @@ class Escritorio {
       bloco(g, M("#E7D6C3"), [2.7, 0.08, 1.52], [3.72, 0.11, 1.93], 0.01);
       for (const x of [2.68, 3.74]) for (const z of [1.5, 1.95]) cil(g, M("#3F3A36"), 0.02, 0.02, 0.36, x, 0.18, z);
       bloco(g, M("#F43F5E"), [2.8, 0.42, 1.6], [3.1, 0.44, 1.82], 0.005, { ry: 0.2 }); bloco(g, M("#38BDF8"), [2.84, 0.44, 1.62], [3.1, 0.455, 1.8], 0.005, { ry: -0.1 });
-      this.ctrlMesa = this.fazerControle(); this.ctrlMesa.position.set(3.45, 0.44, 1.72); this.ctrlMesa.rotation.y = 0.4; g.add(this.ctrlMesa); }
+      bloco(g, M("#F8FAFC", { r: 0.4 }), [3.35, 0.42, 1.62], [3.6, 0.44, 1.8], 0.004, { ry: 0.3 }); }
 
     // sofá (de frente para a TV)
     { const g = this.movel("sofa", [3.2, 3.05], [box(3.2, 3.05, 1.24, 0.47)], { nome: "Sofá" });
@@ -356,6 +356,7 @@ class Escritorio {
       for (let i = 0; i < 5; i++) { const a = mesh(new THREE.ConeGeometry(0.03, 0.18 + i * 0.03, 6), M("#16A34A", { r: 0.8 }), g, 0.2 + (i % 3) * 0.12, 0.85, 6.5 + i * 0.17); a.userData.alga = i; }
       this.bolhas = []; for (let i = 0; i < 6; i++) { const b = esf(g, M("#FFFFFF", { op: 0.6, r: 0.1 }), 0.008, 0.45, 0.8, 7.1, { seg: 8, seg2: 6, cast: false }); this.bolhas.push(b); }
       this.racao = []; for (let i = 0; i < 14; i++) { const b = esf(g, M("#B45309", { r: 0.8 }), 0.006, 0.35, 1.2, 6.8, { seg: 6, seg2: 4, cast: false }); b.visible = false; this.racao.push(b); }
+      bloco(g, M("#F59E0B", { r: 0.6 }), [0.5, 1.28, 7.12], [0.58, 1.38, 7.2], 0.008); bloco(g, M("#DC2626", { r: 0.5 }), [0.5, 1.38, 7.12], [0.58, 1.395, 7.2], 0.004);
       this.aqLuz = brilho("#38BDF8", 1.0, 0.25); this.aqLuz.position.set(0.35, 1.0, 6.85); g.add(this.aqLuz); }
     // touro de ouro
     { const g = this.movel("touro", [6.2, 6.95], [box(6.2, 6.95, 0.35, 0.35)], { nome: "Touro de ouro", decor: "touro" }); dec.touro = this.moveis.touro;
@@ -420,19 +421,22 @@ class Escritorio {
     const nt = tela(128, 64); nt.g.fillStyle = "#86EFAC"; nt.g.fillRect(0, 0, 128, 64); nt.g.strokeStyle = "#15803D"; nt.g.lineWidth = 5; nt.g.strokeRect(4, 4, 120, 56); nt.g.fillStyle = "#15803D"; nt.g.font = "bold 34px system-ui"; nt.g.textAlign = "center"; nt.g.fillText("R$", 64, 44);
     this.notaMat = new THREE.MeshStandardMaterial({ map: nt.t, roughness: 0.8 });
 
-    // itens de mão
+    // objetos que o boneco pega (ficam sempre na cena: ou no lugar deles ou na mão)
     this.itens = {};
     this.itens.controle = this.fazerControle(); sc.add(this.itens.controle);
-    const xi = new THREE.Group(); cil(xi, M("#FFFFFF", { r: 0.3 }), 0.042, 0.036, 0.1, 0, 0, 0); cil(xi, M("#6B3E1F", { r: 0.2 }), 0.038, 0.038, 0.004, 0, 0.046, 0); mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 14), M("#FFFFFF"), xi, 0.045, 0, 0, {}); sombra(xi, true, false);
+    const xi = new THREE.Group(); cil(xi, M("#FFFFFF", { r: 0.3 }), 0.042, 0.036, 0.1, 0, 0.05, 0); cil(xi, M("#6B3E1F", { r: 0.2 }), 0.038, 0.038, 0.004, 0, 0.096, 0); mesh(new THREE.TorusGeometry(0.028, 0.008, 8, 14), M("#FFFFFF"), xi, 0.045, 0.05, 0, {}); sombra(xi, true, false);
     this.itens.xicara = xi; sc.add(xi);
     const nota = new THREE.Mesh(this.notaGeo, this.notaMat); nota.castShadow = true; this.itens.nota = nota; sc.add(nota);
+    const maco = new THREE.Group(); for (let i = 0; i < 6; i++) { const n = new THREE.Mesh(this.notaGeo, this.notaMat); n.position.y = i * 0.005; n.rotation.y = (i % 3 - 1) * 0.08; maco.add(n); } sombra(maco, true, false); this.itens.maco = maco; sc.add(maco);
     const taco = new THREE.Group(); cil(taco, M("#B7793A", { r: 0.4 }), 0.0105, 0.02, 1.45, 0, 0.725, 0); cil(taco, M("#1F2937", { r: 0.4 }), 0.0205, 0.021, 0.35, 0, 0.175, 0); cil(taco, M("#E8F1FF"), 0.0105, 0.0105, 0.02, 0, 1.455, 0); cil(taco, M("#3B82F6"), 0.0108, 0.0108, 0.008, 0, 1.468, 0); sombra(taco, true, false);
     this.itens.taco = taco; sc.add(taco);
     const cel = new THREE.Group(); bloco(cel, M("#111827", { r: 0.3 }), [-0.035, -0.07, -0.005], [0.035, 0.07, 0.005], 0.008); this.celTela = tela(64, 128);
     mesh(new THREE.PlaneGeometry(0.062, 0.126), new THREE.MeshBasicMaterial({ map: this.celTela.t, toneMapped: false }), cel, 0, 0, 0.0055, { cast: false });
     this.itens.celular = cel; sc.add(cel);
     const moeda = new THREE.Group(); cil(moeda, M("#FACC15", { r: 0.25, m: 0.9 }), 0.025, 0.025, 0.006, 0, 0, 0, { rx: PI / 2 }); this.itens.moeda = moeda; sc.add(moeda);
-    const dardoMao = new THREE.Group(); cil(dardoMao, M("#9CA3AF", { m: 0.8, r: 0.3 }), 0.003, 0.001, 0.05, 0, 0.025, 0); cil(dardoMao, M("#1D4ED8"), 0.006, 0.006, 0.08, 0, -0.04, 0); this.itens.dardo = dardoMao; sc.add(dardoMao);
+    const fazDardo = () => { const d = new THREE.Group(); cil(d, M("#9CA3AF", { m: 0.8, r: 0.3 }), 0.003, 0.001, 0.05, 0, 0.025, 0); cil(d, M("#1D4ED8"), 0.006, 0.006, 0.08, 0, -0.04, 0); mesh(new THREE.ConeGeometry(0.02, 0.04, 4), M("#FACC15", { ds: true }), d, 0, -0.09, 0, { rx: PI }); d.scale.setScalar(1.7); return d; };
+    this.itens.dardo = fazDardo(); sc.add(this.itens.dardo);
+    const aljava = new THREE.Group(); this.aljavaD = [0, 1, 2].map((i) => { const d = fazDardo(); d.position.set((i - 1) * 0.018, 0, 0); d.rotation.z = (i - 1) * 0.12; aljava.add(d); return d; }); this.itens.aljava = aljava; sc.add(aljava);
     Object.values(this.itens).forEach((o) => { o.visible = false; });
     // nuvem de chuva e balão
     const nv = this.nuvem = new THREE.Group(); const nm = M("#94A3B8", { r: 1 });

@@ -265,22 +265,16 @@
     const comTaco = p.taco > -0.98 && this.h === "feliz";
     if (comTaco) { p = { ...p }; this.aplicarTaco(p); }
     else { /* taco encostado na mesa */ const q = this.tacoPontas({ taco: -1 }); const dir = q.tip.clone().sub(q.butt).normalize(); const tc = this.itens.taco; tc.visible = true; tc.position.copy(q.butt); tc.quaternion.setFromUnitVectors(V(0, 1, 0), dir); }
+    // objetos: decide quem segura o quê neste instante (antes de posar as mãos)
+    this.decidirProps(st, r.k, tl);
+    const naMaoR = Object.keys(this.prop).find((n) => ["R", "LR", "joga"].includes(this.prop[n].h));
+    const naMaoL = Object.keys(this.prop).find((n) => this.prop[n].h === "L");
+    if (!["tecla", "tacoV", "tacoShot"].includes(p.item)) p.item = naMaoR === "joga" ? "" : naMaoR || "";
+    if (naMaoL) p.mL = Math.max(p.mL || 0, 0.9);
     b.aplicar(p, T, dt); b.desenharRosto(p, T);
     b.blob.position.set(pf.x, 0.004, pf.z); b.blob.material.opacity = cl(1 - (p.dy || 0) * 2, 0.3, 1);
-    // itens de mão
-    const it = this.itens; const q = b.root.quaternion; const hq = new THREE.Quaternion();
-    it.controle.visible = p.item === "controle"; this.ctrlMesa.visible = !it.controle.visible;
-    if (it.controle.visible) { it.controle.position.copy(b.mL).add(b.mR).multiplyScalar(0.5).add(V(0, 0.01, 0)); it.controle.quaternion.copy(q); it.controle.rotateX(-0.5); }
-    it.xicara.visible = p.item === "xicara";
-    if (it.xicara.visible) { const yaw = b.root.rotation.y; it.xicara.position.copy(b.mR).add(V(Math.sin(yaw) * 0.05, 0.06, Math.cos(yaw) * 0.05)); it.xicara.quaternion.copy(q); }
-    it.nota.visible = p.item === "nota";
-    if (it.nota.visible) { it.nota.position.copy(b.mR).add(V(0, 0.05, 0)); it.nota.quaternion.copy(q); it.nota.rotateX(1.2); }
-    it.celular.visible = p.item === "celular";
-    if (it.celular.visible) { it.celular.position.copy(b.mR).add(V(0, 0.05, 0)); it.celular.quaternion.copy(q); it.celular.rotateX(-0.35); this.desenharCel(T); }
-    it.dardo.visible = p.item === "dardo";
-    if (it.dardo.visible) { b.R.hand.getWorldQuaternion(hq); it.dardo.position.copy(b.mR); it.dardo.quaternion.copy(hq); it.dardo.rotateX(PI / 2); }
-    let moeda = p.item === "moeda";
-    if (moeda) { it.moeda.position.copy(b.mR).add(V(0, 0.02, 0)); it.moeda.quaternion.copy(q); }
+    this.moverProps(p, tl, fxk, dt);
+    if (this.itens.celular.visible) this.desenharCel(T);
     // bolas da sinuca (coordenadas da própria mesa)
     const B = this.bolas, yb = 0.81;
     const est = this.h === "feliz" ? p.bolas || "ini" : "ini";
@@ -291,6 +285,10 @@
       this.bB.position.set(cb[0], yb, cb[1]);
       this.bA.position.set(lerp(B.Y[0], B.pk[0], sai(k2)), yb - 0.06 * k3, lerp(B.Y[1], B.pk[1], sai(k2))); this.bA.scale.setScalar(1 - 0.6 * k3); this.bA.visible = k3 < 1;
       this.bA.rotation.x += dt * 20 * (k2 > 0 && k2 < 1 ? 1 : 0);
+    } else if (est === "volta") {   // a bola sai da caçapa e as duas rolam de volta para o lugar
+      const k = fase(tl, 0.3, 1.9), sobe = fase(k, 0, 0.18), rola = suave(fase(k, 0.15, 1));
+      this.bB.position.set(lerp(B.fimB[0], B.R[0], suave(fase(tl, 0.2, 1.5))), yb, lerp(B.fimB[1], B.R[1], suave(fase(tl, 0.2, 1.5))));
+      this.bA.visible = k > 0; this.bA.scale.setScalar(lerp(0.4, 1, sobe)); this.bA.position.set(lerp(B.pk[0], B.Y[0], rola), yb - 0.06 * (1 - sobe), lerp(B.pk[1], B.Y[1], rola)); this.bA.rotation.x -= dt * 12 * (rola > 0 && rola < 1 ? 1 : 0);
     } else { this.bB.position.set(B.fimB[0], yb, B.fimB[1]); this.bA.visible = false; }
     /* efeitos das recompensas */
     // cachorro
@@ -322,15 +320,12 @@
     if (this.dec.fliperama.outer.visible) { this.joy.rotation.set(jogando ? Math.sin(T * 9) * 0.35 : 0, 0, jogando ? Math.sin(T * 7.3) * 0.35 : 0); this.botoesArc.forEach((bt, i) => { bt.position.y = 1.07 - (jogando && Math.sin(T * 13 + i * 2) > 0.6 ? 0.008 : 0); }); }
     // cofre
     if (this.dec.cofre.outer.visible) { const ang = fx === "cofre" || fx === "moedaJoga" ? p.porta : 0; this.cofrePorta.rotation.y = -ang; this.cofreBrilho.material.opacity = cl(ang / 1.9) * 0.85; }
-    if (fx === "moedaJoga") { moeda = true; const k = fxk; const hgt = 4 * k * (1 - k) * 0.55; it.moeda.position.copy(b.mR).add(V(0, 0.02 + hgt, 0)); it.moeda.quaternion.copy(q); it.moeda.rotateX(k * 6 * PI); }
     // porquinho: a moeda cai no cofrinho
     if (fx === "porco") {
       const sl = this.alvoPorco();
-      if (tl > 0.9 && tl < 1.15) { moeda = true; it.moeda.position.copy(b.mR).lerp(sl, fase(tl, 0.9, 1.15)); it.moeda.quaternion.copy(q); }
       if (tl > 1.15 && this.fxId !== st.t0) { this.fxId = st.t0; this.emitir(sl, 8, "#FDE68A"); }
       const j = tl > 1.15 ? Math.sin((tl - 1.15) * 30) * Math.exp(-(tl - 1.15) * 4) : 0; this.porco.scale.set(1 + j * 0.12, 1 - j * 0.12, 1 + j * 0.12);
     } else this.porco.scale.setScalar(1);
-    it.moeda.visible = moeda;
     // troféu nas mãos
     const segura = fx === "trofeu" || (fx === "trofeuPega" && fxk > 0.92) || (fx === "trofeuSolta" && fxk < 0.85);
     if (this.dec.trofeu.outer.visible) {
@@ -414,6 +409,76 @@
     this.camAtual.pos.lerp(c.pos, k); this.camAtual.alvo.lerp(c.alvo, k); this.camAtual.fov = lerp(this.camAtual.fov, c.fov, k);
     this.cam.position.copy(this.camAtual.pos); this.cam.lookAt(this.camAtual.alvo); if (Math.abs(this.cam.fov - this.camAtual.fov) > 0.01) { this.cam.fov = this.camAtual.fov; this.cam.updateProjectionMatrix(); }
     this.renderer.render(this.scene, this.cam);
+  }
+  /* ----- objetos de mão: cada um tem um lugar (casa) e passa para a mão no instante do toque ----- */
+  get prop() {
+    if (!this._prop) { this._prop = {}; for (const n of ["controle", "xicara", "celular", "moeda", "nota", "maco", "dardo", "aljava"]) this._prop[n] = { h: "casa", t0: -1, dur: 0, de: null }; }
+    return this._prop;
+  }
+  // lugar de cada objeto quando ninguém está segurando (null = guardado no bolso)
+  casaDe(n) {
+    const yq = (r) => new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), r);
+    if (n === "controle") return { pos: this.pto("sofa", 2.72, 0.555, 2.92), quat: yq(this.giro(this.moveis.sofa) + 0.5) };
+    if (n === "xicara") return { pos: this.pto("cafe", 0.43, 0.92, 5.06), quat: yq(this.giro(this.moveis.cafe) - PI / 2) };
+    return null;
+  }
+  bico() { return this.pto("cafe", 0.4, 0.99, 4.9); }
+  botaoCafe() { return this.pto("cafe", 0.36, 1.3, 4.97); }
+  bolso(lado = "R") { return this.boneco.root.localToWorld(V(lado === "R" ? 0.17 : -0.17, 0.84, 0.05)); }
+  // st.props: { nome: "casa" | "R" | "L" | "LR" | "joga" | "cofrinho" | (k, tl) => ... }
+  decidirProps(st, k, tl) {
+    const spec = st && st.props; if (!spec) return;
+    for (const n in spec) {
+      const pr = this.prop[n]; if (!pr) continue;
+      const v = typeof spec[n] === "function" ? spec[n](k, tl) : spec[n];
+      if (v && v !== pr.h) { pr.h = v; pr.troca = true; }
+    }
+  }
+  // todos de volta para o lugar (quando o boneco é interrompido no meio de uma ação)
+  guardarProps() { for (const n in this.prop) if (this.prop[n].h !== "casa") { this.prop[n].h = "casa"; this.prop[n].troca = true; } }
+  alvoProp(n, h, p, tl, fxk) {
+    const b = this.boneco; const yaw = b.root.rotation.y; const qy = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), yaw);
+    const mao = (lado) => { const hd = lado === "L" ? b.L.hand : b.R.hand; const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), sc = new THREE.Vector3(); hd.matrixWorld.decompose(pos, quat, sc); return { pos: (lado === "L" ? b.mL : b.mR).clone(), quat }; };
+    const naMao = (lado, off, rot) => { const m = mao(lado); const pos = m.pos.add(V(...off).applyQuaternion(m.quat)); const quat = rot ? qy.clone().multiply(rot) : m.quat; return { pos, quat, vis: true }; };
+    const rx = (a) => new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), a), ry = (a) => new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), a);
+    if (h === "casa") { const c = this.casaDe(n); return c ? { ...c, vis: true } : { pos: this.bolso(n === "maco" || n === "aljava" ? "L" : "R"), quat: qy, vis: false }; }
+    if (n === "controle") {
+      const meio = b.mL.clone().add(b.mR).multiplyScalar(0.5).add(V(0, 0.01, 0)); const d = b.mL.distanceTo(b.mR);
+      const um = naMao("R", [0, 0.0, 0.03], rx(-0.5)); const w = h === "LR" ? suave((d - 0.2) / 0.16) : 1;
+      return { pos: meio.lerp(um.pos, w), quat: qy.clone().multiply(rx(-0.5)), vis: true };
+    }
+    if (h === "joga") { const m = mao("R"); const k = cl(fxk); m.pos.y += 0.02 + 4 * k * (1 - k) * 0.55; return { pos: m.pos, quat: qy.clone().multiply(rx(k * 6 * PI)), vis: true }; }
+    if (h === "cofrinho") { const m = mao("R"); const sl = this.alvoPorco(); const k = fase(tl, 0.9, 1.15); return { pos: m.pos.lerp(sl, k), quat: qy, vis: k < 1 }; }
+    const lado = h === "L" ? "L" : "R";
+    if (n === "xicara") return naMao(lado, [0, -0.045, 0.06], rx(-(p.gole || 0) * 1.25));
+    if (n === "celular") return naMao(lado, [0, 0.035, 0.03], ry(PI).multiply(rx(-0.45)));
+    if (n === "dardo") return naMao(lado, [0, -0.01, 0.03], rx(-PI / 2 + 0.25));
+    if (n === "aljava") return naMao(lado, [0, -0.01, 0.035], rx(-PI / 2 + 0.3));
+    if (n === "nota" || n === "maco") return naMao(lado, [0, -0.02, 0.035], rx(1.2));
+    return naMao(lado, [0, -0.01, 0.025], null);
+  }
+  moverProps(p, tl, fxk, dt) {
+    const agora = performance.now() / 1000;
+    for (const n in this.prop) {
+      const pr = this.prop[n], o = this.itens[n]; if (!o) continue;
+      const alvo = this.alvoProp(n, pr.h, p, tl, fxk);
+      if (pr.troca) {
+        pr.troca = false; const de = { pos: o.position.clone(), quat: o.quaternion.clone(), vis: o.visible };
+        if (!o.visible) { de.pos = alvo.pos.clone(); de.quat = alvo.quat.clone(); }   // sai do bolso direto na mão
+        pr.de = de; pr.t0 = agora; pr.dur = cl(0.12 + de.pos.distanceTo(alvo.pos) * 0.3, 0.12, 0.6);
+      }
+      if (!alvo.vis) pr.de = null;   // guardar no bolso, soltar a nota, arremessar: some na hora, na mão
+      let k = pr.de && pr.dur ? cl((agora - pr.t0) / pr.dur) : 1; if (dt === 0 || !this.propsProntos) k = 1;
+      if (k < 1) {
+        const w = suave(k); const d = pr.de.pos.distanceTo(alvo.pos);
+        o.position.copy(pr.de.pos).lerp(alvo.pos, w); o.position.y += Math.sin(PI * w) * Math.min(0.15, d * 0.25);
+        o.quaternion.copy(pr.de.quat).slerp(alvo.quat, w); o.visible = pr.de.vis || alvo.vis;
+      } else { o.position.copy(alvo.pos); o.quaternion.copy(alvo.quat); o.visible = alvo.vis; pr.de = null; }
+    }
+    this.propsProntos = true;
+    // dardos que sobram na mão esquerda
+    const jogados = (this.voos || []).length + (this.prop.dardo.h === "R" ? 1 : 0);
+    this.aljavaD.forEach((d, i) => { d.visible = i < 3 - jogados; });
   }
   desenharCel(T) {
     if (T - (this.tCel || -9) < 0.2) return; this.tCel = T;
