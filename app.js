@@ -311,7 +311,7 @@
     return TICKER_RE.test(t) ? `https://icons.brapi.dev/icons/${encodeURIComponent(t)}.svg` : null;
   }
   function logoHtml(t, big) {
-    const u = logoUrl(t), letras = esc(t.replace(/\..*$/, "").slice(0, 4));
+    const u = logoUrl(t), letras = esc(t.replace(/\..*$/, "").replace(/-BRL$/, "").slice(0, 4));
     return u ? `<img class="lg${big ? " big" : ""}" src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fallback="${letras}">` : `<span class="lg${big ? " big" : ""} lg-x" aria-hidden="true">${letras}</span>`;
   }
   // Logo que não carrega vira as letras do código
@@ -416,7 +416,7 @@
     q(".g-rev").setAttribute("width", W * (e.rev ?? 1));
     // escala: linhas e valores à direita
     const passo = passoBonito((e.y1 - e.y0) / 3.2); let g = "";
-    for (let v = Math.ceil(e.y0 / passo) * passo; v < e.y1; v += passo) { const y = Y(v).toFixed(1); g += `<line x1="${P}" x2="${x1p}" y1="${y}" y2="${y}"/><text x="${x1p + 8}" y="${(+y + 4).toFixed(1)}" font-size="10.5">${esc(compactoG(v))}</text>`; }
+    const lyE = Y(e.v[e.v.length - 1]); for (let v = Math.ceil(e.y0 / passo) * passo; v < e.y1; v += passo) { const y = Y(v).toFixed(1); g += `<line x1="${P}" x2="${x1p}" y1="${y}" y2="${y}"/>` + (Math.abs(+y - lyE) < 16 ? "" : `<text x="${x1p + 8}" y="${(+y + 4).toFixed(1)}" font-size="10.5">${esc(compactoG(v))}</text>`); }
     q(".g-grade").innerHTML = g;
     // eixo do tempo
     let ex = "";
@@ -442,7 +442,7 @@
     const varP = (ult / e.base - 1) * 100;
     const res = wrap.querySelector(".g-res");
     if (res) {
-      res.querySelector(".g-rot").textContent = rot + ":"; const vb = res.querySelector(".g-var"); vb.textContent = pct(varP) + " (" + sinal(ult - e.base, c.fmt) + ")"; vb.className = "g-var " + cls(varP);
+      res.querySelector(".g-rot").textContent = rot + ":"; const vb = res.querySelector(".g-var"); vb.textContent = pct(varP) + " (" + sinal(ult - e.base, (x) => c.fmt(Math.round(x * 100) / 100)) + ")"; vb.className = "g-var " + cls(varP);
       res.querySelector(".g-de").textContent = e.hoje ? (c.base && diaSP(e.ts[e.ts.length - 1]) === hojeISO() ? "sobre o fechamento de ontem" : "") : `(${c.fmt(e.v[0])} → ${c.fmt(ult)})`;
       const vv = res.querySelector(".g-vivo"); if (vv) { vv.hidden = !VIVO.ativo(); const em = vv.querySelector("em"); em.textContent = VIVO.rotulo(); }
     }
@@ -591,6 +591,7 @@
   // atualiza o que mostra preço sem redesenhar a página inteira
   function aplicarVivo() {
     renderStatus(); renderHero(); renderEscritorio();
+    if (Date.now() - (VIVO.diaT || 0) > 20000) { VIVO.diaT = Date.now(); try { renderDia(); renderTape(); } catch (_) { /* seção ainda não montada */ } }
     try {
       const { rows } = linhas();
       rows.forEach((r) => {
@@ -746,7 +747,7 @@
     pedirIntradia();
     const intraH = comVivo(serieIntradia(RF ? RF.bruto : 0), VIVO.pts), baseH = T.temPreco || rfV ? patrTot - dia : null;
     if (box.querySelector('[data-cw="hero"]') && atualizarGrafico("hero", serie, { intra: intraH, base: baseH })) return;
-    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff", intra: intraH, base: baseH, vivo: true }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${comRF ? ", com a renda fixa incluída (o saldo de hoje recalculado pelo CDI de cada dia)" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
+    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff", intra: intraH, base: baseH, vivo: true }) + `<p class="hint g-nota" style="color:rgba(255,255,255,.75);margin:6px 0 0">Com as quantidades de hoje${temUsd ? " · dólar ao câmbio atual" : ""}${comRF ? " · renda fixa incluída" : ""}${fora ? ` · ${fora} ${fora === 1 ? "ativo sem histórico ficou" : "ativos sem histórico ficaram"} de fora` : ""}.</p>`;
     ligarGrafico("hero");
   }
 
@@ -778,12 +779,14 @@
   function renderDeco() {
     if (!window.RadarEscritorio) return;
     const lib = new Set((S.conq && S.conq.itens) || []); const off = new Set(((escLayout() || {}).off) || []);
-    $("#esc-deco").innerHTML = `<span class="hint" style="border:0;background:none;padding-left:0">Decoração (libera com as recompensas; toque para guardar ou colocar):</span>` + window.RadarEscritorio.DECOR.map((x) => {
+    const itens = window.RadarEscritorio.DECOR.map((x) => {
       const ok = lib.has(x.item) || S.escTudo;
       if (!ok) return `<span class="lock" title="${esc(x.req)}">${IC(x.ic + ":d")} ${esc(x.nome)} · ${esc(x.req)}</span>`;
       const on = !off.has(x.id);
       return `<button type="button" data-deco="${x.id}" aria-pressed="${on}" title="${on ? "No escritório. Toque para guardar." : "Guardado. Toque para colocar de volta."}">${IC(x.ic + ":d")} ${esc(x.nome)} ${IC(on ? "check" : "eye-slash")}</button>`;
     }).join("");
+    const nLib = window.RadarEscritorio.DECOR.filter((x) => lib.has(x.item) || S.escTudo).length, det = $("#esc-deco").querySelector("details");
+    $("#esc-deco").innerHTML = `<details class="deco-det"${det && det.open ? " open" : ""}><summary>${IC("sparkle")} Decoração do escritório <b>${nLib} de ${window.RadarEscritorio.DECOR.length}</b> <span class="hint">libera com as recompensas · toque para guardar ou colocar</span></summary><div class="deco-l">${itens}</div></details>`;
   }
   $("#esc-deco").addEventListener("click", (e) => {
     const b = e.target.closest("[data-deco]"); if (!b || !window.RadarEscritorio) return;
@@ -946,7 +949,7 @@
     if (m.dolar) it.push({ n: "Dólar", v: "R$ " + num(m.dolar.valor, 3), vd: m.dolar.varDia });
     const btc = S.cotMap["BTC-BRL"]; if (btc) it.push({ t: "BTC-BRL", n: "Bitcoin", v: brl(btc.preco), vd: btc.var_dia });
     const mine = new Set(S.carteira.map((p) => p.ticker));
-    S.carteira.forEach((p) => { const c = S.cotMap[p.ticker]; if (c) it.push({ t: p.ticker, n: p.ticker, v: px(p.ticker, c.preco), vd: c.var_dia, mine: true }); });
+    S.carteira.forEach((p) => { const q = cotacao(p.ticker); if (q && q.preco != null) it.push({ t: p.ticker, n: p.ticker, v: px(p.ticker, q.preco), vd: q.varDia, mine: true }); });   // com o preço ao vivo
     S.cot.filter((r) => r.classe === "acao" && !mine.has(r.ticker)).slice(0, 10).forEach((r) => it.push({ t: r.ticker, n: r.ticker, v: brl(r.preco), vd: r.var_dia }));
     if (!it.length) return;
     const h = it.map((x) => `<${x.t ? `button type="button" data-emp="${esc(x.t)}"` : "span"} class="tape-it${x.mine ? " mine" : ""}"><b>${esc(x.n)}</b><span class="num">${esc(x.v)}</span><span class="num ${cls(x.vd)}">${esc(pct(x.vd))}</span></${x.t ? "button" : "span"}>`).join("");
@@ -968,6 +971,7 @@
     contar($("#thermo-score"), nota, (v) => "nota " + Math.round(v) + " de 100");
     $("#thermo-resumo").textContent = t.resumo || "";
     $("#fatores").innerHTML = (t.fatores || []).map((f) => { const e = ["positivo", "negativo"].includes(f.efeito) ? f.efeito : "neutro"; return `<li><span class="mark ${e}">${e === "positivo" ? "+" : e === "negativo" ? "−" : "·"}</span><span>${esc(f.texto)}</span></li>`; }).join("");
+    const fd = $("#fat-det"); if (fd && !fd.dataset.ini) { fd.dataset.ini = "1"; if (window.innerWidth >= 900) fd.open = true; }   // no computador o espaço já existe: mostra os motivos abertos
     const ts = m.atualizadoEm || m._ts;
     $("#thermo-when").textContent = ts ? "Atualizado " + ago(ts) : "";
     const k = [];
@@ -1118,7 +1122,7 @@
     itens.sort((x, y) => ((y.s && y.s.nota != null) ? y.s.nota : -1) - ((x.s && x.s.nota != null) ? x.s.nota : -1) || (y.pot || 0) - (x.pot || 0));
     box.innerHTML = itens.map(({ r, s, an, pot, c, n, v, t }) => `<button type="button" class="an-row" data-emp="${esc(r.t)}">
         <span class="an-tk"><span><span class="tk" style="font-size:15px">${esc(r.t)}</span> ${clsChip(r.classe)}</span><span class="nm">${esc(r.nome)}</span></span>
-        <span class="an-bar">${t ? `<span class="sbar" role="img" aria-label="${c} compra, ${n} neutro, ${v} venda"><i class="c" style="width:${c / t * 100}%"></i><i class="n" style="width:${n / t * 100}%"></i><i class="v" style="width:${v / t * 100}%"></i></span><small>${c} de ${t} recomendam compra${v ? ", " + v + " venda" : ""}</small>` : `<small class="hint">${s ? (r.classe === "fii" || r.classe === "etf" || r.classe === "etf_ext" ? "Fundos não têm cobertura de analistas" : "Sem cobertura de analistas") : "Aguardando a próxima atualização"}</small>`}</span>
+        <span class="an-bar">${t ? `<span class="sbar" role="img" aria-label="${c} compra, ${n} neutro, ${v} venda"><i class="c" style="width:${c / t * 100}%"></i><i class="n" style="width:${n / t * 100}%"></i><i class="v" style="width:${v / t * 100}%"></i></span><small>${c} de ${t} recomendam compra${v ? ", " + v + " venda" : ""}</small>` : `<small class="hint">${s ? (r.classe === "fii" || r.classe === "etf" || r.classe === "etf_ext" ? "Fundos não têm cobertura de analistas" : "Sem cobertura de analistas") : r.classe === "fii" || r.classe === "etf" || r.classe === "etf_ext" ? "Fundos não têm cobertura de analistas" : r.classe === "cripto" ? "Criptomoedas não têm cobertura de analistas" : "Aguardando a próxima atualização"}</small>`}</span>
         <span class="an-alvo">${an && an.alvoMedio != null ? `<b>${money(an.alvoMedio, r.moeda)}</b><small class="${cls(pot)}">${pot != null ? pct(pot) + " até o alvo" : ""}</small>` : `<small class="hint">—</small>`}</span>
         <span class="an-tec">${s && s.tecnico ? `<small class="hint">Técnico</small><b class="${/Compra/.test(s.tecnico.rotulo) ? "up" : /Venda/.test(s.tecnico.rotulo) ? "down" : ""}">${esc(s.tecnico.rotulo)}</b>` : ""}</span>
         <span class="an-chip">${s ? sentChip(s) : ""}</span>

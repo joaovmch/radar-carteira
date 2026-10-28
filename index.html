@@ -184,6 +184,7 @@ main{padding-block:22px 80px}
 .hk b{display:block;font-family:var(--mono);font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .hk small{display:block;font-family:var(--mono);font-size:12px;opacity:.85;margin-top:1px}
 .hk .hint{color:rgba(255,255,255,.75)}
+@media (max-width:480px){.hk b{font-size:clamp(13px,4vw,15px);letter-spacing:-.02em}}
 .hero .up{color:#86EFAC}.hero .down{color:#FCA5A5}
 .alloc{margin-top:18px}
 .alloc-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.15);gap:2px}
@@ -238,6 +239,7 @@ details.fat[open] .fatores{animation:rise .35s var(--ease)}
 .kpi .label{display:flex;align-items:center;gap:6px}
 .kpi b{display:block;font-family:var(--mono);font-size:clamp(15px,3.6vw,19px);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi small{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.kpi b small{display:block;margin-top:2px;font-size:12px;overflow:hidden;text-overflow:ellipsis}
 .spark{display:block;width:100%;height:26px;margin-top:4px}
 
 /* ---------- Carteira ---------- */
@@ -281,7 +283,7 @@ details.fat[open] .fatores{animation:rise .35s var(--ease)}
 @keyframes tickD{0%,30%{background:var(--down-bg);color:var(--down)}}
 .c-sent{text-align:center}
 .c-sig{text-align:right}
-@media (max-width:760px){.pos-head,.pos-row{grid-template-columns:minmax(0,1.4fr) minmax(0,1.1fr) auto}.c-preco,.c-sent{display:none}.pos-id{grid-template-columns:32px minmax(0,1fr)}.pos-id .lg{width:32px;height:32px}}
+@media (max-width:760px){.pos-head,.pos-row{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}.pos-row .pos-id{grid-row:1 / span 2}.pos-row .cell,.pos-row .c-sig{grid-column:2}.pos-head span:last-child{display:none}.c-sig .pill{font-size:11px;padding:2px 8px}.c-preco,.c-sent{display:none}.pos-id{grid-template-columns:32px minmax(0,1fr)}.pos-id .lg{width:32px;height:32px}.pos-row .tk{white-space:nowrap}}
 .pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;white-space:nowrap}
 .s-reforcar{background:var(--up-bg);color:var(--up)}
 .s-manter{background:var(--surface);color:var(--fg);border:1px solid var(--line)}
@@ -777,6 +779,8 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .lg{width:44px;height:44px;border-radius:11px;object-fit:contain;background:var(--sunk);grid-row:1 / span 2;display:block}
 .lg.big{width:64px;height:64px;border-radius:16px}
 .lg-x{display:grid;place-items:center;font-family:var(--display);font-weight:800;font-stretch:80%;color:var(--muted);font-size:13px}
+.lg-x{overflow:hidden;letter-spacing:-.02em}.pos-id .lg-x,.dia-mov .lg-x{font-size:11px}.tbl .idc .lg-x{font-size:9.5px}
+@media (max-width:760px){.pos-id .lg-x{font-size:9.5px}}
 
 /* Gaveta */
 .drawer{position:fixed;inset:0;z-index:50;display:flex;justify-content:flex-end}
@@ -910,10 +914,18 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .of-porco{animation:ofFlutua 2.6s ease-in-out infinite}
 .of-glow{animation:ofLuz 2.8s ease-in-out infinite}.of-glow.d2{animation-delay:-1.3s}
 .of-feixe{animation:ofLuz 7s ease-in-out infinite}
-.of-deco{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
-.of-deco span{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface)}
-.of-deco span.lock{opacity:.55;border-style:dashed}
-.of-deco span.ok{border-color:color-mix(in srgb,var(--up) 45%,var(--line));background:color-mix(in srgb,var(--up) 8%,var(--surface))}
+.of-deco{margin:10px 0 0}
+.of-deco .deco-l{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.deco-det summary{cursor:pointer;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;list-style:none}
+.deco-det summary::-webkit-details-marker{display:none}
+.deco-det summary::after{content:"";width:7px;height:7px;border-right:2px solid var(--faint);border-bottom:2px solid var(--faint);transform:rotate(45deg);margin-left:2px;transition:transform .2s}
+.deco-det[open] summary::after{transform:rotate(225deg)}
+.deco-det summary b{font-family:var(--mono);font-size:12px;padding:1px 7px;border-radius:99px;background:var(--sunk)}
+.deco-det summary .hint{font-size:12px;order:3;flex-basis:100%}
+.deco-det summary .ic{width:15px;height:15px;color:var(--accent)}
+.of-deco .deco-l>span{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface)}
+.of-deco .deco-l>span.lock{opacity:.55;border-style:dashed}
+.of-deco .deco-l>span.ok{border-color:color-mix(in srgb,var(--up) 45%,var(--line));background:color-mix(in srgb,var(--up) 8%,var(--surface))}
 /* cenário */
 .of-sol{transform-box:fill-box!important;transform-origin:center;animation:sweep 18s linear infinite}
 .of-nuvem{animation:ofNuvem 9s ease-in-out infinite alternate}.of-nuvem.d2{animation-duration:7s;animation-direction:alternate-reverse}
@@ -1215,7 +1227,7 @@ button .ic,.btn .ic{margin:0}
             <div class="rot" id="thermo-rot">—</div>
             <p class="resumo" id="thermo-resumo"><span class="skel">Carregando o clima do mercado…</span></p>
           </div>
-          <details class="fat"><summary>O que está pesando hoje</summary><ul class="fatores" id="fatores"></ul></details>
+          <details class="fat" id="fat-det"><summary>O que está pesando hoje</summary><ul class="fatores" id="fatores"></ul></details>
         </div>
         <div class="kpis" id="kpis"></div>
       </div>
@@ -1409,6 +1421,6 @@ button .ic,.btn .ic{margin:0}
 <script src="vendor/supabase-js-2.45.4.js"></script>
 <script src="icones.js?v=4"></script>
 <script src="escritorio.js?v=3d13"></script>
-<script src="app.js?v=20261102v"></script>
+<script src="app.js?v=20261102w"></script>
 </body>
 </html>
