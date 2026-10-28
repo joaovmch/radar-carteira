@@ -243,8 +243,9 @@
       .subscribe();
     abrirPeloEndereco();
     carregarCambio(true);
+    vivoIniciar();
   }
-  function parar() { if (canal) { sb.removeChannel(canal); canal = null; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
+  function parar() { vivoParar(); if (canal) { sb.removeChannel(canal); canal = null; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
   async function carregarCarteira() {
     const { data, error } = await sb.from("carteira").select("id,ticker,qtd,pm").order("criado_em");
     if (error) { toast("Não foi possível carregar sua carteira. Recarregue a página."); return; }
@@ -300,7 +301,7 @@
   });
 
   function renderAll() { renderStatus(); renderMercado(); renderConv(); renderHero(); renderDia(); renderEscritorio(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); renderRanking(); }
-  function renderStatus() { $("#last-upd").textContent = S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
+  function renderStatus() { const el = $("#last-upd"); const v = typeof VIVO !== "undefined" && VIVO.ativo(); el.classList.toggle("vivo", v); el.textContent = v ? "Cotações " + VIVO.rotulo() : S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
 
   /* ---------- Logos ---------- */
   function logoUrl(t) {
@@ -317,23 +318,28 @@
   document.addEventListener("error", (e) => { const i = e.target; if (i && i.tagName === "IMG" && i.dataset.fallback != null) { const s = document.createElement("span"); s.className = i.className + " lg-x"; s.textContent = i.dataset.fallback; i.replaceWith(s); } else if (i && i.tagName === "IMG" && i.closest(".gal")) { const f = i.closest("figure"); if (f) f.remove(); } }, true);
 
   /* ---------- Gráficos interativos (perfil do ativo e evolução da carteira) ---------- */
+  /* ---------- Gráficos: desenho vivo, que anda suave quando chega um ponto novo ---------- */
   const PERIODOS = [["1M", 23], ["3M", 66], ["6M", 130], ["1A", 9999]];
-  const INTRA = [["Hoje", "dia"], ["5D", "5d"]];   // ao longo do dia (cotações a cada 2 minutos no pregão)
+  const INTRA = [["Hoje", "dia"], ["5D", "5d"]];   // ao longo do dia
   const CH = {};
-  const G = { W: 640, H: 180, P: 6 };
+  const G = { W: 640, H: 200, P: 8, R: 86 };   // R: margem da direita, para a escala e o preço atual
   const ehIntra = (per) => INTRA.some((x) => x[0] === per);
-  // opt.intra: série [ts, valor] com pontos ao longo do dia (opcional)
+  const diaSP = (ts) => new Date(ts * 1000).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const horaSP = (ts) => new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  const suaveG = (k) => k < 0 ? 0 : k > 1 ? 1 : 1 - Math.pow(1 - k, 3);
+  const compactoG = (v) => { const a = Math.abs(v); return a >= 1e6 ? num(v / 1e6, a >= 1e7 ? 1 : 2) + " mi" : a >= 1e4 ? num(v / 1e3, a >= 1e5 ? 0 : 1) + " mil" : num(v, a >= 100 ? 0 : 2); };
+  // opt.intra: série [ts, valor] ao longo do dia; opt.base: fechamento do dia anterior; opt.vivo: recebe pontos novos a cada poucos segundos
   function chartBox(key, serie, opt) {
     if (!serie || serie.length < 3) return "";
     const ant = CH[key] || {};
     const intra = opt.intra && opt.intra.length ? opt.intra : null;
-    let per = ant.per || "1A"; if (ehIntra(per) && !intra) per = "1A";
-    CH[key] = { serie, intra, per, fmt: opt.fmt, cor: opt.cor || null, anim: !ant.drawn && !reduz, drawn: ant.drawn };
+    const temHoje = intra && diaSP(intra[intra.length - 1][0]) === hojeISO();
+    let per = ant.escolhido ? ant.per : temHoje ? "Hoje" : (ant.per || "1A"); if (ehIntra(per) && !intra) per = "1A";
+    CH[key] = { escolhido: !!ant.escolhido, serie, intra, per, fmt: opt.fmt, cor: opt.cor || null, base: opt.base ?? null, vivo: !!opt.vivo, vis: null, raf: 0, novo: true };
     const bts = (intra ? INTRA : []).concat(PERIODOS);
-    return `<div class="g-per" role="group" aria-label="Período" data-chart="${key}">${bts.map(([p]) => `<button type="button" data-per="${p}" aria-pressed="${p === CH[key].per}">${p}</button>`).join("")}</div>
+    return `<div class="g-per" role="group" aria-label="Período" data-chart="${key}">${bts.map(([p]) => `<button type="button" data-per="${p}" aria-pressed="${p === per}">${p}</button>`).join("")}</div>
       <div class="chart-wrap" data-cw="${key}">${chartSvg(key)}<div class="g-tip" hidden></div></div>`;
   }
-  const diaSP = (ts) => new Date(ts * 1000).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
   function recorte(key) {
     const c = CH[key];
     if (ehIntra(c.per) && c.intra) {
@@ -343,74 +349,272 @@
     }
     const n = (PERIODOS.find((p) => p[0] === c.per) || PERIODOS[3])[1]; return c.serie.slice(-Math.min(n, c.serie.length));
   }
+  // Pontos prontos para desenhar. "Hoje" usa o relógio no eixo x (o dia inteiro do pregão, a linha vai avançando);
+  // os outros períodos usam a ordem dos pontos. Séries longas viram blocos fixos (o último ponto de cada bloco),
+  // assim um ponto novo só mexe no fim da linha e a animação fica contínua.
+  function prepGrafico(key) {
+    const c = CH[key], s = recorte(key); if (s.length < 2) return null;
+    const hoje = c.per === "Hoje";
+    let x0, x1, tx, ts, v;
+    if (hoje) {
+      const d = diaSP(s[0][0]); const ab = Date.parse(d + "T10:00:00-03:00") / 1000, fe = Date.parse(d + "T18:00:00-03:00") / 1000;
+      x0 = Math.min(s[0][0], ab); x1 = Math.max(s[s.length - 1][0], fe);
+      const B = (x1 - x0) / 360; const out = [];
+      s.forEach((p) => { const b = Math.floor((p[0] - x0) / B); if (out.length && out[out.length - 1].b === b) out[out.length - 1].p = p; else out.push({ b, p }); });
+      ts = out.map((o) => o.p[0]); v = out.map((o) => o.p[1]); tx = ts.slice();
+    } else {
+      let B = 1; while (s.length / B > 420) B *= 2;
+      const out = []; for (let i = 0; i < s.length; i += B) out.push(s[Math.min(s.length - 1, i + B - 1)]);
+      if (out[out.length - 1] !== s[s.length - 1]) out.push(s[s.length - 1]);
+      ts = out.map((p) => p[0]); v = out.map((p) => p[1]); tx = out.map((_, i) => i); x0 = 0; x1 = out.length - 1;
+    }
+    const hojeMesmo = hoje && diaSP(ts[ts.length - 1]) === hojeISO();
+    const base = hojeMesmo && c.base > 0 ? c.base : v[0];
+    let mn = Math.min(base, ...v), mx = Math.max(base, ...v);
+    const minR = Math.abs(mx) * 0.003 || 1; if (mx - mn < minR) { const m = (mx + mn) / 2; mn = m - minR / 2; mx = m + minR / 2; }
+    const fol = (mx - mn) * 0.12;
+    return { hoje, tx, ts, v, x0, x1, y0: mn - fol, y1: mx + fol, base, n: tx.length };
+  }
+  function passoBonito(r) { const p = Math.pow(10, Math.floor(Math.log10(r))); const f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
   function chartSvg(key) {
-    const c = CH[key], serie = recorte(key); const { W, H, P } = G;
-    if (serie.length < 2) return ehIntra(c.per) ? `<p class="hint" style="margin:14px 0;${c.cor ? "color:rgba(255,255,255,.8)" : ""}">O gráfico do dia vai se formando durante o pregão: o Radar guarda as cotações a cada 2 minutos. Volte depois da abertura da bolsa.</p>` : "";
-    const ys = serie.map((p) => p[1]), min = Math.min(...ys), max = Math.max(...ys), rng = max - min || 1;
-    const x = (i) => P + i * (W - 2 * P) / (serie.length - 1), y = (v) => H - P - (v - min) / rng * (H - 2 * P);
-    const d = serie.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
-    const sobe = ys[ys.length - 1] >= ys[0]; const cor = c.cor || (sobe ? "var(--up)" : "var(--down)");
-    const longo = (serie[serie.length - 1][0] - serie[0][0]) > 100 * 86400;
-    const hora = (ts) => new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-    const f = (ts) => c.per === "Hoje" ? hora(ts) : c.per === "5D" ? new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", timeZone: "America/Sao_Paulo" }) + " " + hora(ts) : new Date(ts * 1000).toLocaleDateString("pt-BR", longo ? { month: "short", year: "2-digit" } : { day: "2-digit", month: "short" });
-    const varP = (ys[ys.length - 1] / ys[0] - 1) * 100;
-    const anim = c.anim; c.anim = false; c.drawn = true;
+    const lw = window.innerWidth || 1024; G.W = lw < 700 ? Math.max(300, lw - 48) : 640; G.H = lw < 700 ? 180 : 200; G.R = lw < 700 ? 76 : 86;   // 1 unidade ≈ 1 pixel: texto legível no celular
+    const c = CH[key]; const pr = prepGrafico(key); const { W, H } = G;
+    if (!pr) return ehIntra(c.per) ? `<p class="hint" style="margin:14px 0;${c.cor ? "color:rgba(255,255,255,.8)" : ""}">O gráfico do dia vai se formando durante o pregão. Volte depois da abertura da bolsa (10h).</p>` : "";
     const gid = "gr-" + key;
-    return `<p class="g-res">${c.per === "Hoje" ? "Hoje" : "No período"}: <b class="${cls(varP)}">${pct(varP)}</b> <span class="hint">(${esc(c.fmt(ys[0]))} → ${esc(c.fmt(ys[ys.length - 1]))})</span></p>
-    <svg class="chart" data-svg="${key}" viewBox="0 0 ${W} ${H + 18}" role="img" aria-label="Valor no período, de ${esc(c.fmt(ys[0]))} para ${esc(c.fmt(ys[ys.length - 1]))}">
-      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${cor}" stop-opacity=".28"/><stop offset="1" stop-color="${cor}" stop-opacity="0"/></linearGradient></defs>
-      <path class="${anim ? "ar" : ""}" d="${d} L${x(serie.length - 1).toFixed(1)} ${H - P} L${P} ${H - P} Z" fill="url(#${gid})"/>
-      <path class="${anim ? "ln" : ""}" pathLength="1000" style="${anim ? "stroke-dasharray:1000;stroke-dashoffset:1000" : ""}" d="${d}" fill="none" stroke="${cor}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-      <text x="${P}" y="${H + 14}" font-size="11" fill="var(--muted)">${esc(f(serie[0][0]))}</text>
-      <text x="${W - P}" y="${H + 14}" font-size="11" fill="var(--muted)" text-anchor="end">${esc(f(serie[serie.length - 1][0]))}</text>
-      <text x="${W - P}" y="${y(max) + 12}" font-size="11" fill="var(--muted)" text-anchor="end">máx. ${esc(c.fmt(max))}</text>
-      <text x="${W - P}" y="${y(min) - 4}" font-size="11" fill="var(--muted)" text-anchor="end">mín. ${esc(c.fmt(min))}</text>
-      <g class="g-mira" visibility="hidden"><line class="g-linha" y1="${P}" y2="${H - P}" stroke="${c.cor ? "rgba(255,255,255,.6)" : "var(--muted)"}" stroke-width="1" stroke-dasharray="3 3"/><circle class="g-ponto" r="5" fill="${cor}" stroke="${c.cor ? "var(--hero-a)" : "var(--surface)"}" stroke-width="2"/></g>
-      <rect class="g-area" x="0" y="0" width="${W}" height="${H}" fill="transparent" style="cursor:crosshair;touch-action:pan-y"/>
+    return `<p class="g-res"><span class="g-rot"></span> <b class="g-var"></b> <span class="hint g-de"></span>${c.vivo && c.per === "Hoje" ? ` <span class="g-vivo" hidden><i></i><em>ao vivo</em></span>` : ""}</p>
+    <svg class="chart" data-svg="${key}" viewBox="0 0 ${W} ${H + 22}" role="img" aria-label="Gráfico do período">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop class="g-s0" offset="0" stop-opacity=".30"/><stop class="g-s1" offset="1" stop-opacity="0"/></linearGradient>
+        <clipPath id="${gid}-r"><rect class="g-rev" x="0" y="-10" width="${W}" height="${H + 20}"/></clipPath>
+        <clipPath id="${gid}-a"><rect class="g-ca" x="0" y="-10" width="${W}" height="0"/></clipPath><clipPath id="${gid}-b"><rect class="g-cb" x="0" y="0" width="${W}" height="${H + 10}"/></clipPath></defs>
+      <g class="g-grade"></g><g class="g-eixo"></g>
+      <line class="g-base" stroke-dasharray="4 4"/>
+      <g clip-path="url(#${gid}-r)"><path class="g-area" fill="url(#${gid})"/>
+        <path class="g-ln g-up" clip-path="url(#${gid}-a)" fill="none" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+        <path class="g-ln g-dn" clip-path="url(#${gid}-b)" fill="none" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></g>
+      <g class="g-fim"><circle class="g-pulso" r="4"/><circle class="g-dot" r="4.2"/></g>
+      <g class="g-preco"><rect rx="5" height="20"/><text font-size="11.5" font-weight="700" text-anchor="middle"></text></g>
+      <g class="g-mira" visibility="hidden"><line class="g-linha" stroke-width="1" stroke-dasharray="3 3"/><circle class="g-ponto" r="5" stroke-width="2"/></g>
+      <rect class="g-toque" x="0" y="0" width="${W}" height="${H}" fill="transparent" style="cursor:crosshair;touch-action:pan-y"/>
     </svg>`;
+  }
+  // Desenha um estado (no meio de uma animação, os valores vêm interpolados)
+  function desenharGrafico(key, e) {
+    const c = CH[key]; const wrap = document.querySelector(`[data-cw="${key}"]`); const svg = wrap && wrap.querySelector("svg"); if (!svg || !e) return;
+    const { W, H, P, R } = G; const x1p = W - R, y1p = H - P;
+    const X = (t) => P + (t - e.x0) / ((e.x1 - e.x0) || 1) * (x1p - P), Y = (v) => P + (e.y1 - v) / ((e.y1 - e.y0) || 1) * (y1p - P);
+    const xs = e.tx.map(X), ys = e.v.map(Y);
+    const d = xs.map((x, i) => (i ? "L" : "M") + x.toFixed(1) + " " + ys[i].toFixed(1)).join(" ");
+    const q = (s) => svg.querySelector(s);
+    const ult = e.v[e.v.length - 1], sobe = ult >= e.base;
+    const cUp = c.cor || "var(--up)", cDn = c.cor || "var(--down)", cor = sobe ? cUp : cDn;
+    q(".g-up").setAttribute("d", d); q(".g-dn").setAttribute("d", d); q(".g-up").style.stroke = cUp; q(".g-dn").style.stroke = cDn;
+    q(".g-area").setAttribute("d", d + ` L${xs[xs.length - 1].toFixed(1)} ${y1p} L${xs[0].toFixed(1)} ${y1p} Z`);
+    q(".g-s0").style.stopColor = cor; q(".g-s1").style.stopColor = cor;
+    const yb = Math.max(-10, Math.min(H + 10, Y(e.base)));
+    q(".g-ca").setAttribute("height", Math.max(0, yb + 10)); q(".g-cb").setAttribute("y", yb); q(".g-cb").setAttribute("height", Math.max(0, H + 10 - yb));
+    const bl = q(".g-base"); bl.setAttribute("x1", P); bl.setAttribute("x2", x1p); bl.setAttribute("y1", yb); bl.setAttribute("y2", yb); bl.setAttribute("visibility", e.base > e.y0 && e.base < e.y1 ? "visible" : "hidden");
+    q(".g-rev").setAttribute("width", W * (e.rev ?? 1));
+    // escala: linhas e valores à direita
+    const passo = passoBonito((e.y1 - e.y0) / 3.2); let g = "";
+    for (let v = Math.ceil(e.y0 / passo) * passo; v < e.y1; v += passo) { const y = Y(v).toFixed(1); g += `<line x1="${P}" x2="${x1p}" y1="${y}" y2="${y}"/><text x="${x1p + 8}" y="${(+y + 4).toFixed(1)}" font-size="10.5">${esc(compactoG(v))}</text>`; }
+    q(".g-grade").innerHTML = g;
+    // eixo do tempo
+    let ex = "";
+    if (e.hoje) { const d0 = diaSP(e.ts[0]); for (let h = 10; h <= 18; h += 2) { const t = Date.parse(d0 + "T" + String(h).padStart(2, "0") + ":00:00-03:00") / 1000; if (t >= e.x0 && t <= e.x1) ex += `<text x="${X(t).toFixed(1)}" y="${H + 16}" font-size="10.5" text-anchor="middle">${h}h</text>`; } }
+    else {
+      const longo = (e.ts[e.ts.length - 1] - e.ts[0]) > 100 * 86400, intra = c.per === "5D";
+      const f = (ts) => intra ? new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", timeZone: "America/Sao_Paulo" }) : new Date(ts * 1000).toLocaleDateString("pt-BR", longo ? { month: "short", year: "2-digit" } : { day: "2-digit", month: "short" });
+      const n = e.ts.length, ks = W < 500 ? [0, 0.5, 1] : [0, 0.33, 0.66, 1]; ks.forEach((k, j) => { const i = Math.round(k * (n - 1)); ex += `<text x="${X(e.tx[i]).toFixed(1)}" y="${H + 16}" font-size="10.5" text-anchor="${j === 0 ? "start" : j === ks.length - 1 ? "end" : "middle"}">${esc(f(e.ts[i]))}</text>`; });
+    }
+    q(".g-eixo").innerHTML = ex;
+    // fim da linha: ponto (pulsando quando está ao vivo) e o valor atual na escala
+    const lx = xs[xs.length - 1], ly = ys[ys.length - 1];
+    q(".g-fim").setAttribute("transform", `translate(${lx.toFixed(1)} ${ly.toFixed(1)})`); q(".g-fim").setAttribute("visibility", (e.rev ?? 1) > 0.98 ? "visible" : "hidden");
+    q(".g-dot").style.fill = cor; q(".g-pulso").style.fill = cor;
+    svg.classList.toggle("g-aovivo", !!(c.vivo && e.hoje && VIVO.ativo()));
+    const pz = q(".g-preco"), txt = c.fmt(ult); const larg = Math.max(52, txt.length * 6.6 + 12);
+    const py = Math.max(0, Math.min(H - 20, ly - 10));
+    pz.querySelector("rect").setAttribute("x", W - larg); pz.querySelector("rect").setAttribute("y", py); pz.querySelector("rect").setAttribute("width", larg);
+    pz.querySelector("rect").style.fill = c.cor ? "#fff" : cor;
+    const tt = pz.querySelector("text"); tt.setAttribute("x", W - larg / 2); tt.setAttribute("y", py + 14); tt.textContent = txt; tt.style.fill = c.cor ? "var(--hero-a)" : "#fff";
+    // resumo em cima: quanto variou desde o fechamento de ontem (Hoje) ou no período
+    const rot = e.hoje ? (diaSP(e.ts[e.ts.length - 1]) === hojeISO() ? "Hoje" : "No último pregão") : "No período";
+    const varP = (ult / e.base - 1) * 100;
+    const res = wrap.querySelector(".g-res");
+    if (res) {
+      res.querySelector(".g-rot").textContent = rot + ":"; const vb = res.querySelector(".g-var"); vb.textContent = pct(varP) + " (" + sinal(ult - e.base, c.fmt) + ")"; vb.className = "g-var " + cls(varP);
+      res.querySelector(".g-de").textContent = e.hoje ? (c.base && diaSP(e.ts[e.ts.length - 1]) === hojeISO() ? "sobre o fechamento de ontem" : "") : `(${c.fmt(e.v[0])} → ${c.fmt(ult)})`;
+      const vv = res.querySelector(".g-vivo"); if (vv) { vv.hidden = !VIVO.ativo(); const em = vv.querySelector("em"); em.textContent = VIVO.rotulo(); }
+    }
+    c.desenho = { e, xs, ys };
+    if (c.mira) c.mira();
+  }
+  // Leva o gráfico do estado atual até os dados novos. Se a série só cresceu no fim, só o fim anda (a escala acompanha suave);
+  // se mudou o período, a linha entra da esquerda para a direita.
+  function animarGrafico(key) {
+    const c = CH[key]; if (!c) return; const novo = prepGrafico(key); if (!novo) return;
+    const de = c.vis; cancelAnimationFrame(c.raf);
+    const cont = de && !c.novo && de.hoje === novo.hoje && de.n >= 2 && novo.n >= de.n && novo.n - de.n <= 6 && de.ts[0] === novo.ts[0];
+    c.novo = false;
+    const fim = (k) => {
+      if (!cont) return { ...novo, rev: suaveG(k) };
+      const j = de.n - 1; const L = (a, b) => a + (b - a) * suaveG(k);
+      const tx = novo.tx.map((t, i) => i < j ? t : L(de.tx[j], t)), v = novo.v.map((x, i) => i < j ? x : L(de.v[j], x));
+      return { ...novo, tx, v, x0: L(de.x0, novo.x0), x1: L(de.x1, novo.x1), y0: L(de.y0, novo.y0), y1: L(de.y1, novo.y1), base: L(de.base, novo.base), rev: 1 };
+    };
+    c.vis = novo;
+    if (reduz || document.hidden) { desenharGrafico(key, fim(1)); return; }
+    const t0 = performance.now(), dur = cont ? 900 : 1100;
+    const passo = (t) => { const k = Math.min(1, (t - t0) / dur); desenharGrafico(key, fim(k)); if (k < 1) c.raf = requestAnimationFrame(passo); };
+    c.raf = requestAnimationFrame(passo);
+  }
+  // Dados novos num gráfico que já está na tela (sem refazer o HTML)
+  function atualizarGrafico(key, serie, opt) {
+    const c = CH[key]; const w = document.querySelector(`[data-cw="${key}"]`); if (!c || !w) return false;
+    const intra = opt.intra && opt.intra.length ? opt.intra : null;
+    const tinhaIntra = !!c.intra; c.serie = serie; c.intra = intra; if (opt.base !== undefined) c.base = opt.base;
+    if (!!intra !== tinhaIntra || (ehIntra(c.per) && !intra)) return false;   // botões mudaram: refaz
+    if (!w.querySelector("svg")) { if (prepGrafico(key)) { w.innerHTML = chartSvg(key) + `<div class="g-tip" hidden></div>`; c.novo = true; ligarGrafico(key); } return true; }
+    animarGrafico(key); return true;
   }
   function ligarGrafico(key) {
     const wrap = document.querySelector(`[data-cw="${key}"]`); if (!wrap || !CH[key]) return;
     const svg = wrap.querySelector("svg"); if (!svg) return;
-    const serie = recorte(key); const { W, H, P } = G; const fmt = CH[key].fmt;
-    const ys = serie.map((p) => p[1]), min = Math.min(...ys), max = Math.max(...ys), rng = max - min || 1;
+    const c = CH[key]; c.novo = true; c.vis = null; c.mira = null;
+    const { W, H } = G; const fmt = c.fmt;
     const tip = wrap.querySelector(".g-tip"), mira = svg.querySelector(".g-mira"), linha = svg.querySelector(".g-linha"), ponto = svg.querySelector(".g-ponto");
-    const mover = (ev) => {
-      const r = svg.getBoundingClientRect(); if (!r.width) return;
-      const pxl = (ev.clientX - r.left) / r.width * W;
-      const i = Math.max(0, Math.min(serie.length - 1, Math.round((pxl - P) / (W - 2 * P) * (serie.length - 1))));
-      const [ts, v] = serie[i];
-      const cx = P + i * (W - 2 * P) / (serie.length - 1), cy = H - P - (v - min) / rng * (H - 2 * P);
-      linha.setAttribute("x1", cx); linha.setAttribute("x2", cx); ponto.setAttribute("cx", cx); ponto.setAttribute("cy", cy);
+    linha.style.stroke = c.cor ? "rgba(255,255,255,.6)" : "var(--muted)"; ponto.style.stroke = c.cor ? "var(--hero-a)" : "var(--surface)";
+    let ultX = null;
+    const mover = (clientX) => {
+      const dz = c.desenho; const r = svg.getBoundingClientRect(); if (!dz || !r.width) return;
+      const pxl = (clientX - r.left) / r.width * W; const { xs, ys, e } = dz;
+      let lo = 0, hi = xs.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] < pxl) lo = m; else hi = m; }
+      const i = Math.abs(xs[lo] - pxl) <= Math.abs(xs[hi] - pxl) ? lo : hi;
+      const ts = e.ts[i], v = e.v[i], cx = xs[i], cy = ys[i];
+      linha.setAttribute("x1", cx); linha.setAttribute("x2", cx); linha.setAttribute("y1", G.P); linha.setAttribute("y2", H - G.P); ponto.setAttribute("cx", cx); ponto.setAttribute("cy", cy);
+      ponto.style.fill = v >= e.base ? (c.cor || "var(--up)") : (c.cor || "var(--down)");
       mira.setAttribute("visibility", "visible");
-      const desde = (v / ys[0] - 1) * 100;
-      const intra = ehIntra(CH[key].per);
-      tip.innerHTML = `<span>${esc(new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: intra ? undefined : "numeric", timeZone: "America/Sao_Paulo" }) + (intra ? " · " + new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : ""))}</span><b>${esc(fmt(v))}</b><small class="${cls(desde)}">${esc(pct(desde))} ${intra && CH[key].per === "Hoje" ? "desde a abertura" : "no período"}</small>`;
+      const desde = (v / e.base - 1) * 100; const intra = ehIntra(c.per);
+      tip.innerHTML = `<span>${esc(new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: intra ? undefined : "numeric", timeZone: "America/Sao_Paulo" }) + (intra ? " · " + new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: c.per === "Hoje" ? "2-digit" : undefined, timeZone: "America/Sao_Paulo" }) : ""))}</span><b>${esc(fmt(v))}</b><small class="${cls(desde)}">${esc(pct(desde))} ${c.per === "Hoje" ? (c.base ? "sobre ontem" : "desde a abertura") : "no período"}</small>`;
       tip.hidden = false;
       const escala = r.width / W, xTela = cx * escala, larg = tip.offsetWidth;
       tip.style.left = Math.max(0, Math.min(r.width - larg, xTela - larg / 2)) + "px";
-      const yTela = cy * (r.height / (H + 18)), alt = tip.offsetHeight;
+      const yTela = cy * (r.height / (H + 22)), alt = tip.offsetHeight;
       const topo = r.top - wrap.getBoundingClientRect().top;
       tip.style.top = (topo + (yTela - alt - 12 >= 0 ? yTela - alt - 12 : yTela + 14)) + "px";
     };
-    const sair = () => { mira.setAttribute("visibility", "hidden"); tip.hidden = true; };
-    const area = svg.querySelector(".g-area");
-    area.addEventListener("pointermove", mover); area.addEventListener("pointerdown", mover);
+    c.mira = () => { if (ultX != null) mover(ultX); };
+    const sair = () => { ultX = null; mira.setAttribute("visibility", "hidden"); tip.hidden = true; };
+    const area = svg.querySelector(".g-toque");
+    const ev = (e) => { ultX = e.clientX; mover(ultX); };
+    area.addEventListener("pointermove", ev); area.addEventListener("pointerdown", ev);
     area.addEventListener("pointerleave", sair); area.addEventListener("pointercancel", sair);
+    animarGrafico(key);
   }
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-per]"); if (!b) return;
     const g = b.closest("[data-chart]"); if (!g) return; const key = g.dataset.chart; if (!CH[key]) return;
-    CH[key].per = b.dataset.per; CH[key].anim = !reduz;
+    CH[key].per = b.dataset.per; CH[key].escolhido = true;
     g.querySelectorAll("[data-per]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.per === CH[key].per)));
     const w = document.querySelector(`[data-cw="${key}"]`); if (!w) return;
+    cancelAnimationFrame(CH[key].raf);
     w.innerHTML = chartSvg(key) + `<div class="g-tip" hidden></div>`; ligarGrafico(key);
   });
+
+  /* ---------- Ao vivo: cotações dos ativos da carteira a cada poucos segundos ----------
+     Só enquanto a página está aberta e o mercado do ativo está funcionando (B3, bolsas dos EUA; cripto o dia todo).
+     Cada consulta vira um ponto do gráfico "Hoje"; os pontos do dia ficam guardados neste aparelho. */
+  const VIVO = {
+    q: {}, pts: [], tk: {}, dia: null, uid: null, timer: 0, falhas: 0, ultimo: 0, atraso: null, salvo: 0,
+    ativo() { return Date.now() - this.ultimo < 30000; },
+    rotulo() { return this.atraso ? `ao vivo · atraso de ${this.atraso} min da fonte` : "ao vivo"; },
+  };
+  function partesEm(tz) {
+    const p = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date());
+    const g = (t) => (p.find((x) => x.type === t) || {}).value;
+    return { dia: g("year") + "-" + g("month") + "-" + g("day"), mins: (+g("hour") % 24) * 60 + (+g("minute")), fds: ["Sat", "Sun"].includes(g("weekday")) };
+  }
+  function mercadosAbertos() {
+    const sp = partesEm("America/Sao_Paulo"), ny = partesEm("America/New_York");
+    return { b3: !sp.fds && !FERIADOS.has(sp.dia) && sp.mins >= 595 && sp.mins < 1095, eua: !ny.fds && ny.mins >= 570 && ny.mins < 965 };
+  }
+  function vivoCarregar() {
+    const uid = S.user && S.user.id; if (VIVO.uid === uid && VIVO.dia === hojeISO()) return;
+    VIVO.uid = uid; VIVO.dia = hojeISO(); VIVO.pts = []; VIVO.tk = {}; VIVO.q = {};
+    try { const s = JSON.parse(localStorage.getItem("radar-vivo") || "null"); if (s && s.uid === uid && s.dia === VIVO.dia) { VIVO.pts = s.pts || []; VIVO.tk = s.tk || {}; } } catch (_) { /* sem storage */ }
+  }
+  function vivoGuardar(forca) {
+    if (!forca && Date.now() - VIVO.salvo < 30000) return; VIVO.salvo = Date.now();
+    try { localStorage.setItem("radar-vivo", JSON.stringify({ uid: VIVO.uid, dia: VIVO.dia, pts: VIVO.pts, tk: VIVO.tk })); } catch (_) { /* cheio ou modo privado */ }
+  }
+  const afinar = (a, max) => { if (a.length <= max) return a; const meio = a.length >> 1; return a.slice(0, meio).filter((_, i) => i % 2 === 0).concat(a.slice(meio)); };
+  // junta o histórico do dia (a cada 2 min, do banco) com os pontos ao vivo, sem repetir o mesmo trecho
+  function comVivo(hist, vivo) {
+    if (!vivo || vivo.length < 1) return hist;
+    const out = []; let j = 0;
+    (hist || []).forEach((p) => { while (j < vivo.length && vivo[j][0] < p[0] - 300) j++; const perto = (j < vivo.length && Math.abs(vivo[j][0] - p[0]) < 300) || (j > 0 && Math.abs(vivo[j - 1][0] - p[0]) < 300); if (!perto) out.push(p); });
+    return out.concat(vivo).sort((a, b) => a[0] - b[0]);
+  }
+  function vivoAgendar(ms) { clearTimeout(VIVO.timer); VIVO.timer = setTimeout(vivoPasso, ms); }
+  async function vivoPasso() {
+    if (!S.user) return;
+    if (document.hidden || !S.carteira.length) return vivoAgendar(15000);
+    vivoCarregar();
+    const ab = mercadosAbertos(); const b3 = [], eua = [], cg = {}, cgT = {};
+    S.carteira.forEach((p) => {
+      const t = p.ticker, c = S.cotMap[t], cl = classeDe(t);
+      if (cl === "cripto") { const id = c && c.extra && c.extra.id; if (id) { cg[id] = t; cgT[t] = id; } }
+      else if (ext(cl)) { const bo = String((c && c.bolsa) || "NASDAQ").toUpperCase(); if (ab.eua && /^(NASDAQ|NYSE|AMEX)$/.test(bo)) eua.push(bo + ":" + t); }
+      else if (TICKER_RE.test(t) && ab.b3) b3.push(t);
+    });
+    const ids = Object.keys(cg);
+    if (!b3.length && !eua.length && !ids.length) { renderStatus(); return vivoAgendar(60000); }
+    let ok = false;
+    try {
+      const { data, error } = await sb.functions.invoke("aovivo", { body: { b3, eua, cripto: ids } });
+      if (error || !data || !data.ok) throw error || new Error((data && data.erro) || "sem resposta");
+      const agora = Math.round(Date.now() / 1000); let atraso = null;
+      const usa = (t, x) => { if (!x || !(x.p > 0)) return; VIVO.q[t] = { p: x.p, v: x.v, ts: agora }; const a = (VIVO.tk[t] ||= []); if (!a.length || a[a.length - 1][1] !== x.p || agora - a[a.length - 1][0] > 60) { a.push([agora, x.p]); VIVO.tk[t] = afinar(a, 2500); } const m = /_(\d+)$/.exec(x.m || ""); if (m) atraso = Math.max(atraso || 0, Math.round(+m[1] / 60)); };
+      Object.entries(data.b3 || {}).forEach(([t, x]) => usa(t, x));
+      Object.entries(data.eua || {}).forEach(([t, x]) => usa(t, x));
+      Object.entries(data.cripto || {}).forEach(([id, x]) => cg[id] && usa(cg[id], x));
+      VIVO.atraso = atraso; VIVO.ultimo = Date.now(); VIVO.falhas = 0; ok = true;
+      // um ponto novo para o gráfico da carteira
+      const tot = totalCarteira(); if (tot != null) { VIVO.pts.push([agora, Math.round(tot * 100) / 100]); VIVO.pts = afinar(VIVO.pts, 5000); }
+      vivoGuardar();
+      aplicarVivo();
+    } catch (_) { VIVO.falhas++; }
+    vivoAgendar(ok ? (b3.length || eua.length ? 5000 : 20000) : Math.min(120000, 5000 * 2 ** VIVO.falhas));
+  }
+  // patrimônio agora (mesma conta do topo): ativos com o preço ao vivo + renda fixa
+  function totalCarteira() { try { const RF = S.rf.length ? rfTotais() : null; const { rows, patr } = linhas(); return rows.some((r) => r.valor != null) || RF ? patr + (RF ? RF.bruto : 0) : null; } catch (_) { return null; } }
+  // atualiza o que mostra preço sem redesenhar a página inteira
+  function aplicarVivo() {
+    renderStatus(); renderHero(); renderEscritorio();
+    try {
+      const { rows } = linhas();
+      rows.forEach((r) => {
+        const row = document.querySelector(`.pos-row[data-open="${CSS.escape(r.t)}"]`); if (!row || r.preco == null) return;
+        const cel = row.querySelectorAll(".cell"); if (cel.length < 2) return;
+        const b = cel[0].querySelector("b"), sm = cel[0].querySelector("small"), prev = S.prevPx[r.t];
+        if (prev != null && prev !== r.preco) { b.classList.remove("tick-up", "tick-down"); void b.offsetWidth; b.classList.add(r.preco > prev ? "tick-up" : "tick-down"); }
+        b.textContent = money(r.preco, r.moeda); if (sm && r.vd != null) { sm.textContent = pct(r.vd); sm.className = cls(r.vd); }
+        const bv = cel[1].querySelector("b"); if (bv) bv.textContent = brl(r.valor);
+        const sv = cel[1].querySelector("small"); if (sv && r.res != null) { sv.textContent = pct(r.res); sv.className = cls(r.res); }
+        S.prevPx[r.t] = r.preco;
+      });
+    } catch (_) { /* tabela ainda não montada */ }
+    if (S.emp && VIVO.q[S.emp] && CH.emp) { try { cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); const q = VIVO.q[S.emp]; atualizarGrafico("emp", CH.emp.serie, { intra: comVivo(S.intra && S.intra[S.emp], VIVO.tk[S.emp]), base: q.p / (1 + q.v / 100) }); } catch (_) { /* página do ativo fechou */ } }
+  }
+  function vivoIniciar() { vivoCarregar(); vivoAgendar(800); }
+  function vivoParar() { clearTimeout(VIVO.timer); VIVO.q = {}; VIVO.pts = []; VIVO.tk = {}; VIVO.uid = null; VIVO.ultimo = 0; try { localStorage.removeItem("radar-vivo"); } catch (_) { /* sem storage */ } }
+  document.addEventListener("visibilitychange", () => { if (S.user && !document.hidden) vivoAgendar(300); });
 
   /* ---------- Carteira: linhas com valores em reais ---------- */
   const SINAL = { reforcar: "Considerar reforçar", manter: "Manter", atencao: "Atenção", reduzir: "Considerar reduzir" };
   function cotacao(t) {
     const c = S.cotMap[t], a = S.analises[t];
+    const lv = VIVO.q[t]; if (lv && Date.now() / 1000 - lv.ts < 120) return { preco: lv.p, varDia: lv.v, nome: (a && a.nome) || (c ? nomeBom(c.nome) : t), setor: c ? c.setor_macro : a && a.setor, seg: c ? c.setor : null };
     if (c) return { preco: Number(c.preco), varDia: Number(c.var_dia), nome: (a && a.nome) || nomeBom(c.nome), setor: c.setor_macro, seg: c.setor };
     if (a && a.preco != null) return { preco: Number(a.preco), varDia: a.var_dia != null ? Number(a.var_dia) : null, nome: a.nome, setor: a.setor, seg: null };
     return null;
@@ -539,9 +743,10 @@
     const { serie, fora, rf: comRF } = serieCarteira();
     const box = $("#hero-chart");
     if (!serie) { box.innerHTML = `<p class="hint" style="color:rgba(255,255,255,.8);margin-top:14px">O gráfico aparece assim que o histórico dos seus ativos for carregado (alguns minutos depois de adicioná-los).</p>`; return; }
-    if (box.querySelector(".g-tip:not([hidden])")) return; // não redesenha com o dedo/mouse em cima
     pedirIntradia();
-    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff", intra: serieIntradia(RF ? RF.bruto : 0) }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${comRF ? ", com a renda fixa incluída (o saldo de hoje recalculado pelo CDI de cada dia)" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
+    const intraH = comVivo(serieIntradia(RF ? RF.bruto : 0), VIVO.pts), baseH = T.temPreco || rfV ? patrTot - dia : null;
+    if (box.querySelector('[data-cw="hero"]') && atualizarGrafico("hero", serie, { intra: intraH, base: baseH })) return;
+    box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff", intra: intraH, base: baseH, vivo: true }) + `<p class="hint" style="color:rgba(255,255,255,.75);margin:6px 0 0">Quanto a carteira valeria a cada dia com as quantidades de hoje${temUsd ? ", com ativos em dólar convertidos pelo câmbio atual" : ""}${comRF ? ", com a renda fixa incluída (o saldo de hoje recalculado pelo CDI de cada dia)" : ""}${fora ? `. ${fora} ${fora === 1 ? "ativo ainda sem histórico ficou" : "ativos ainda sem histórico ficaram"} de fora` : ""}.</p>`;
     ligarGrafico("hero");
   }
 
@@ -589,8 +794,11 @@
   function serieMonitor() {
     pedirIntradia(); if (!S.intra) return null;
     const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
-    const s = serieIntradia(rfV); if (!s) return null;
-    const ult = diaSP(s[s.length - 1][0]); const dia = s.filter((q) => diaSP(q[0]) === ult);
+    const s = comVivo(serieIntradia(rfV), VIVO.pts); if (!s || s.length < 2) return null;
+    const ult = diaSP(s[s.length - 1][0]); const dia0 = s.filter((q) => diaSP(q[0]) === ult);
+    // blocos fixos de 2 minutos (o último ponto de cada um): o monitor anda só no fim quando chega um ponto novo
+    const dia = []; dia0.forEach((q, i) => { const b = Math.floor(q[0] / 120); if (dia.length && dia[dia.length - 1].b === b) dia[dia.length - 1] = { b, q }; else dia.push({ b, q }); });
+    for (let i = 0; i < dia.length; i++) dia[i] = dia[i].q;
     if (dia.length < 2) return null;
     const pc = diaPct(), fim = dia[dia.length - 1][1];
     const hoje = ult === diaSP(Date.now() / 1000);
@@ -1207,7 +1415,7 @@
 
       <section class="panel" aria-labelledby="emp-desemp">
         <h3 id="emp-desemp">Desempenho</h3>
-        ${chartBox("emp", e.serie, { fmt: M, intra: S.intra && S.intra[t] && S.intra[t].length > 1 ? S.intra[t] : null })}
+        ${(() => { const iv = comVivo(S.intra && S.intra[t] && S.intra[t].length > 1 ? S.intra[t] : null, VIVO.tk[t]); const q = cotacao(t); return chartBox("emp", e.serie, { fmt: M, intra: iv && iv.length > 1 ? iv : null, base: q && q.varDia != null ? q.preco / (1 + q.varDia / 100) : null, vivo: !!VIVO.tk[t] }); })()}
         <div class="rets">${[["1 mês", ds.ret1m], ["3 meses", ds.ret3m], ["6 meses", ds.ret6m], ["12 meses", ds.ret12m]].map(([l, v]) => `<div><span>${l}</span><b class="${cls(v)}">${pct(v)}</b></div>`).join("")}</div>
         <p class="hint" style="margin:10px 0 0">Passe o mouse ou o dedo sobre o gráfico para ver a cotação de cada dia${fora ? " (em dólar)" : ""}. ${ds.min52 != null ? `No último ano variou de ${esc(M(ds.min52))} a ${esc(M(ds.max52))}. ` : ""}${ds.volAnual != null ? `Oscilação anual de ${esc(num(ds.volAnual, 0))}% (${ds.volAnual > 45 ? "bem arriscado" : ds.volAnual > 28 ? "risco médio" : "mais estável"}).` : ""}</p>
       </section>
