@@ -495,7 +495,7 @@
     const por = {}; (data || []).forEach((r) => { (por[r.ticker] ||= []).push([Date.parse(r.em) / 1000, Number(r.preco)]); });
     S.intra = por;
   }
-  function pedirIntradia() { if (Date.now() - S.intraT > 110000 && S.user) carregarIntradia().then(() => { if (S.intra) renderHero(); }); }
+  function pedirIntradia() { if (Date.now() - S.intraT > 110000 && S.user) carregarIntradia().then(() => { if (S.intra) { renderHero(); renderEscritorio(); } }); }
   // soma da carteira em blocos de 5 minutos, carregando o último preço conhecido de cada ativo
   function serieIntradia(rfFixo) {
     if (!S.intra) return null;
@@ -584,8 +584,23 @@
     const b = e.target.closest("[data-deco]"); if (!b || !window.RadarEscritorio) return;
     window.RadarEscritorio.equipar(b.dataset.deco, b.getAttribute("aria-pressed") !== "true");
   });
+  // Gráfico do monitor do escritório: os mesmos pontos do gráfico "Hoje", em % sobre o fechamento anterior
+  // (com a renda fixa somada, como no gráfico de cima). Se hoje ainda não teve pregão, mostra o último dia que teve.
+  function serieMonitor() {
+    pedirIntradia(); if (!S.intra) return null;
+    const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
+    const s = serieIntradia(rfV); if (!s) return null;
+    const ult = diaSP(s[s.length - 1][0]); const dia = s.filter((q) => diaSP(q[0]) === ult);
+    if (dia.length < 2) return null;
+    const pc = diaPct(), fim = dia[dia.length - 1][1];
+    const hoje = ult === diaSP(Date.now() / 1000);
+    const base = hoje && pc != null && isFinite(pc) && pc > -100 ? fim / (1 + pc / 100) : dia[0][1];
+    if (!(base > 0)) return null;
+    return { pts: dia.map(([ts, v]) => [ts, Math.round((v / base - 1) * 1e4) / 1e4]), hoje };
+  }
   function renderEscritorio() {
     const box = $("#esc-body"); if (!box || !window.RadarEscritorio) return;
+    const eb = $("#esc-boneco"); if (eb) eb.hidden = !S.user || !S.perfilOk;
     const sim = S.escSim != null;
     const pct = sim ? S.escSim : diaPct();
     const p = S.perfil || {};
@@ -594,7 +609,8 @@
     let ativos = [];
     try { if (S.carteira.length) ativos = linhas().rows.slice(0, 8).map((r) => ({ t: r.t, preco: r.preco, vd: r.vd, moeda: r.moeda })); } catch (_) { /* sem cotações ainda */ }
     const k = avKey(p.avatar);
-    window.RadarEscritorio.render(box, { pct, cor: p.cor || "#2457F5", icone: k ? AV_IC[k] : "", boneco: p.boneco || bonecoLocal(), acessorio: p.acessorio || "", fechado: !sim && !ehUtil(hojeISO()), itens, tudo: S.escTudo, sim, ativos, layout: escLayout(), onLayout: salvarEsc });
+    let serie = null; if (!sim) { try { serie = serieMonitor(); } catch (_) { /* sem histórico do dia */ } }
+    window.RadarEscritorio.render(box, { serie, pct, cor: p.cor || "#2457F5", icone: k ? AV_IC[k] : "", boneco: p.boneco || bonecoLocal(), acessorio: p.acessorio || "", fechado: !sim && !ehUtil(hojeISO()), itens, tudo: S.escTudo, sim, ativos, layout: escLayout(), onLayout: salvarEsc });
     renderDeco();
   }
   $("#esc-sim").addEventListener("click", (e) => {
@@ -1775,7 +1791,7 @@
     k: ["Topete", "Curto", "Raspado", "Comprido", "Cacheado", "Black power", "Coque", "Moicano", "Rabo de cavalo", "Careca"], b: ["Sem barba", "Cavanhaque", "Barba cheia", "Bigode"],
     l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB", "#6F86B5"], o: ["Sem óculos", "Óculos"],
     a: ["Bem baixo", "Baixo", "Médio", "Alto", "Bem alto"], w: ["Magro", "Esguio", "Médio", "Forte", "Grandão"],
-    r: ["Polo", "Camiseta", "Moletom", "Social", "Jaqueta", "Regata"], e: ["Calça", "Bermuda"], s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB"],
+    r: ["Polo", "Camiseta", "Moletom", "Social", "Jaqueta", "Regata", "Terno", "Blazer", "Xadrez", "Havaiana"], e: ["Calça", "Bermuda"], s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB"],
   };
   const BN_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0 };
   const bonecoLer = (v) => { const r = { ...BN_PAD }; String(v || "").replace(/([pckbloawres])(\d)/g, (_, k, d) => { if (BONECO[k][+d] != null) r[k] = +d; }); return r; };
@@ -1884,14 +1900,14 @@
     a_medalha: () => { const d = diasNoRadar(); return [d, 365, `${Math.min(d, 365)} de 365 dias`]; },
   };
   let vitrine = null;
-  async function abrirMeuPerfil() {
+  async function abrirMeuPerfil(pf0) {
     abrirDrawerPf();
     const p = S.perfil || {};
     const pend = { avatar: avKey(p.avatar), cor: p.cor || CORES[0], foto: fotoOk(p.foto) ? p.foto : null, moldura: p.moldura || null, acessorio: p.acessorio || null, aba: "m",
       capa: p.capa || "cor", boneco: bonecoLer(p.boneco || bonecoLocal()) };
     $("#pf-av").outerHTML = avHtml(S.perfil, true).replace('class="av', 'id="pf-av" class="av');
     $("#pf-titulo").textContent = S.perfil ? "@" + S.perfil.apelido : "Criar meu perfil";
-    $("#pf-sub").textContent = "Seu cartão, suas recompensas e seu boneco do escritório";
+    $("#pf-sub").textContent = "Seu cartão, suas recompensas e, na outra aba, o boneco do escritório";
     if (!S.perfilOk) { $("#pf-body").innerHTML = `<div class="empty"><strong>Ranking ainda não ativado</strong>Falta criar as tabelas no banco (supabase/migrations/20261027_comunidade.sql).</div>`; return; }
     $("#pf-body").innerHTML = `<div class="carregando"><i></i><i style="width:80%"></i></div>`;
     await carregarConquistas();
@@ -1909,6 +1925,8 @@
     const sw = (k, cor, i) => `<button type="button" class="bn-sw" data-bn="${k}" data-v="${i}" style="--c:${cor}" aria-pressed="${pend.boneco[k] === i}" aria-label="${{ p: "Tom de pele", c: "Cor do cabelo", l: "Cor da calça", s: "Cor do tênis" }[k]} ${i + 1}"></button>`;
     const seg = (k) => BONECO[k].map((n, i) => `<button type="button" data-bn="${k}" data-v="${i}" aria-pressed="${pend.boneco[k] === i}">${esc(n)}</button>`).join("");
     $("#pf-body").innerHTML = `<form id="pf-form" class="pf-ed" autocomplete="off" novalidate>
+      <div class="seg pf-tabs" role="tablist" aria-label="Partes do perfil"><button type="button" role="tab" id="pft-perfil" data-pftab="perfil" aria-controls="pfs-perfil" aria-selected="true">${IC("user-circle")} Perfil</button><button type="button" role="tab" id="pft-boneco" data-pftab="boneco" aria-controls="pfs-boneco" aria-selected="false">${IC("t-shirt")} Boneco</button></div>
+      <div id="pfs-perfil" role="tabpanel" aria-labelledby="pft-perfil">
       <div class="pf-hero" id="pf-hero"></div>
       <section class="panel pf-sec"><h3>${IC("palette")} Aparência</h3>
         <div class="pf-foto">${S.v2 ? `<button type="button" class="btn sm" id="pf-foto-btn">${IC("camera")} <span>${pend.foto ? "Trocar foto" : "Enviar foto"}</span></button><button type="button" class="btn ghost sm" id="pf-foto-rm"${pend.foto ? "" : " hidden"}>${IC("trash")} Remover foto</button><input type="file" id="pf-file" accept="image/*" hidden>` : ""}</div>
@@ -1919,6 +1937,8 @@
         <span class="label">Capa do cartão</span>
         <div class="pf-capas" id="pf-capas">${CAPAS.map(([k, n]) => `<button type="button" data-capa="${k}" class="capa-${k}" aria-pressed="${pend.capa === k}"><i></i><span>${esc(n)}</span></button>`).join("")}</div>
       </section>
+      </div>
+      <div id="pfs-boneco" role="tabpanel" aria-labelledby="pft-boneco" hidden>
       <section class="panel pf-sec"><h3>${IC("t-shirt")} Seu boneco no escritório</h3>
         <div class="pf-bn">
           <div class="pf-bn-3d" id="pf-bn-3d" aria-label="Prévia do boneco"></div>
@@ -1933,10 +1953,12 @@
             <span class="label">Calça ou bermuda</span><div class="bn-seg">${seg("e")}</div><div class="bn-sws">${BONECO.l.map((c, i) => sw("l", c, i)).join("")}</div>
             <span class="label">Tênis</span><div class="bn-sws">${BONECO.s.map((c, i) => sw("s", c, i)).join("")}</div>
             <span class="label">Óculos</span><div class="bn-seg">${seg("o")}</div>
-            <p class="hint" style="margin:6px 0 0">A roupa usa a cor do perfil (na social, é a gravata) e o ícone vai estampado no peito.</p>
+            <p class="hint" style="margin:6px 0 0">A roupa usa a cor do perfil (na social e no terno, é a gravata; no terno, a calça acompanha o paletó). O ícone vai estampado no peito da polo, da camiseta, do moletom e da regata.</p>
           </div>
         </div>
       </section>
+      </div>
+      <div id="pfs-perfil2" data-pftab-mais="perfil">
       ${S.v2 ? `<section class="panel pf-sec"><h3>${IC("trophy")} Recompensas</h3>
         <div class="pf-nivel nv-${nv}">
           <div class="pf-nv-top"><span class="pf-nv-tag">${IC("medal:f")} ${NIVEIS[nv][0]}</span><span class="pf-nv-tot"><b>${brl(patr)}</b> investidos</span></div>
@@ -1972,6 +1994,7 @@
         <label class="w pf-chk"><input type="checkbox" id="pf-valores"${p.mostrar_valores ? " checked" : ""}> Mostrar valores em reais (patrimônio, proventos e quantidades)</label>
         <p class="hint w" style="margin:0">A renda fixa entra no seu total investido e na diversificação, mas as aplicações nunca aparecem para os outros. Os números do ranking são calculados pelo Radar.</p>
       </div></section>
+      </div>
       <div class="pf-save"><button class="btn primary" type="submit" id="pf-salvar">${IC("check")} Salvar perfil</button>${S.perfil ? `<button class="btn" type="button" data-ver-perfil="${esc(S.perfil.apelido)}">${IC("eye")} Ver como os outros veem</button>` : ""}<p class="form-msg" id="pf-msg" role="status" aria-live="polite"></p></div>
     </form>`;
     const atual = () => ({ ...p, apelido: $("#pf-apelido").value.trim().toLowerCase().replace(/^@/, "") || p.apelido || "voce", nome: $("#pf-nome").value.trim() || null, cidade: $("#pf-cidade").value.trim() || null, uf: $("#pf-uf").value || null, pais: $("#pf-pais").value || "BR", estilo: $("#pf-estilo").value || null, avatar: pend.avatar || null, cor: pend.cor, foto: pend.foto, moldura: pend.moldura, acessorio: pend.acessorio, capa: pend.capa });
@@ -1995,7 +2018,16 @@
     const bnDados = () => ({ cor: pend.cor, icone: pend.avatar ? AV_IC[pend.avatar] : "", boneco: bonecoTxt(pend.boneco), acessorio: pend.acessorio });
     const bn = () => { if (vitrine) vitrine.atualizar(bnDados()); };
     if (vitrine) { vitrine.destruir(); vitrine = null; }
-    if (window.RadarEscritorio && window.RadarEscritorio.vitrine) window.RadarEscritorio.vitrine($("#pf-bn-3d"), bnDados()).then((v) => { vitrine = v; if (v) bn(); });
+    // abas: a prévia 3D do boneco só é montada quando a aba dele aparece (com tamanho de verdade)
+    let prevPedida = false;
+    const abrirAba = (k) => {
+      document.querySelectorAll(".pf-tabs [data-pftab]").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.pftab === k)));
+      $("#pfs-perfil").hidden = $("#pfs-perfil2").hidden = k !== "perfil"; $("#pfs-boneco").hidden = k !== "boneco";
+      if (k === "boneco" && !prevPedida && window.RadarEscritorio && window.RadarEscritorio.vitrine) { prevPedida = true; window.RadarEscritorio.vitrine($("#pf-bn-3d"), bnDados()).then((v) => { if (!$("#pf-drawer").hidden && $("#pf-bn-3d")) { vitrine = v; if (v) bn(); } else if (v) v.destruir(); }); }
+    };
+    document.querySelector(".pf-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-pftab]"); if (b) abrirAba(b.dataset.pftab); });
+    document.querySelector(".pf-tabs").addEventListener("keydown", (e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; const k = $("#pfs-boneco").hidden ? "boneco" : "perfil"; abrirAba(k); const b = document.querySelector(`.pf-tabs [data-pftab="${k}"]`); if (b) b.focus(); });
+    if (pf0 === "boneco") abrirAba("boneco");
     hero(); itens();
     $("#pf-form").addEventListener("input", (e) => {
       if (e.target.matches("#pf-apelido,#pf-nome,#pf-cidade")) hero();
@@ -2118,7 +2150,7 @@
   }
   document.addEventListener("click", async (e) => {
     const v = e.target.closest("[data-ver-perfil]"); if (v) { verPerfil(v.dataset.verPerfil); return; }
-    if (e.target.closest("[data-meu-perfil]")) { abrirMeuPerfil(); return; }
+    const mp = e.target.closest("[data-meu-perfil]"); if (mp) { abrirMeuPerfil(mp.dataset.meuPerfil === "boneco" ? "boneco" : undefined); return; }
     const d = e.target.closest("[data-denunciar]");
     if (d) {
       d.disabled = true;

@@ -76,6 +76,16 @@
     const velhos = Object.fromEntries((ant.ativos || []).map((a) => [a.t, a]));
     for (const a of d.ativos || []) { const o = velhos[a.t]; if (o && o.preco != null && a.preco != null && Math.abs(o.preco - a.preco) > 1e-9) this.flash[a.t] = { t: performance.now(), up: a.preco > o.preco }; }
     if (ant.ativos && JSON.stringify((ant.ativos || []).map((a) => [a.t, a.preco])) !== JSON.stringify((d.ativos || []).map((a) => [a.t, a.preco]))) this.log("cotações atualizadas");
+    // gráfico do dia de verdade (mesmos pontos do gráfico "Hoje" do site): a linha passa suave da forma antiga para a nova
+    const sp = !d.sim && d.serie && d.serie.pts && d.serie.pts.length > 1 ? d.serie.pts : null;
+    if (sp) {
+      const v = sp.map((q) => q[1]); const a0 = this.serieAlvo;
+      if (!a0 || a0.v.length !== v.length || a0.v.some((x, i) => Math.abs(x - v[i]) > 1e-6)) {
+        const atual = a0 ? this.serieAgora() : null;
+        this.serieDe = atual ? reamostra(atual, v.length) : v.map(() => 0);   // na primeira vez, sobe a partir da linha do zero
+        this.serieAlvo = { v, ts: sp.map((q) => q[0]), hoje: !!d.serie.hoje }; this.serieT0 = performance.now(); this.sujo = true;
+      }
+    } else this.serieAlvo = null;
     if (!d.sim && d.pct != null && isFinite(d.pct)) { const l = this.hist[this.hist.length - 1]; if (!l || Math.abs(l.v - d.pct) > 1e-6) { this.hist.push({ v: d.pct, t: Date.now() }); if (this.hist.length > 60) this.hist.shift(); } }
     if (d.layout !== undefined && !this.salvando && !this.arrasto) { const n = (L) => JSON.stringify({ m: (L && L.m) || {}, off: [...((L && L.off) || [])].sort() }); if (n(d.layout) !== n(this.layoutAtual())) { this.aplicarLayout(d.layout, true); this.navOk = false; } }
     this.tem = d.tem || {};

@@ -93,6 +93,13 @@
     g.fillStyle = "#FDE047"; g.font = "bold 12px monospace"; g.fillText("HI " + String(Math.floor(T * 37) % 99999).padStart(5, "0"), 8, 12);
     t.needsUpdate = true;
   }
+  // valores do gráfico neste instante (no meio da transição entre a forma antiga e a nova)
+  serieAgora() {
+    const sa = this.serieAlvo; if (!sa) return [];
+    const k = suave((performance.now() - (this.serieT0 || 0)) / 1100); if (k < 1) this.sujo = true;
+    const de = this.serieDe && this.serieDe.length === sa.v.length ? this.serieDe : sa.v;
+    return sa.v.map((v, i) => lerp(de[i], v, k));
+  }
   desenharMonitor(T) {
     const { g, t } = this.mon; const Wm = 1024, Hm = 448; const d = this.d; const h = this.h;
     const corH = { triste: "#EF4444", preocupado: "#F97316", tranquilo: "#60A5FA", feliz: "#22C55E", euforico: "#FACC15" }[h];
@@ -113,16 +120,25 @@
     const pct = d.pct; const txt = pct == null || !isFinite(pct) ? "—" : (pct > 0 ? "+" : "") + pct.toFixed(2).replace(".", ",") + "%";
     g.fillStyle = pct > 0 ? "#4ADE80" : pct < 0 ? "#F87171" : "#E2E8F0"; g.font = "bold 64px system-ui"; g.fillText(txt, px + 14, py + 98);
     g.fillStyle = "#CBD5E1"; g.font = "16px system-ui"; g.fillText(this.titulo || "", px + 16, py + 126);
-    // gráfico com a evolução do dia nesta sessão
-    const gx = px + 16, gy = py + 150, gw = 298, gh = 160;
+    // gráfico do dia: os pontos reais do pregão (cotações a cada 2 minutos); sem eles, o que mudou nesta sessão
+    const gx = px + 16, gy = py + 150, gw = 298, gh = 150;
     g.strokeStyle = "rgba(148,163,184,.15)"; g.lineWidth = 1; for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(gx, gy + i * gh / 4); g.lineTo(gx + gw, gy + i * gh / 4); g.stroke(); }
-    const hs = this.hist.length ? this.hist : [{ v: pct || 0 }];
-    const vals = hs.map((x) => x.v).concat([0]); let mn = Math.min(...vals), mx = Math.max(...vals); if (mx - mn < 0.4) { const c = (mx + mn) / 2; mn = c - 0.2; mx = c + 0.2; }
+    const sa = this.serieAlvo;
+    const hs = sa ? this.serieAgora() : (this.hist.length ? this.hist : [{ v: pct || 0 }]).map((x) => x.v);
+    const vals = hs.concat([0]); let mn = Math.min(...vals), mx = Math.max(...vals); if (mx - mn < 0.4) { const c = (mx + mn) / 2; mn = c - 0.2; mx = c + 0.2; }
+    const folga = (mx - mn) * 0.08; mn -= folga; mx += folga;
     const yv = (v) => gy + gh - ((v - mn) / (mx - mn)) * gh;
     g.setLineDash([4, 4]); g.strokeStyle = "rgba(148,163,184,.4)"; g.beginPath(); g.moveTo(gx, yv(0)); g.lineTo(gx + gw, yv(0)); g.stroke(); g.setLineDash([]);
-    const n = hs.length; const pts = hs.map((x, i) => [gx + (n === 1 ? gw : (i / (n - 1)) * gw), yv(x.v)]);
+    const n = hs.length; const pts = hs.map((v, i) => [gx + (n === 1 ? gw : (i / (n - 1)) * gw), yv(v)]);
     if (n === 1) pts.unshift([gx, pts[0][1]]);
-    const cor = (pct || 0) >= 0 ? "#22C55E" : "#EF4444";
+    if (sa) {
+      const hora = (ts) => new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+      g.fillStyle = "#64748B"; g.font = "13px system-ui"; g.fillText(hora(sa.ts[0]), gx, gy + gh + 18); g.textAlign = "right"; g.fillText(sa.hoje ? hora(sa.ts[sa.ts.length - 1]) : "último pregão", gx + gw, gy + gh + 18); g.textAlign = "left";
+      const fv = (v) => (v > 0 ? "+" : "") + v.toFixed(2).replace(".", ",") + "%";
+      g.font = "12px system-ui"; g.fillStyle = "#94A3B8"; g.fillText(fv(Math.max(...hs)), gx + gw - 60, gy - 6);
+    }
+    const ultV = hs[hs.length - 1];
+    const cor = (sa ? ultV : pct || 0) >= 0 ? "#22C55E" : "#EF4444";
     const ar = g.createLinearGradient(0, gy, 0, gy + gh); ar.addColorStop(0, cor + "55"); ar.addColorStop(1, cor + "00");
     g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.lineTo(pts[pts.length - 1][0], gy + gh); g.lineTo(pts[0][0], gy + gh); g.closePath(); g.fillStyle = ar; g.fill();
     g.strokeStyle = cor; g.lineWidth = 3; g.lineJoin = "round"; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();

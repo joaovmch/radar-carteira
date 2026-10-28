@@ -414,6 +414,8 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .pf-nv-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#8B5CF6);transform-origin:left;animation:growx 1s var(--ease) both}
 .pf-nv-aviso{margin:8px 0 0;color:var(--warn)}
 .pf-abas{margin:0 0 10px}
+.pf-tabs{margin:0 0 14px}.pf-tabs button{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px;padding:9px 6px}
+.esc-hd{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
 .pf-itens{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
 .pf-it-g{grid-column:1 / -1;margin:8px 0 0!important}
 .it{display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:16px 6px 10px;text-align:center;transition:transform .18s var(--ease),border-color .2s,box-shadow .2s;min-width:0}
@@ -1167,7 +1169,7 @@ button .ic,.btn .ic{margin:0}
 
     <!-- 0b. Escritório animado -->
     <section class="band panel" id="sec-escritorio" aria-labelledby="h-esc">
-      <div class="panel-head"><h2 id="h-esc">Seu escritório</h2><span class="when" id="esc-when">o humor segue o seu dia</span></div>
+      <div class="panel-head"><h2 id="h-esc">Seu escritório</h2><span class="esc-hd"><span class="when" id="esc-when">o humor segue o seu dia</span><button type="button" class="btn ghost sm" id="esc-boneco" data-meu-perfil="boneco" hidden><i data-ic="t-shirt"></i> Personalizar boneco</button></span></div>
       <div id="esc-body"></div>
       <div class="of-sim" id="esc-sim" role="group" aria-label="Ver outros humores"><span class="hint">Ver como fica:</span><button type="button" data-humor="" aria-pressed="true" title="Hoje de verdade"><i data-ic="map-pin"></i> Hoje</button><button type="button" data-humor="-3" title="Queda forte" aria-label="Queda forte"><i data-ic="smiley-sad"></i></button><button type="button" data-humor="-1" title="Queda" aria-label="Queda"><i data-ic="smiley-nervous"></i></button><button type="button" data-humor="0" title="Estável" aria-label="Estável"><i data-ic="smiley-meh"></i></button><button type="button" data-humor="1" title="Alta" aria-label="Alta"><i data-ic="smiley"></i></button><button type="button" data-humor="3" title="Alta forte" aria-label="Alta forte"><i data-ic="confetti"></i></button><button type="button" data-tudo aria-pressed="false" title="Mostrar toda a decoração"><i data-ic="sparkle"></i> Ver tudo liberado</button></div>
       <div class="of-deco" id="esc-deco"></div>
@@ -1384,7 +1386,7 @@ button .ic,.btn .ic{margin:0}
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
 <script src="icones.js?v=3"></script>
-<script src="escritorio.js?v=3d9"></script>
+<script src="escritorio.js?v=3d10"></script>
 <script src="app.js?v=20261031a"></script>
 </body>
 </html>

@@ -32,7 +32,7 @@
   const IC = (n, o) => (window.RI ? window.RI.svg(n, o) : "");
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const MOD = "./escritorio3d.js?v=20261101-1";
+  const MOD = "./escritorio3d.js?v=20261101-2";
   let mod = null, carregando = null, inst = null, modo = null, ultimo = null, render2d = null, el0 = null;
   const pendentes = []; let secao = "";
   function temWebGL() {
@@ -120,7 +120,7 @@
     palco.querySelector(".of-card b").textContent = info.titulo + (d.fechado ? " · mercado fechado" : "");
     palco.querySelector(".of-card span:not(.of-emo)").textContent = d.fechado ? "Bolsa fechada hoje. Dia de videogame." : info.frase;
     const st = palco.querySelector(".of-card strong"); st.textContent = v; st.className = d.pct > 0 ? "up" : d.pct < 0 ? "down" : ""; st.hidden = !v;
-    ultimo = { humor: h, titulo: info.titulo, pct: d.pct, cor: d.cor, icone: d.icone || "", boneco: d.boneco || "", acessorio: d.acessorio || "", fechado: !!d.fechado, sim: !!d.sim, tudo: !!d.tudo, ativos: d.ativos || [], tem, layout: d.layout || null, onLayout: d.onLayout || null };
+    ultimo = { humor: h, titulo: info.titulo, pct: d.pct, cor: d.cor, icone: d.icone || "", boneco: d.boneco || "", acessorio: d.acessorio || "", fechado: !!d.fechado, sim: !!d.sim, tudo: !!d.tudo, ativos: d.ativos || [], serie: d.serie || null, tem, layout: d.layout || null, onLayout: d.onLayout || null };
     if (inst && inst.el.isConnected) { inst.atualizar(ultimo); return h; }
     if (!temWebGL()) { usar2d(el, d); return h; }
     if (!carregando) carregando = import(MOD).then((m) => (mod = m));

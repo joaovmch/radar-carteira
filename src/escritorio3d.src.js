@@ -25,6 +25,8 @@ const angLerp = (a, b, t) => a + difAng(a, b) * t;
 const yawPara = (de, para) => Math.atan2(para[0] - de[0], para[1] - de[1]);
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const ruido = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+// reamostra uma lista de números para n pontos (interpolação linear pelo índice)
+const reamostra = (a, n) => { if (!a.length) return Array(n).fill(0); if (a.length === n) return a.slice(); return Array.from({ length: n }, (_, i) => { const x = n === 1 ? 0 : (i / (n - 1)) * (a.length - 1); const i0 = Math.floor(x), i1 = Math.min(a.length - 1, i0 + 1); return lerp(a[i0], a[i1], x - i0); }); };
 const misturaCor = (a, b, t) => "#" + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
 
 const W = 9, D = 7.5, H = 3, T_PAR = 0.18;   // sala em metros: x (largura), z (profundidade), y (altura)
@@ -181,9 +183,15 @@ const AP = {
   l: ["#2F3B52", "#1F2937", "#5B4636", "#3F5F45", "#D6CDBB", "#6F86B5"],
   s: ["#1B2230", "#F4F6F8", "#C02626", "#7C4A21", "#2563EB"],
 };
-const AP_MAX = { p: 5, c: 9, k: 9, b: 3, l: 5, o: 1, a: 4, w: 4, r: 5, e: 1, s: 4 };
+const AP_MAX = { p: 5, c: 9, k: 9, b: 3, l: 5, o: 1, a: 4, w: 4, r: 9, e: 1, s: 4 };
 const AP_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0 };
 const lerAp = (v) => { const r = { ...AP_PAD }; String(v || "").replace(/([pckbloawres])(\d)/g, (_, k, d) => { r[k] = Math.min(+d, AP_MAX[k]); }); return r; };
+// roupas: tecido do tronco, manga (C curta, L comprida, R regata), punho de outra cor e se o ícone do perfil vai estampado
+const COR_TERNO = "#272C38";
+const ROUPAS = [
+  { m: "camisa", manga: "C", estampa: 1 }, { m: "camisa", manga: "C", estampa: 1 }, { m: "camisa", manga: "L", estampa: 1 }, { m: "branco", manga: "L" }, { m: "camisa", manga: "L" }, { m: "camisa", manga: "R", estampa: 1 },
+  { m: "paleto", manga: "L", punho: "branco" }, { m: "camisa", manga: "L", punho: "branco" }, { m: "xadrez", manga: "L" }, { m: "havai", manga: "C" },
+];
 const ALTURA = [0.9, 0.95, 1, 1.05, 1.1], CORPO = [0.84, 0.92, 1, 1.12, 1.26];
 const POSE0 = { alt: 0.89, dy: 0, hz: 0, lean: 0, side: 0, twist: 0, nod: 0, turn: 0, roll: 0, aL: [0, 0.12, 0.2], aR: [0, 0.12, 0.2], lL: [0, 0], lR: [0, 0], olhar: [0, 0], boch: 0, abre: 0.6, lagrima: 0, nuvem: 0, balao: 0, yawAdd: 0, sent: 0, kL: 0, kR: 0, ikL: null, ikR: null, mL: 0, mR: 0, taco: -1, recuo: 0, porta: 0, fxk: 0, gole: 0, pL: 0, pR: 0, olhos: "A", boca: "leve", sob: "", item: "", balaoT: "" };
 const NUM = ["alt", "dy", "hz", "lean", "side", "twist", "nod", "turn", "roll", "boch", "abre", "lagrima", "nuvem", "balao", "yawAdd", "sent", "kL", "kR", "mL", "mR", "taco", "recuo", "porta", "fxk", "gole", "pL", "pR"];
@@ -221,6 +229,13 @@ class Boneco {
     const camisa = this.camisa = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.86 });
     const gola = this.gola = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.8 });
     const branco = this.branco = new THREE.MeshStandardMaterial({ color: "#F4F6FA", roughness: 0.7 });
+    // terno (cor fixa, grafite), xadrez e havaiana (estampas desenhadas na cor do perfil)
+    const paleto = this.paleto = new THREE.MeshStandardMaterial({ color: COR_TERNO, roughness: 0.62 });
+    this.texX = tela(256, 256); this.texH = tela(256, 256);
+    for (const T of [this.texX, this.texH]) { T.t.wrapS = T.t.wrapT = THREE.RepeatWrapping; T.t.repeat.set(4, 2); }
+    const xadrez = this.xadrez = new THREE.MeshStandardMaterial({ map: this.texX.t, roughness: 0.92 });
+    const havai = this.havai = new THREE.MeshStandardMaterial({ map: this.texH.t, roughness: 0.72 });
+    this.estampasCor = this.cor; this.desenharEstampas(this.cor);
     const pele = this.pele = new THREE.MeshStandardMaterial({ color: AP.p[ap.p], roughness: 0.55, emissive: "#4A1D0C", emissiveIntensity: 0.16 });
     const peleSom = this.peleSom = new THREE.MeshStandardMaterial({ color: AP.p[ap.p], roughness: 0.6, emissive: "#4A1D0C", emissiveIntensity: 0.1 });
     const cab = this.cab = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.5, metalness: 0.05, vertexColors: true });
@@ -246,6 +261,22 @@ class Boneco {
     // detalhes de cada roupa
     const R = this.roupas = [];
     const vest = (fn) => { const g = new THREE.Group(); spine.add(g); fn(g); g.visible = false; R.push(g); return g; };
+    // peças coladas no peito: malha que segue a curva do tronco (xy(u, t) dá o ponto; u de 0 a 1 na largura, t de 0 a 1 na altura)
+    const rTorso = (y) => { let a = perfil[0], b = perfil[perfil.length - 1]; for (let i = 1; i < perfil.length; i++) if (perfil[i].y >= y) { a = perfil[i - 1]; b = perfil[i]; break; } return lerp(a.x, b.x, cl((y - a.y) / ((b.y - a.y) || 1))); };
+    const naFrente = (x, y, eps) => { const r = rTorso(y); return Math.sqrt(Math.max(0, 1 - (x / (r * 1.06)) ** 2)) * r * 0.74 + eps; };
+    const placa = (g, mat, xy, eps, nx = 6, ny = 12) => {
+      const pos = [], idx = [];
+      // folga maior no alto do peito, onde o tronco inclina e respira
+      for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) { const [x, y] = xy(i / nx, j / ny); pos.push(x, y, naFrente(x, y, eps + 0.004 + 0.06 * Math.max(0, y - 0.4))); }
+      const [x0, y0] = xy(0, 0), [x1, y1] = xy(1, 0), [x2, y2] = xy(0, 1); const vira = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0) < 0;   // lado espelhado
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const a = j * (nx + 1) + i, b = a + nx + 1; if (vira) idx.push(a, b, a + 1, a + 1, b, b + 1); else idx.push(a, a + 1, b, a + 1, b + 1, b); }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, mat); m.castShadow = false; m.receiveShadow = true; g.add(m); return m;
+    };
+    const faixa = (y0, y1, meia) => (u, t) => { const y = lerp(y0, y1, t); return [(u * 2 - 1) * meia(t), y]; };
+    const botao = (g, mat, x, y, r = 0.0068) => esf(g, mat, r, x, y, naFrente(x, y, 0.004), { s: [1, 1, 0.5], seg: 10, seg2: 8 });
+    // lapela: faixa ao longo do V do decote (s = lado), da cintura do V até a gola
+    const lapela = (g, mat, s, yb, yt, xb, xt, lb, lt, eps) => placa(g, mat, (u, t) => { const xi = lerp(xb, xt, t), w = lerp(lb, lt, t) * (t > 0.86 ? 1 - (t - 0.86) * 2.4 : 1); return [s * (xi + u * w), lerp(yb, yt, t)]; }, eps, 4, 14);
     // 0 polo: gola com abas e dois botões
     vest((g) => {
       const flap = new THREE.BoxGeometry(0.08, 0.01, 0.07);
@@ -275,14 +306,47 @@ class Boneco {
     });
     // 4 jaqueta: aberta, com camiseta branca por baixo
     vest((g) => {
-      const fr = new THREE.SphereGeometry(0.17, 24, 16, -0.42, 0.84, 0.35, 1.75);
-      mesh(fr, branco, g, 0, 0.27, 0.0, { s: [0.95, 1.25, 0.82] });
+      placa(g, branco, faixa(0.03, 0.515, (t) => lerp(0.07, 0.06, t)), 0.002);
       for (const s of [-1, 1]) { bloco(g, M("#475569", { r: 0.3, m: 0.6 }), [-0.004, -0.0, -0.004], [0.004, 0.42, 0.004], 0.002).position.set(s * 0.075, 0.24, 0.136 - 0.0); }
       mesh(new THREE.TorusGeometry(0.078, 0.026, 10, 28), gola, g, 0, 0.525, -0.012, { rx: PI / 2 - 0.15 });
       cil(g, gola, 0.15, 0.15, 0.04, 0, -0.005, 0, { s: [1.06, 1, 0.76], seg: 32 });
     });
     // 5 regata: cava funda (o ombro aparece)
     vest((g) => { mesh(new THREE.TorusGeometry(0.075, 0.01, 10, 28), gola, g, 0, 0.52, 0.01, { rx: PI / 2 - 0.25 }); });
+    // 6 terno: paletó grafite, camisa branca no V, gravata e lenço na cor do perfil, dois botões
+    vest((g) => {
+      placa(g, branco, faixa(0.3, 0.535, (t) => lerp(0.012, 0.08, t)), 0.003);
+      const gr = this.gravata2 = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.45 });
+      placa(g, gr, faixa(0.255, 0.49, (t) => t < 0.1 ? lerp(0.002, 0.025, t / 0.1) : lerp(0.025, 0.012, (t - 0.1) / 0.9)), 0.0065);
+      placa(g, gr, faixa(0.488, 0.522, (t) => lerp(0.012, 0.018, t)), 0.0085, 4, 3);
+      const lap = M("#1D212B", { r: 0.42 });
+      for (const s of [-1, 1]) lapela(g, lap, s, 0.285, 0.535, 0.002, 0.07, 0.03, 0.05, 0.009);
+      for (const y of [0.25, 0.18]) botao(g, M("#11141B", { r: 0.35 }), 0, y);
+      placa(g, M("#1D212B", { r: 0.5 }), (u, t) => [-0.115 + u * 0.065, lerp(0.352, 0.356, t)], 0.006, 3, 1);
+      placa(g, gr, (u, t) => [-0.108 + u * 0.05, lerp(0.354, 0.385, t) - (u > 0.5 ? 0 : 0.008 * t)], 0.0075, 4, 4);
+    });
+    // 7 blazer: na cor do perfil, camiseta branca por baixo
+    vest((g) => {
+      placa(g, branco, faixa(0.18, 0.53, (t) => lerp(0.03, 0.085, t)), 0.003);
+      mesh(new THREE.TorusGeometry(0.068, 0.011, 10, 28), branco, g, 0, 0.528, 0.004, { rx: PI / 2 - 0.12 });
+      const lb = this.lapBlazer = new THREE.MeshStandardMaterial({ color: misturaCor(this.cor, "#000000", 0.22), roughness: 0.55 });
+      for (const s of [-1, 1]) lapela(g, lb, s, 0.17, 0.535, 0.028, 0.078, 0.032, 0.05, 0.008);
+      botao(g, M("#1F2937", { r: 0.35 }), 0.03, 0.15, 0.0075);
+    });
+    // 8 camisa xadrez de flanela: gola, carcela e botões
+    vest((g) => {
+      const flap = new THREE.BoxGeometry(0.082, 0.009, 0.07);
+      for (const s of [-1, 1]) mesh(flap, xadrez, g, s * 0.043, 0.523, 0.071, { rx: 0.66, rz: -s * 0.6 });
+      mesh(new THREE.TorusGeometry(0.066, 0.015, 10, 28), xadrez, g, 0, 0.534, -0.004, { rx: PI / 2 });
+      placa(g, xadrez, faixa(0.02, 0.5, () => 0.011), 0.003, 2, 10);
+      for (const y of [0.45, 0.36, 0.27, 0.18, 0.09]) botao(g, M("#EDE6D6", { r: 0.4 }), 0, y, 0.006);
+    });
+    // 9 camisa havaiana: gola aberta (aparece o pescoço) e botões
+    vest((g) => {
+      placa(g, pele, faixa(0.43, 0.535, (t) => lerp(0.004, 0.05, t)), 0.003);
+      for (const s of [-1, 1]) lapela(g, havai, s, 0.4, 0.535, 0.004, 0.052, 0.03, 0.045, 0.006);
+      for (const y of [0.36, 0.26, 0.16, 0.06]) botao(g, M("#F5EBD8", { r: 0.4 }), 0, y, 0.006);
+    });
     // ícone do perfil estampado no peito
     this.estampa = tela(128, 128);
     const ep = mesh(new THREE.PlaneGeometry(0.1, 0.1), new THREE.MeshBasicMaterial({ map: this.estampa.t, transparent: true, alphaTest: 0.1, toneMapped: false }), spine, -0.072, 0.37, 0.126, { cast: false, ry: -0.1 });
@@ -576,15 +640,17 @@ class Boneco {
   geoTubo(t, g) {
     const pts = t.perfil, n = 30, rad = 22, f = 1 + (g - 1) * t.k;
     const curva = new THREE.SplineCurve(pts.map(([y, r]) => new THREE.Vector2(r, y))); const amostra = curva.getPoints(n);
-    const pos = [], idx = [], si = [], sw = [];
+    const pos = [], idx = [], si = [], sw = [], uv = [];
+    // estampa na mesma escala do tronco (volta do tronco ≈ 0,93 m para u de 0 a 1)
+    const rMed = pts.reduce((s2, q) => s2 + Math.max(0, q[1]), 0) / pts.length; const uC = (TAU * rMed) / 0.93;
     for (let i = 0; i <= n; i++) {
       const { x: r0, y } = amostra[i]; const r = Math.max(0, r0) * f;
       const w1 = suave((t.juntaY + t.banda - y) / (2 * t.banda));
-      for (let j = 0; j <= rad; j++) { const a = (j / rad) * TAU; pos.push(Math.sin(a) * r, y, Math.cos(a) * r * t.kz); si.push(0, 1, 0, 0); sw.push(1 - w1, w1, 0, 0); }
+      for (let j = 0; j <= rad; j++) { const a = (j / rad) * TAU; pos.push(Math.sin(a) * r, y, Math.cos(a) * r * t.kz); si.push(0, 1, 0, 0); sw.push(1 - w1, w1, 0, 0); uv.push((j / rad) * uC, -y / 0.58); }
     }
     for (let i = 0; i < n; i++) for (let j = 0; j < rad; j++) { const a = i * (rad + 1) + j, b = a + rad + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx);
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
     geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(sw, 4));
     geo.computeVertexNormals();
     if (t.aberto) geo.setAttribute("normal", geo.getAttribute("normal"));
@@ -608,6 +674,7 @@ class Boneco {
     this.esc = ALTURA[ap.a]; this.root.scale.setScalar(this.esc);
     const g = CORPO[ap.w]; this.fGir = g;
     for (const { m, s, k } of this.gir) { const f = 1 + (g - 1) * k; m.scale.set(s.x * f, s.y, s.z * f); }
+    for (const v of this.roupas) v.scale.set(g, 1, g);   // golas e peças do peito acompanham a largura do tronco
     if (this.gTubos !== g) { this.gTubos = g; for (const t of this.tubos) { const old = t.m.geometry; t.m.geometry = this.geoTubo(t, g); if (old) old.dispose(); } }
     this.barriga.visible = ap.w >= 3; this.barriga.position.z = (g - 1) * 0.16;
     this.L.sh.position.x = -0.19 * (1 + (g - 1) * 0.6); this.R.sh.position.x = 0.19 * (1 + (g - 1) * 0.6);
@@ -619,28 +686,53 @@ class Boneco {
   }
   setRoupa(r, e) {
     this.roupas.forEach((g, i) => { g.visible = i === r; });
-    const longa = r === 2 || r === 3 || r === 4, regata = r === 5, social = r === 3;
-    const mt = social ? this.branco : this.camisa;
+    // tecido do tronco e das mangas, tipo de manga (C curta, L comprida, R regata) e punho de camisa aparecendo
+    const cfg = ROUPAS[r] || ROUPAS[0]; const mt = this[cfg.m];
+    const longa = cfg.manga === "L", regata = cfg.manga === "R";
     for (const B of [this.L, this.R]) {
       B.mangaC.visible = B.bainhaC.visible = !longa && !regata; B.mangaL.visible = B.punho.visible = longa;
       B.ombro.visible = !regata; B.ombroPele.visible = regata;
-      for (const k of ["ombro", "mangaC", "bainhaC", "mangaL", "punho"]) B[k].material = mt;
+      for (const k of ["ombro", "mangaC", "bainhaC", "mangaL"]) B[k].material = mt;
+      B.punho.material = cfg.punho ? this[cfg.punho] : mt;
     }
     this.torso.material = mt; this.barriga.material = mt;
-    this.estampaPlano.visible = this.temIcone && !social && r !== 4;
+    this.estampaPlano.visible = this.temIcone && !!cfg.estampa;
     const bermuda = e === 1;
+    if (r === 6 && !bermuda) this.calca.color.set(COR_TERNO);   // terno completo: a calça acompanha o paletó
     for (const P of [this.PL, this.PR]) { P.calcaL.visible = P.barra.visible = !bermuda; P.bermudaM.visible = P.bermuda.visible = P.peleP.visible = bermuda; P.meiaM.scale.y = bermuda ? 1.8 : 1; P.meiaM.position.y = bermuda ? 0.04 : 0.012; }
   }
   setCor(cor) {
     const c = cor || "#2457F5"; this.cor = c; this.camisa.color.set(c);
     this.gola.color.set(c).lerp(new THREE.Color(this.ap.r === 2 ? "#000000" : "#FFFFFF"), this.ap.r === 2 ? 0.08 : 0.16);
     if (this.gravata) this.gravata.color.set(c);
+    if (this.gravata2) this.gravata2.color.set(c);
+    if (this.lapBlazer) this.lapBlazer.color.set(misturaCor(c, "#000000", 0.22));
+    if (this.estampasCor !== c) { this.estampasCor = c; this.desenharEstampas(c); }
+  }
+  // flanela xadrez e estampa havaiana, desenhadas na cor do perfil (texturas que se repetem sem emenda)
+  desenharEstampas(c) {
+    { const { g, t } = this.texX; const esc = misturaCor(c, "#000000", 0.5), cla = misturaCor(c, "#FFFFFF", 0.6);
+      g.globalAlpha = 1; g.fillStyle = misturaCor(c, "#FFFFFF", 0.08); g.fillRect(0, 0, 256, 256);
+      g.globalAlpha = 0.42; g.fillStyle = esc; g.fillRect(0, 72, 256, 72); g.fillRect(72, 0, 72, 256);
+      g.globalAlpha = 0.3; g.fillRect(0, 196, 256, 22); g.fillRect(196, 0, 22, 256);
+      g.globalAlpha = 0.85; g.fillStyle = cla; g.fillRect(0, 168, 256, 5); g.fillRect(168, 0, 5, 256);
+      g.globalAlpha = 0.6; g.fillStyle = "#0B0F17"; g.fillRect(0, 106, 256, 4); g.fillRect(106, 0, 4, 256);
+      g.globalAlpha = 0.06; g.fillStyle = "#000"; for (let i = -256; i < 256; i += 4) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 256, 256); g.lineTo(i + 258, 256); g.lineTo(i + 2, 0); g.fill(); }
+      g.globalAlpha = 1; t.needsUpdate = true; }
+    { const { g, t } = this.texH; g.globalAlpha = 1; g.fillStyle = c; g.fillRect(0, 0, 256, 256);
+      const folha = misturaCor(misturaCor(c, "#0E5A3A", 0.6), "#000000", 0.15), flor = "#FFF7EC", miolo = "#F6B93B";
+      const em = (x, y, fn) => { for (const dx of [-256, 0, 256]) for (const dy of [-256, 0, 256]) { g.save(); g.translate(x + dx, y + dy); fn(); g.restore(); } };
+      const fo = (x, y, a, s) => em(x, y, () => { g.rotate(a); g.fillStyle = folha; g.beginPath(); g.ellipse(0, 0, 34 * s, 12 * s, 0, 0, TAU); g.fill(); g.strokeStyle = misturaCor(folha, "#FFFFFF", 0.25); g.lineWidth = 2; g.beginPath(); g.moveTo(-30 * s, 0); g.lineTo(30 * s, 0); g.stroke(); });
+      const fl = (x, y, a, s) => em(x, y, () => { g.rotate(a); g.fillStyle = flor; for (let i = 0; i < 5; i++) { g.rotate(TAU / 5); g.beginPath(); g.ellipse(0, -15 * s, 9 * s, 15 * s, 0, 0, TAU); g.fill(); } g.fillStyle = miolo; g.beginPath(); g.arc(0, 0, 6 * s, 0, TAU); g.fill(); });
+      fo(40, 60, 0.6, 1); fo(170, 30, -0.4, 0.9); fo(120, 170, 1.9, 1.1); fo(220, 210, 0.3, 0.8); fo(30, 210, -1.1, 0.9);
+      fl(78, 92, 0.3, 1.1); fl(200, 120, 1.2, 0.9); fl(60, 190, 0.8, 0.8); fl(170, 230, 0.1, 1);
+      t.needsUpdate = true; }
   }
   setIcone(n) {
     const { g, t } = this.estampa; g.clearRect(0, 0, 128, 128);
     const ok = !!(n && typeof window !== "undefined" && window.RI && window.RI.tem(n + ":f"));
     if (ok) window.RI.desenhar(g, n + ":f", 64, 64, 104, "rgba(255,255,255,.92)");
-    this.temIcone = ok; this.estampaPlano.visible = ok && this.ap.r !== 3 && this.ap.r !== 4; t.needsUpdate = true;
+    this.temIcone = ok; this.estampaPlano.visible = ok && !!(ROUPAS[this.ap.r] || ROUPAS[0]).estampa; t.needsUpdate = true;
   }
   // IK de dois ossos: põe a mão (ponto de pegada) no alvo em coordenadas do mundo
   // palma para baixo com os dedos na direção f (ou para a frente do corpo), levemente inclinados para baixo
@@ -2161,6 +2253,16 @@ class Escritorio {
     const velhos = Object.fromEntries((ant.ativos || []).map((a) => [a.t, a]));
     for (const a of d.ativos || []) { const o = velhos[a.t]; if (o && o.preco != null && a.preco != null && Math.abs(o.preco - a.preco) > 1e-9) this.flash[a.t] = { t: performance.now(), up: a.preco > o.preco }; }
     if (ant.ativos && JSON.stringify((ant.ativos || []).map((a) => [a.t, a.preco])) !== JSON.stringify((d.ativos || []).map((a) => [a.t, a.preco]))) this.log("cotações atualizadas");
+    // gráfico do dia de verdade (mesmos pontos do gráfico "Hoje" do site): a linha passa suave da forma antiga para a nova
+    const sp = !d.sim && d.serie && d.serie.pts && d.serie.pts.length > 1 ? d.serie.pts : null;
+    if (sp) {
+      const v = sp.map((q) => q[1]); const a0 = this.serieAlvo;
+      if (!a0 || a0.v.length !== v.length || a0.v.some((x, i) => Math.abs(x - v[i]) > 1e-6)) {
+        const atual = a0 ? this.serieAgora() : null;
+        this.serieDe = atual ? reamostra(atual, v.length) : v.map(() => 0);   // na primeira vez, sobe a partir da linha do zero
+        this.serieAlvo = { v, ts: sp.map((q) => q[0]), hoje: !!d.serie.hoje }; this.serieT0 = performance.now(); this.sujo = true;
+      }
+    } else this.serieAlvo = null;
     if (!d.sim && d.pct != null && isFinite(d.pct)) { const l = this.hist[this.hist.length - 1]; if (!l || Math.abs(l.v - d.pct) > 1e-6) { this.hist.push({ v: d.pct, t: Date.now() }); if (this.hist.length > 60) this.hist.shift(); } }
     if (d.layout !== undefined && !this.salvando && !this.arrasto) { const n = (L) => JSON.stringify({ m: (L && L.m) || {}, off: [...((L && L.off) || [])].sort() }); if (n(d.layout) !== n(this.layoutAtual())) { this.aplicarLayout(d.layout, true); this.navOk = false; } }
     this.tem = d.tem || {};
@@ -2692,6 +2794,13 @@ class Escritorio {
     g.fillStyle = "#FDE047"; g.font = "bold 12px monospace"; g.fillText("HI " + String(Math.floor(T * 37) % 99999).padStart(5, "0"), 8, 12);
     t.needsUpdate = true;
   }
+  // valores do gráfico neste instante (no meio da transição entre a forma antiga e a nova)
+  serieAgora() {
+    const sa = this.serieAlvo; if (!sa) return [];
+    const k = suave((performance.now() - (this.serieT0 || 0)) / 1100); if (k < 1) this.sujo = true;
+    const de = this.serieDe && this.serieDe.length === sa.v.length ? this.serieDe : sa.v;
+    return sa.v.map((v, i) => lerp(de[i], v, k));
+  }
   desenharMonitor(T) {
     const { g, t } = this.mon; const Wm = 1024, Hm = 448; const d = this.d; const h = this.h;
     const corH = { triste: "#EF4444", preocupado: "#F97316", tranquilo: "#60A5FA", feliz: "#22C55E", euforico: "#FACC15" }[h];
@@ -2712,16 +2821,25 @@ class Escritorio {
     const pct = d.pct; const txt = pct == null || !isFinite(pct) ? "—" : (pct > 0 ? "+" : "") + pct.toFixed(2).replace(".", ",") + "%";
     g.fillStyle = pct > 0 ? "#4ADE80" : pct < 0 ? "#F87171" : "#E2E8F0"; g.font = "bold 64px system-ui"; g.fillText(txt, px + 14, py + 98);
     g.fillStyle = "#CBD5E1"; g.font = "16px system-ui"; g.fillText(this.titulo || "", px + 16, py + 126);
-    // gráfico com a evolução do dia nesta sessão
-    const gx = px + 16, gy = py + 150, gw = 298, gh = 160;
+    // gráfico do dia: os pontos reais do pregão (cotações a cada 2 minutos); sem eles, o que mudou nesta sessão
+    const gx = px + 16, gy = py + 150, gw = 298, gh = 150;
     g.strokeStyle = "rgba(148,163,184,.15)"; g.lineWidth = 1; for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(gx, gy + i * gh / 4); g.lineTo(gx + gw, gy + i * gh / 4); g.stroke(); }
-    const hs = this.hist.length ? this.hist : [{ v: pct || 0 }];
-    const vals = hs.map((x) => x.v).concat([0]); let mn = Math.min(...vals), mx = Math.max(...vals); if (mx - mn < 0.4) { const c = (mx + mn) / 2; mn = c - 0.2; mx = c + 0.2; }
+    const sa = this.serieAlvo;
+    const hs = sa ? this.serieAgora() : (this.hist.length ? this.hist : [{ v: pct || 0 }]).map((x) => x.v);
+    const vals = hs.concat([0]); let mn = Math.min(...vals), mx = Math.max(...vals); if (mx - mn < 0.4) { const c = (mx + mn) / 2; mn = c - 0.2; mx = c + 0.2; }
+    const folga = (mx - mn) * 0.08; mn -= folga; mx += folga;
     const yv = (v) => gy + gh - ((v - mn) / (mx - mn)) * gh;
     g.setLineDash([4, 4]); g.strokeStyle = "rgba(148,163,184,.4)"; g.beginPath(); g.moveTo(gx, yv(0)); g.lineTo(gx + gw, yv(0)); g.stroke(); g.setLineDash([]);
-    const n = hs.length; const pts = hs.map((x, i) => [gx + (n === 1 ? gw : (i / (n - 1)) * gw), yv(x.v)]);
+    const n = hs.length; const pts = hs.map((v, i) => [gx + (n === 1 ? gw : (i / (n - 1)) * gw), yv(v)]);
     if (n === 1) pts.unshift([gx, pts[0][1]]);
-    const cor = (pct || 0) >= 0 ? "#22C55E" : "#EF4444";
+    if (sa) {
+      const hora = (ts) => new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+      g.fillStyle = "#64748B"; g.font = "13px system-ui"; g.fillText(hora(sa.ts[0]), gx, gy + gh + 18); g.textAlign = "right"; g.fillText(sa.hoje ? hora(sa.ts[sa.ts.length - 1]) : "último pregão", gx + gw, gy + gh + 18); g.textAlign = "left";
+      const fv = (v) => (v > 0 ? "+" : "") + v.toFixed(2).replace(".", ",") + "%";
+      g.font = "12px system-ui"; g.fillStyle = "#94A3B8"; g.fillText(fv(Math.max(...hs)), gx + gw - 60, gy - 6);
+    }
+    const ultV = hs[hs.length - 1];
+    const cor = (sa ? ultV : pct || 0) >= 0 ? "#22C55E" : "#EF4444";
     const ar = g.createLinearGradient(0, gy, 0, gy + gh); ar.addColorStop(0, cor + "55"); ar.addColorStop(1, cor + "00");
     g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.lineTo(pts[pts.length - 1][0], gy + gh); g.lineTo(pts[0][0], gy + gh); g.closePath(); g.fillStyle = ar; g.fill();
     g.strokeStyle = cor; g.lineWidth = 3; g.lineJoin = "round"; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();

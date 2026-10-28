@@ -24,6 +24,8 @@ const angLerp = (a, b, t) => a + difAng(a, b) * t;
 const yawPara = (de, para) => Math.atan2(para[0] - de[0], para[1] - de[1]);
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const ruido = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+// reamostra uma lista de números para n pontos (interpolação linear pelo índice)
+const reamostra = (a, n) => { if (!a.length) return Array(n).fill(0); if (a.length === n) return a.slice(); return Array.from({ length: n }, (_, i) => { const x = n === 1 ? 0 : (i / (n - 1)) * (a.length - 1); const i0 = Math.floor(x), i1 = Math.min(a.length - 1, i0 + 1); return lerp(a[i0], a[i1], x - i0); }); };
 const misturaCor = (a, b, t) => "#" + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
 
 const W = 9, D = 7.5, H = 3, T_PAR = 0.18;   // sala em metros: x (largura), z (profundidade), y (altura)
