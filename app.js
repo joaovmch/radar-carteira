@@ -2056,7 +2056,7 @@
   const accHtml = (ac) => `<span class="acc ${ac.pos}" style="--acc:${ac.c}">${IC(ac.ic + ":d")}</span>`;
   const ITEM = Object.fromEntries(ITENS.map((i) => [i.id, i]));
   S.perfil = null; S.perfilOk = true; S.v2 = true; S.conq = undefined; S.rk = { escopo: "brasil", cat: "rentabilidade", dados: null, carregando: false };
-  const fotoOk = (f) => typeof f === "string" && (/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(f) || /^https:\/\/[^\s"'<>]+$/i.test(f));
+  const fotoOk = (f) => typeof f === "string" && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(f);
   // Avatar com foto ou ícone, moldura e acessório. tam: px (true = 48)
   const avHtml = (p, tam, o = {}) => {
     const s = tam === true ? 48 : tam || 34;
