@@ -259,19 +259,33 @@
         p = { ...p, lL: [p.lL[0] + 0.28 * Math.max(0, s) * k, p.lL[1] + 0.55 * Math.max(0, s) * k], lR: [p.lR[0] + 0.28 * Math.max(0, -s) * k, p.lR[1] + 0.55 * Math.max(0, -s) * k], alt: p.alt - 0.012 * Math.abs(s) * k };
       }
     }
+    // camada de vida (olhar, manias, peso do corpo, expressões) por cima da rotina
+    this.decidirProps(st, r.k, tl);
+    const segurando = Object.keys(this.prop).find((n) => ["R", "LR", "joga"].includes(this.prop[n].h));
+    const segL = Object.keys(this.prop).find((n) => ["L", "LR"].includes(this.prop[n].h));
+    const cabW = this.mundo(b.head), fwd = V(Math.sin(pf.y), 0, Math.cos(pf.y));
+    const alvos = [];
+    const add = (nome, pos, peso) => { const d = pos.clone().sub(cabW); if (Math.abs(difAng(pf.y, Math.atan2(d.x, d.z))) < 1.5 && d.length() > 0.5) alvos.push({ nome, pos, peso }); };
+    add("tv", V(3.2, 1.5, 0.12), 1); add("janela", V(-0.6, 1.7, 1.8), 0.9); add("relogio", V(5.25, 2.35, 0.05), 0.5); add("camera", this.cam.position.clone(), this.h === "triste" ? 0.4 : 1.2);
+    add("monitor", this.pto("mesa", 6.8, 1.14, 0.22), 0.6);
+    if (this.cao.g.visible) add("cao", this.mundo(this.cao.cab), 1.3);
+    p = this.vida.passo({ ...p, item: segurando ? (p.item || segurando) : p.item }, {
+      T, dt, humor: this.h, reduz: this.reduz, cabeca: cabW, yawCorpo: pf.y, alvos, foco: st.foco ? st.foco(this) : null,
+      nariz: cabW.clone().addScaledVector(fwd, 0.15 * b.esc).add(V(0, -0.02, 0)), ocupado: !!st.ocupado || p.taco > -0.9, ocupadoL: !!segL,
+      facePropria: !!r.pose._fp, legsLivres: p.alt > 0.86 && Math.abs(p.lL[0]) < 0.25 && Math.abs(p.lR[0]) < 0.25 && !st.semPeso,
+    });
     p = this.filtro.passo(p, dt);
     b.root.position.set(pf.x, 0, pf.z); b.root.rotation.y = pf.y + (p.yawAdd || 0);
     b.root.updateMatrixWorld(true);
     const comTaco = p.taco > -0.98 && this.h === "feliz";
     if (comTaco) { p = { ...p }; this.aplicarTaco(p); }
     else { /* taco encostado na mesa */ const q = this.tacoPontas({ taco: -1 }); const dir = q.tip.clone().sub(q.butt).normalize(); const tc = this.itens.taco; tc.visible = true; tc.position.copy(q.butt); tc.quaternion.setFromUnitVectors(V(0, 1, 0), dir); }
-    // objetos: decide quem segura o quê neste instante (antes de posar as mãos)
-    this.decidirProps(st, r.k, tl);
+    // objetos: quem segura o quê neste instante (antes de posar as mãos)
     const naMaoR = Object.keys(this.prop).find((n) => ["R", "LR", "joga"].includes(this.prop[n].h));
     const naMaoL = Object.keys(this.prop).find((n) => this.prop[n].h === "L");
     if (!["tecla", "tacoV", "tacoShot"].includes(p.item)) p.item = naMaoR === "joga" ? "" : naMaoR || "";
     if (naMaoL) p.mL = Math.max(p.mL || 0, 0.9);
-    b.aplicar(p, T, dt); b.desenharRosto(p, T);
+    b.aplicar(p, T, dt); b.desenharRosto(this.vida.rosto(p, { T, dt, humor: this.h, facePropria: !!r.pose._fp }), T);
     b.blob.position.set(pf.x, 0.004, pf.z); b.blob.material.opacity = cl(1 - (p.dy || 0) * 2, 0.3, 1);
     this.moverProps(p, tl, fxk, dt);
     if (this.itens.celular.visible) this.desenharCel(T);

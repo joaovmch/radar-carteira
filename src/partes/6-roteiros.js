@@ -32,7 +32,7 @@ function poseFesta(tt, T) {
   return r;
 }
 // comemoração rápida (soco no ar)
-const vibra = (tl, dur, o = {}) => { const up = jan(tl, 0, dur, 0.3), pump = Math.abs(Math.sin(tl * PI / 0.42)) * up; return { aR: [lerp(0, 2.55 + 0.3 * pump, up), 0.25, lerp(0.2, 0.9 - 0.5 * pump, up)], dy: 0.03 * pump, olhos: up > 0.5 ? "F" : "A", boca: up > 0.3 ? "aberta" : "sorriso", boch: 0.7, ...o }; };
+const vibra = (tl, dur, o = {}) => { const up = jan(tl, 0, dur, 0.3), pump = Math.abs(Math.sin(tl * PI / 0.42)) * up; return { gestoR: up > 0.3 ? "punho" : "", aR: [lerp(0, 2.55 + 0.3 * pump, up), 0.25, lerp(0.2, 0.9 - 0.5 * pump, up)], dy: 0.03 * pump, olhos: up > 0.5 ? "F" : "A", boca: up > 0.3 ? "aberta" : "sorriso", boch: 0.7, ...o }; };
 
 // L: lugares no mundo (dependem de onde estão os móveis); e: a cena (alvos ao vivo); ciclo: nº da volta (para variar)
 // Cada rotina termina exatamente na pose em que começa (o laço não aparece). "entrada" e "saida" levam o boneco
@@ -41,16 +41,16 @@ const sofaSent = (T) => sentado(T, 0.62, { lean: -0.1 });
 function jogando(T, tl, o = {}) {
   const curva = Math.sin(tl * 0.9) * 0.08 + Math.sin(tl * 2.3) * 0.03;
   const tap = (x) => Math.max(0, Math.sin(T * 10 + x)) * 0.12;
-  return sentado(T, 0.62, { lean: -0.1 + curva * 0.3, side: curva, nod: 0.15, turn: curva * 0.6, aL: [0.85 + tap(0), -0.22, 1.25], aR: [0.85 + tap(2), -0.22, 1.25], boca: "foco", ...o });
+  return sentado(T, 0.62, { lean: -0.1 + curva * 0.3, side: curva, nod: 0.15, turn: curva * 0.6, aL: [0.85 + tap(0), -0.22, 1.25], aR: [0.85 + tap(2), -0.22, 1.25], ...o });
 }
 // partida no sofá: vibra com os braços para cima (o controle vai junto na mão direita)
 const partida = (dur, vibras) => F(dur, (k, tl, T) => {
   let yes = 0; for (const v of vibras) yes = Math.max(yes, jan(tl, v, v + 1.3));
-  const r = jogando(T, tl, { boca: yes > 0.4 ? "aberta" : "foco", olhos: yes > 0.5 ? "F" : "A", boch: 0.15 + 0.5 * yes });
+  const r = jogando(T, tl, yes > 0.3 ? { boca: "aberta", olhos: yes > 0.5 ? "F" : "A", boch: 0.15 + 0.5 * yes, gestoR: "punho", gestoL: "aberta" } : {});
   r.aR = r.aR.map((x, i) => lerp(x, [2.7, 0.5, 0.4][i], yes)); r.aL = r.aL.map((x, i) => lerp(x, [2.5, 0.55, 0.5][i], yes));
   r.lean -= 0.08 * yes; r.nod -= 0.25 * yes; r.dy = 0.04 * yes * Math.abs(Math.sin(tl * 9));
   return r;
-}, { tv: "jogo", props: { controle: "LR" } });
+}, { tv: "jogo", props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) });
 const pegaControle = (e) => F(1.6, (k, tl, T) => {
   const a = jan(tl, 0, 1.15, 0.4); const c = e.casaDe("controle").pos;
   const r = mistura(sofaSent(T), jogando(T, 0), suave(fase(tl, 0.75, 1.6))); r.ikR = [c.x, c.y + 0.03, c.z]; r.kR = a; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
@@ -77,7 +77,7 @@ const ROTEIROS = {
         const c = e.casaDe("xicara").pos, bico = e.bico(); const alc = jan(tl, 0, 5.3, 0.45), ida = suave(fase(tl, 0.9, 1.7)), volta = suave(fase(tl, 4.3, 5.3));
         const alvo = c.clone().add(V(0, 0.06, 0)).lerp(bico, ida); const bt = e.botaoCafe(), aperta = jan(tl, 1.9, 2.9, 0.25);
         return emPe(T, { ikR: [alvo.x, alvo.y, alvo.z], kR: alc * (1 - volta), aR: [0.6, -0.25, 1.75], ikL: [bt.x, bt.y - 0.02 * Math.max(0, Math.sin((tl - 2.1) * 9)), bt.z], kL: aperta, lean: 0.14 * alc, nod: 0.28, olhar: [0, 1] });
-      }, { ate: L.cafeP, props: { xicara: (k, tl) => tl < 0.75 ? "casa" : "R" }, fx: "cafe" }),
+      }, { ate: L.cafeP, props: { xicara: (k, tl) => tl < 0.75 ? "casa" : "R" }, fx: "cafe", foco: (e) => e.bico() }),
       F(4.4, (k, tl, T) => { const g = jan(tl, 0.6, 1.8, 0.35) + jan(tl, 2.6, 3.7, 0.35);
         return emPe(T, { aR: [0.6 + 0.75 * g, -0.25, 1.75 + 0.4 * g], gole: g, nod: -0.25 * g, olhos: g > 0.5 ? "Z" : "A", boca: g > 0.5 ? "reta" : "sorriso", boch: 0.35 }); }, { props: { xicara: "R" } }),
       F(1.6, (k, tl, T) => { const c = e.casaDe("xicara").pos; const a = jan(tl, 0, 1.6, 0.45); return emPe(T, { ikR: [c.x, c.y + 0.06, c.z], kR: a, aR: [0.6, -0.25, 1.75], lean: 0.14 * a, nod: 0.25 }); }, { props: { xicara: (k, tl) => tl < 0.85 ? "R" : "casa" } }),
@@ -85,21 +85,21 @@ const ROTEIROS = {
     ] : [
       partida(9 + (ciclo % 3) * 2, [3.4]),
       // relaxa: encosta, estica as pernas, o controle descansa na mão direita
-      F(6.5, (k, tl, T) => { const w = jan(tl, 0, 6.5, 0.9); const r = jogando(T, tl * 0.3, { boca: "sorriso", boch: 0.3 }); r.lean -= 0.22 * w; r.nod -= 0.15 * w; r.lL = r.lL.map((x, i) => lerp(x, [0.95, 0.5][i], w)); r.lR = r.lR.map((x, i) => lerp(x, [0.9, 0.45][i], w)); r.aL = r.aL.map((x, i) => lerp(x, [0.5, -0.05, 0.6][i], w)); r.aR = r.aR.map((x, i) => lerp(x, [0.65, -0.1, 0.9][i], w)); r.olhos = tl > 2 && tl < 4.4 ? "Z" : "A"; return r; }, { props: { controle: "LR" } }),
+      F(6.5, (k, tl, T) => { const w = jan(tl, 0, 6.5, 0.9); const r = jogando(T, tl * 0.3, { boca: "sorriso", boch: 0.3 }); r.lean -= 0.22 * w; r.nod -= 0.15 * w; r.lL = r.lL.map((x, i) => lerp(x, [0.95, 0.5][i], w)); r.lR = r.lR.map((x, i) => lerp(x, [0.9, 0.45][i], w)); r.aL = r.aL.map((x, i) => lerp(x, [0.5, -0.05, 0.6][i], w)); r.aR = r.aR.map((x, i) => lerp(x, [0.65, -0.1, 0.9][i], w)); r.olhos = tl > 2 && tl < 4.4 ? "Z" : "A"; return r; }, { props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) }),
       partida(8, [4.4]),
     ];
     return { inicio: L.sofaS, aprox: L.sofaP, sentado: true, sentPose: sofaSent, padrao: { boca: "leve", boch: 0.15 }, passos, entrada: [sentar, pegaControle(e)], saida: [largaControle(e), levantar] };
   },
   feliz: (L, e, ciclo = 0) => {
     const passos = [
-      F(2.6, (k, tl, T) => { const r = Math.sin(tl * 9) * 0.12 * jan(tl, 0.4, 2.2); return emPe(T, { taco: 0, aL: [1.4 + r, 0.1, 1.9], nod: -0.25, olhar: [0, -1.5], boca: "leve" }); }, { bolas: "ini" }),
+      F(2.6, (k, tl, T) => { const r = Math.sin(tl * 9) * 0.12 * jan(tl, 0.4, 2.2); return emPe(T, { taco: 0, aL: [1.4 + r, 0.1, 1.9], nod: -0.25, olhar: [0, -1.5], boca: "leve" }); }, { bolas: "ini", foco: (e) => e.pto("sinuca", 7.62, 0.81, 4.52) }),
       F(5.6, (k, tl, T) => poseTacada(tl, T)),
       F(3.0, (k, tl, T) => { const v = vibra(tl, 3.0); return emPe(T, { ...v, taco: 0, aL: v.aR, aR: undefined, bolas: "fim" }); }),
     ];
     if (ciclo % 2 === 0) passos.push(
       A(1.25, [L.monP], { taco: 0, bolas: "fim" }),
       F(4.6, (k, tl, T) => { const up = jan(tl, 1.4, 3.6, 0.4); const nod = Math.sin(tl * 6) * 0.1 * jan(tl, 0.3, 1.3);
-        return emPe(T, { taco: 0, aL: [lerp(0, 1.3, up), -0.15, lerp(0.2, 1.7, up)], lean: 0.1, nod: 0.05 + nod, boca: up > 0.5 ? "aberta" : "sorriso", olhos: up > 0.5 ? "F" : "A" }); }, { bolas: "fim", ate: L.monP }),
+        return emPe(T, { taco: 0, aL: [lerp(0, 1.3, up), -0.15, lerp(0.2, 1.7, up)], lean: 0.1, nod: 0.05 + nod, boca: up > 0.5 ? "aberta" : "sorriso", olhos: up > 0.5 ? "F" : "A" }); }, { bolas: "fim", ate: L.monP, foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22) }),
       A(1.25, [L.sinP], { taco: 0, bolas: "fim" }));
     else passos.push(F(3.2, (k, tl, T) => emPe(T, { taco: 0, nod: 0.2, olhar: [0.6 * Math.sin(tl * 1.5), -1], boca: "sorriso", aL: [0.3, 0.25, 1.2 * jan(tl, 0, 3.2, 0.5)], side: 0.05 * Math.sin(tl * 2) }), { bolas: "fim" }));
     // a bola encaçapada volta para a mesa e a branca rola para o lugar dela
@@ -118,7 +118,7 @@ const ROTEIROS = {
     }, { props: { maco: (k, tl) => tl < 0.45 ? "casa" : tl > 5.0 ? "casa" : "L", nota: (k, tl) => { const c = ((Math.max(0, tl - 0.8)) % 1.1) / 1.1; return tl > 0.8 && tl < 4.9 && c < 0.5 ? "R" : "casa"; } } }),
     A(2.2, [L.monP], { estilo: "corre" }),
     F(3.4, (k, tl, T) => { const j = (tl % 0.85) / 0.85, h = Math.sin(PI * j);
-      return emPe(T, { dy: 0.35 * h, aL: [2.9, 0.4, 0.2], aR: [2.9, 0.4, 0.2], lL: [0.3 * h, 0.7 * h], lR: [0.3 * h, 0.7 * h], boca: "aberta", olhos: "F" }); }, { ate: L.monP }),
+      return emPe(T, { dy: 0.35 * h, aL: [2.9, 0.4, 0.2], aR: [2.9, 0.4, 0.2], lL: [0.3 * h, 0.7 * h], lR: [0.3 * h, 0.7 * h], boca: "aberta", olhos: "F" }); }, { ate: L.monP, foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22), semPeso: true }),
     A(2.2, [L.danca], { estilo: "corre" }),
     F(5.0, (k, tl, T) => poseFesta(1.05 + (tl % 2.48), T), { ate: L.danca, fx: "globo" }),
   ] }),
@@ -133,7 +133,7 @@ const ROTEIROS = {
         ikL: [kb.L.x + dx, kb.L.y + tE, kb.L.z], kL: entra, ikR: [kb.R.x - dx, kb.R.y + tD, kb.R.z], kR: entra * (1 - coca),
         aR: [lerp(0.6, 2.3, coca), lerp(-0.08, 0.6, coca), lerp(1.0, 2.4 + 0.15 * Math.sin(T * 16), coca)], item: entra > 0.3 ? "tecla" : "",
         olhar: [0.3 * Math.sin(tl * 2), -0.6] });
-    }, { mon: "foco" });
+    }, { mon: "foco", foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22) });
     const passos = [digita(9 + (ciclo % 2) * 3),
       F(3.6, (k, tl, T) => { const c = jan(tl, 0, 3.6, 0.6); const sh = Math.sin(T * 9) * 0.12 * c;
         return sentado(T, 0.6, { lean: 0.22 - 0.3 * c, nod: -0.1 * c, turn: sh, aL: [lerp(0.62, 2.5, c), lerp(-0.08, 0.7, c), lerp(0.98, 2.3, c)], aR: [lerp(0.6, 2.5, c), lerp(-0.08, 0.7, c), lerp(1.0, 2.3, c)], balao: jan(tl, 0.3, 3.4, 0.3), balaoT: "smiley-nervous", boca: "o", abre: 0.4 }); })];
@@ -158,7 +158,7 @@ const ROTEIROS = {
       })];
     if (ciclo % 2 === 0) passos.push(levantar, A(0.62, [L.janP], { estilo: "triste" }),
       F(9.5, (k, tl, T) => { const mao = jan(tl, 0.8, 7.8, 0.6), sus = Math.sin(PI * fase(tl, 3.6, 5.2)), enc = jan(tl, 5.6, 7.4, 0.5);
-        return emPe(T, { aL: [lerp(0, 1.75, mao), -0.1 * mao, lerp(0.2, 0.55, mao)], alt: 0.89 - 0.02 * sus, lean: 0.06 + 0.1 * enc, nod: 0.1 + 0.3 * enc - 0.1 * mao, side: -0.05 * enc, olhar: [0, -0.5] }); }, { ate: L.janP }),
+        return emPe(T, { aL: [lerp(0, 1.75, mao), -0.1 * mao, lerp(0.2, 0.55, mao)], alt: 0.89 - 0.02 * sus, lean: 0.06 + 0.1 * enc, nod: 0.1 + 0.3 * enc - 0.1 * mao, side: -0.05 * enc, olhar: [0, -0.5] }); }, { ate: L.janP, foco: () => V(-1.2, 1.5, 1.8) }),
       A(0.62, [L.polP], { estilo: "triste" }), F(0.6, (k, tl, T) => pe(T), { ate: L.polP }), sentar);
     else passos.push(F(7, (k, tl, T) => { const s = Math.sin(PI * fase(tl, 1.5, 3.5)); return sentado(T, 0.6, { lean: 0.32 + 0.08 * s, nod: 0.35 - 0.2 * jan(tl, 3.8, 6.6, 0.6), turn: -0.6 * jan(tl, 3.8, 6.6, 0.6), aL: [0.72, -0.1, 1.05], aR: [0.72, -0.1, 1.05], olhar: [-1.4, -0.4], olhos: s > 0.6 ? "Z" : "A" }); }));
     return { inicio: L.polS, aprox: L.polP, sentado: true, sentPose: sentP, padrao: { sob: "triste", boca: "triste", nuvem: 1, lagrima: 1 }, passos, entrada: [sentar], saida: [levantar] };

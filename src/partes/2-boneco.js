@@ -21,10 +21,10 @@ const AP_MAX = { p: 5, c: 9, k: 9, b: 3, l: 5, o: 1, a: 4, w: 4, r: 5, e: 1, s: 
 const AP_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0 };
 const lerAp = (v) => { const r = { ...AP_PAD }; String(v || "").replace(/([pckbloawres])(\d)/g, (_, k, d) => { r[k] = Math.min(+d, AP_MAX[k]); }); return r; };
 const ALTURA = [0.9, 0.95, 1, 1.05, 1.1], CORPO = [0.84, 0.92, 1, 1.12, 1.26];
-const POSE0 = { alt: 0.89, dy: 0, hz: 0, lean: 0, side: 0, twist: 0, nod: 0, turn: 0, roll: 0, aL: [0, 0.12, 0.2], aR: [0, 0.12, 0.2], lL: [0, 0], lR: [0, 0], olhar: [0, 0], boch: 0, abre: 0.6, lagrima: 0, nuvem: 0, balao: 0, yawAdd: 0, sent: 0, kL: 0, kR: 0, ikL: null, ikR: null, mL: 0, mR: 0, taco: -1, recuo: 0, porta: 0, fxk: 0, gole: 0, olhos: "A", boca: "leve", sob: "", item: "", balaoT: "" };
-const NUM = ["alt", "dy", "hz", "lean", "side", "twist", "nod", "turn", "roll", "boch", "abre", "lagrima", "nuvem", "balao", "yawAdd", "sent", "kL", "kR", "mL", "mR", "taco", "recuo", "porta", "fxk", "gole"];
+const POSE0 = { alt: 0.89, dy: 0, hz: 0, lean: 0, side: 0, twist: 0, nod: 0, turn: 0, roll: 0, aL: [0, 0.12, 0.2], aR: [0, 0.12, 0.2], lL: [0, 0], lR: [0, 0], olhar: [0, 0], boch: 0, abre: 0.6, lagrima: 0, nuvem: 0, balao: 0, yawAdd: 0, sent: 0, kL: 0, kR: 0, ikL: null, ikR: null, mL: 0, mR: 0, taco: -1, recuo: 0, porta: 0, fxk: 0, gole: 0, pL: 0, pR: 0, olhos: "A", boca: "leve", sob: "", item: "", balaoT: "" };
+const NUM = ["alt", "dy", "hz", "lean", "side", "twist", "nod", "turn", "roll", "boch", "abre", "lagrima", "nuvem", "balao", "yawAdd", "sent", "kL", "kR", "mL", "mR", "taco", "recuo", "porta", "fxk", "gole", "pL", "pR"];
 const ARR = ["aL", "aR", "lL", "lR", "olhar"];
-const DISC = ["olhos", "boca", "sob", "item", "balaoT", "bolas", "solta", "fx"];
+const DISC = ["olhos", "boca", "sob", "item", "balaoT", "bolas", "solta", "fx", "gestoL", "gestoR"];
 // Cabeça modelada numa esfera de raio R e achatada pela escala do grupo (cabeça um pouco maior: traço de desenho animado)
 const CAB_ESC = [0.47, 0.565, 0.52], ESTICA = CAB_ESC[1] / CAB_ESC[0] * 0.98;
 const BR_A = 0.29, BR_B = 0.325;   // braço e antebraço (até o ponto de pegada)
@@ -181,7 +181,7 @@ class Boneco {
       return { sh, el, hand, lado, ombro, ombroPele, mangaC, bainhaC, mangaL, cot, cotM, antM, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
     };
     this.L = braco(-1, "L"); this.R = braco(1, "R");
-    this.cL = this.cR = 0.28;
+    this.curL = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 }; this.curR = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 };
     /* pernas: coxa, joelho, canela (calça ou bermuda), meia e tênis */
     const perna = (lado) => {
       const hp = new THREE.Group(); hp.position.set(0.094 * lado, -0.01, 0); hips.add(hp);
@@ -491,8 +491,8 @@ class Boneco {
     this.L.sh.position.y = 0.437 + sh; this.R.sh.position.y = 0.437 + sh;
     this.L.sh.rotation.set(-p.aL[0], 0, -p.aL[1]); this.L.el.rotation.x = -p.aL[2];
     this.R.sh.rotation.set(-p.aR[0], 0, p.aR[1]); this.R.el.rotation.x = -p.aR[2];
-    this.PL.hp.rotation.x = -p.lL[0]; this.PL.kn.rotation.x = p.lL[1]; this.PL.ft.rotation.x = p.lL[0] - p.lL[1];
-    this.PR.hp.rotation.x = -p.lR[0]; this.PR.kn.rotation.x = p.lR[1]; this.PR.ft.rotation.x = p.lR[0] - p.lR[1];
+    this.PL.hp.rotation.x = -p.lL[0]; this.PL.kn.rotation.x = p.lL[1]; this.PL.ft.rotation.x = p.lL[0] - p.lL[1] + (p.pL || 0);
+    this.PR.hp.rotation.x = -p.lR[0]; this.PR.kn.rotation.x = p.lR[1]; this.PR.ft.rotation.x = p.lR[0] - p.lR[1] + (p.pR || 0);
     // braços que buscam um ponto (teclado, taco, objetos)
     if ((p.kL > 0.001 && p.ikL) || (p.kR > 0.001 && p.ikR)) {
       this.root.updateMatrixWorld(true);
@@ -507,18 +507,19 @@ class Boneco {
     const [hl, hr] = pg;
     this.L.hand.rotation.set(hl ? hl[0] : p.mL * 0.9, hl ? hl[1] : 0, hl ? hl[2] : 0);
     this.R.hand.rotation.set(hr ? hr[0] : p.mR * 0.9, hr ? hr[1] : 0, hr ? hr[2] : 0);
-    // dedos: fechados ao segurar, abertos na comemoração, relaxados no resto
-    const segL = /controle|taco/.test(item) || p.mL > 0.5, segR = /controle|taco|xicara|nota|celular|moeda|dardo|trofeu/.test(item) || p.mR > 0.5;
-    const alvoL = item === "tecla" ? 0.45 : segL ? 0.95 : p.aL[0] > 2.2 ? 0.1 : 0.32 + 0.05 * Math.sin(T * 0.8);
-    const alvoR = item === "tecla" ? 0.45 : segR ? 0.95 : p.aR[0] > 2.2 ? 0.1 : 0.32 + 0.05 * Math.sin(T * 0.8 + 1);
-    const k = dt > 0 ? Math.min(1, dt * 12) : 1;
-    this.cL += (alvoL - this.cL) * k; this.cR += (alvoR - this.cR) * k;
-    for (const [lado, lista, c] of [[-1, this.dedos.L, this.cL], [1, this.dedos.R, this.cR]]) {
-      lista.forEach((d, i) => {
-        if (d.polegar) { d.p1.rotation.z = lado * 0.5 - lado * c * 0.35; d.p2.rotation.z = -lado * c * 0.6; return; }
-        const f2 = 1 + (i - 1.5) * 0.06;
-        d.p1.rotation.z = -lado * c * 1.05 * f2; d.p2.rotation.z = -lado * c * 1.25 * f2;
+    // dedos: cada um com a sua curva (pegada, gesto, digitação, controle) e um mexer leve quando estão soltos
+    const k = dt > 0 ? Math.min(1, dt * 16) : 1;
+    for (const [lado, nome, B] of [[-1, "L", this.L], [1, "R", this.R]]) {
+      const g = this.gestoDe(p, item, nome, T); const cur = nome === "L" ? this.curL : this.curR;
+      cur.s += (g.s - cur.s) * k;
+      this.dedos[nome].forEach((d, i) => {
+        cur.c[i] += (g.c[i] - cur.c[i]) * k * (d.polegar ? 0.9 : 1 - i * 0.04);
+        const c = cur.c[i];
+        if (d.polegar) { d.p1.rotation.z = lado * 0.5 - lado * c * 0.4; d.p1.rotation.x = 0.4 - 0.25 * c; d.p2.rotation.z = -lado * c * 0.7; return; }
+        d.p1.rotation.z = -lado * c * 1.08; d.p2.rotation.z = -lado * c * 1.3; d.p1.rotation.x = -cur.s * (i - 1.5) * 0.32;
       });
+      // punho vivo: um giro leve quando a mão está solta
+      if (!g.preso) { B.hand.rotation.x += 0.05 * Math.sin(T * 0.9 + lado); B.hand.rotation.z += 0.04 * Math.sin(T * 0.7 + lado * 2); }
     }
     // cabelo: molas amortecidas movidas pelo sobe e desce, pelo aceno de cabeça e pelos giros
     if (dt > 0 && this.pT !== null) {
@@ -540,20 +541,41 @@ class Boneco {
     this.root.updateMatrixWorld(true);
     this.L.hand.localToWorld(this.mL.copy(this.gp)); this.R.hand.localToWorld(this.mR.copy(this.gp));
   }
-  desenharRosto(p, T) {
-    let olhos = p.olhos, lid = 0;
-    if (olhos === "A") {
-      const n = Math.floor(T / 3.4), loc = T - n * 3.4 - (0.3 + ruido(n) * 2.3);
-      const dup = ruido(n + 9.3) > 0.82;
-      let b = 0; if (loc >= 0 && loc < 0.17) b = Math.sin((loc / 0.17) * PI); else if (dup && loc >= 0.27 && loc < 0.44) b = Math.sin(((loc - 0.27) / 0.17) * PI);
-      lid = Math.round(b * 4) / 4;
-      if (p.sob === "triste" || p.boca === "triste") lid = Math.max(lid, 0.25);
+  // curvatura de cada dedo [mínimo, anelar, médio, indicador, polegar] e abertura entre eles
+  gestoDe(p, item, lado, T) {
+    const G = GESTOS;
+    let nome = lado === "L" ? p.gestoL : p.gestoR;
+    if (!nome) {
+      const a = lado === "L" ? p.aL : p.aR, m = lado === "L" ? p.mL : p.mR;
+      if (item === "tecla") nome = "tecla";
+      else if (item === "controle") nome = "controle";
+      else if (item === "tacoShot") nome = lado === "L" ? "ponte" : "segura";
+      else if (item === "tacoV") nome = lado === "R" ? "segura" : "";
+      else if (lado === "R" && /moeda|dardo/.test(item)) nome = "pinca";
+      else if (lado === "R" && /xicara|nota|celular/.test(item)) nome = "segura";
+      if (!nome && m > 0.5) nome = "segura";
+      if (!nome && a[0] > 2.2) nome = "aberta";
     }
-    const ns = Math.floor(T / 0.85);
-    const sx = (ruido(ns) - 0.5) * 0.6, sy = (ruido(ns + 3.7) - 0.5) * 0.35;
-    const lagr = p.lagrima > 0.05 ? Math.floor(((T * 0.6) % 1) * 24) : -1;
-    const ox = p.olhar[0] * 4.5 + sx, oy = p.olhar[1] * 3 + sy;
-    const key = [olhos, p.boca, p.sob, Math.round(p.boch * 10), Math.round(p.abre * 8), Math.round(ox * 4), Math.round(oy * 4), lagr, lid].join("|");
+    const g = G[nome] || G.solto; const c = g.c.slice();
+    if (nome === "tecla") for (let i = 0; i < 4; i++) c[i] += 0.32 * Math.max(0, Math.sin(T * 12.5 + i * 2.1 + (lado === "L" ? 0 : 1.3))) ** 3;
+    else if (nome === "controle") c[4] = 0.35 + 0.25 * Math.max(0, Math.sin(T * (lado === "L" ? 7 : 9.5) + (lado === "L" ? 0 : 2)));
+    else if (!g.preso) for (let i = 0; i < 5; i++) c[i] += 0.07 * Math.sin(T * (0.6 + i * 0.17) + i * 1.7 + (lado === "L" ? 0 : 3)) + (p.tamb && lado === "R" && i < 4 ? 0.35 * Math.max(0, Math.sin(T * 14 - i * 1.1)) ** 4 : 0);
+    return { c, s: g.s, preso: !!g.preso };
+  }
+  /* --- rosto: desenhado a partir de parâmetros contínuos (as expressões se misturam sem saltos) ---
+     F: sorr (-1 triste … 1 sorriso), abre (boca 0…1), larg, redondo, assim, dentes, lingua, morde,
+        olho (abertura 0…1.2), feliz (olhos de quem sorri), fecha (olhos fechados), sobeS (sobrancelhas),
+        dentroS (+ ponta de dentro sobe: tristeza, − desce: raiva/tensão), sobeAssim, boch, lagrima, ox, oy (olhar) */
+  desenharRosto(F, T) {
+    if (F && F.boca !== undefined && F.sorr === undefined) F = faceDePose(F);   // pose antiga (vitrine)
+    // piscar: intervalos irregulares, às vezes duplo; mais rápido quando a pessoa está tensa
+    const pis = this.pisca || (this.pisca = { prox: 1.5, t: -9, dup: false });
+    if (T > pis.prox) { pis.t = T; pis.dup = Math.random() < 0.18; pis.prox = T + (1.8 + Math.random() * 3.6) * (F.dentroS < -0.3 ? 0.7 : 1); }
+    if (F.piscar && T - pis.t > 0.5) { pis.t = T; pis.prox = T + 2 + Math.random() * 3; }
+    const loc = T - pis.t; let bl = 0;
+    if (loc < 0.16) bl = Math.sin((loc / 0.16) * PI); else if (pis.dup && loc > 0.24 && loc < 0.4) bl = Math.sin(((loc - 0.24) / 0.16) * PI);
+    const q = (v, n = 20) => Math.round((v || 0) * n);
+    const key = ["sorr", "abre", "larg", "redondo", "assim", "dentes", "lingua", "morde", "olho", "feliz", "fecha", "sobeS", "dentroS", "sobeAssim", "boch", "ox", "oy"].map((k) => q(F[k])).join(",") + "|" + q(bl, 8) + "|" + (F.lagrima > 0.05 ? Math.floor(((T * 0.6) % 1) * 24) : -1);
     if (key === this.rostoKey) return; this.rostoKey = key;
     const { g, t } = this.rosto;
     g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 512, 384); g.restore();
@@ -563,74 +585,113 @@ class Boneco {
     const cx = 128, ey = 104, dx = 47, tom = escura ? "#160C07" : "#2A1810";
     const somb = escura ? "rgba(20,8,4,.2)" : "rgba(120,60,35,.12)";
     g.lineCap = "round"; g.lineJoin = "round";
+    const sorr = cl(F.sorr, -1, 1), abre = cl(F.abre), feliz = cl(F.feliz), fecha = cl(Math.max(F.fecha || 0, bl * 0.98));
     for (const s of [-1, 1]) { const gr = g.createRadialGradient(cx + s * dx, ey - 2, 4, cx + s * dx, ey - 2, 32); gr.addColorStop(0, somb); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * dx, ey - 2, 32, 22, 0, 0, TAU); g.fill(); }
-    // bochechas (sempre um pouco coradas: traço de desenho animado)
-    const bo = 0.18 + 0.82 * p.boch;
-    for (const s of [-1, 1]) { const gr = g.createRadialGradient(cx + s * 60, 138, 1, cx + s * 60, 138, 24); gr.addColorStop(0, `rgba(235,95,95,${0.4 * bo})`); gr.addColorStop(1, "rgba(235,95,95,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * 60, 138, 24, 14, 0, 0, TAU); g.fill(); }
-    // sobrancelhas
-    const triste = p.sob === "triste" || (!p.sob && p.boca === "triste"), tenso = p.sob === "tenso";
-    const surpr = (p.boca === "aberta" || p.boca === "o") ? 4 * cl(p.abre, 0, 1) : 0, alegre = p.boca === "sorriso" || olhos === "F" ? 2 : 0;
-    const by = ey - 30, bi = by + (triste ? -6 : tenso ? 5 : 0), bo2 = by + (triste ? 6 : tenso ? -3 : -2);
+    // bochechas: coram e sobem quando ele sorri
+    const bo = 0.16 + 0.84 * cl(F.boch), sobeB = Math.max(0, sorr) * 6;
+    for (const s of [-1, 1]) { const y = 140 - sobeB; const gr = g.createRadialGradient(cx + s * 60, y, 1, cx + s * 60, y, 25); gr.addColorStop(0, `rgba(235,95,95,${0.42 * bo})`); gr.addColorStop(1, "rgba(235,95,95,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * 60, y, 25, 14, 0, 0, TAU); g.fill(); }
+    // sobrancelhas: altura, ângulo (dentro/fora) e assimetria
+    const by = ey - 30;
     for (const s of [-1, 1]) {
-      const xi = cx + s * 16, xo = cx + s * (dx + 25), yi = bi - surpr - alegre * 0.3, yo = bo2 - surpr - alegre, ym = Math.min(yi, yo) - 5 + (tenso ? 2.5 : 0);
+      const assim = (F.sobeAssim || 0) * (s > 0 ? 1 : -1);
+      const yi = by - (F.sobeS || 0) * 9 - (F.dentroS || 0) * 8 - assim * 5, yo = by - (F.sobeS || 0) * 8 + (F.dentroS || 0) * 4 - 2 - assim * 6 - feliz * 2;
+      const xi = cx + s * 16, xo = cx + s * (dx + 25), ym = Math.min(yi, yo) - 5;
       g.fillStyle = misturaCor(cabelo, "#000000", 0.3); g.beginPath(); g.moveTo(xi, yi + 2); g.quadraticCurveTo((xi + xo) / 2, ym - 2, xo, yo + 1); g.quadraticCurveTo((xi + xo) / 2, ym + 5, xi, yi + 9); g.closePath(); g.fill();
     }
-    // olhos grandes e brilhantes
+    // olhos: pálpebra de cima (abertura), de baixo (sobe no sorriso), íris que segue o olhar
     const ew = 23.5, eh = 17;
-    const amendoa = (x, y, h) => { g.beginPath(); g.moveTo(x - ew, y + 1); g.bezierCurveTo(x - ew * 0.6, y - h * 1.2, x + ew * 0.5, y - h * 1.25, x + ew, y - 1); g.bezierCurveTo(x + ew * 0.55, y + h * 1.05, x - ew * 0.55, y + h * 1.05, x - ew, y + 1); g.closePath(); };
+    const ab = cl((F.olho ?? 1) * (1 - fecha), 0, 1.25);
     for (const s of [-1, 1]) {
       const x = cx + s * dx;
-      if (olhos === "A" || olhos === "F") {
-        const h = olhos === "F" ? eh * 0.42 : eh * (1 - lid * 0.98), yy = olhos === "F" ? ey + 3 : ey;
-        g.save(); amendoa(x, yy, Math.max(h, 0.6)); g.clip();
-        g.fillStyle = "#FBF8F4"; g.fillRect(x - ew - 2, yy - eh * 1.5, ew * 2 + 4, eh * 3);
-        const ix = x + ox, iy = yy + oy + 1, rI = 13, ir = g.createRadialGradient(ix, iy - 2, 1, ix, iy, rI); ir.addColorStop(0, "#8A5530"); ir.addColorStop(0.6, "#55301A"); ir.addColorStop(1, "#22120A");
+      const cima = eh * 1.22 * ab, baixo = Math.max(eh * (1.05 - 0.85 * feliz) * Math.min(ab, 1), 0);
+      const yb = ey + feliz * 4;
+      const contorno = () => { g.beginPath(); g.moveTo(x - ew, yb + 1); g.bezierCurveTo(x - ew * 0.6, yb - cima, x + ew * 0.5, yb - cima * 1.04, x + ew, yb - 1); g.bezierCurveTo(x + ew * 0.55, yb + baixo - feliz * 9, x - ew * 0.55, yb + baixo - feliz * 9, x - ew, yb + 1); g.closePath(); };
+      if (cima > 1.2 && cima + baixo - feliz * 9 > 2.5) {
+        g.save(); contorno(); g.clip();
+        g.fillStyle = "#FBF8F4"; g.fillRect(x - ew - 2, yb - eh * 1.6, ew * 2 + 4, eh * 3.2);
+        const ix = x + (F.ox || 0) * 4.8, iy = yb + (F.oy || 0) * 3.2 + 1, rI = 13 * (1 - 0.05 * Math.max(0, ab - 1) * 4);
+        const ir = g.createRadialGradient(ix, iy - 2, 1, ix, iy, rI); ir.addColorStop(0, "#8A5530"); ir.addColorStop(0.6, "#55301A"); ir.addColorStop(1, "#22120A");
         g.fillStyle = ir; g.beginPath(); g.arc(ix, iy, rI, 0, TAU); g.fill();
-        g.fillStyle = "#0B0604"; g.beginPath(); g.arc(ix, iy, 6, 0, TAU); g.fill();
+        g.fillStyle = "#0B0604"; g.beginPath(); g.arc(ix, iy, 6 - 1.2 * Math.max(0, ab - 1) * 4, 0, TAU); g.fill();
         g.fillStyle = "rgba(255,255,255,.97)"; g.beginPath(); g.arc(ix - 4, iy - 4.6, 3.8, 0, TAU); g.fill();
         g.fillStyle = "rgba(255,255,255,.75)"; g.beginPath(); g.arc(ix + 3.6, iy + 3.4, 1.5, 0, TAU); g.fill();
-        g.fillStyle = "rgba(0,0,0,.16)"; g.fillRect(x - ew - 2, yy - eh * 1.5, ew * 2 + 4, 7);
+        g.fillStyle = "rgba(0,0,0,.16)"; g.fillRect(x - ew - 2, yb - cima - 2, ew * 2 + 4, 7);
         g.restore();
-        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yy + 1); g.bezierCurveTo(x - ew * 0.6, yy - Math.max(h, 0.6) * 1.2, x + ew * 0.5, yy - Math.max(h, 0.6) * 1.25, x + ew, yy - 1); g.stroke();
-        g.lineWidth = 2.4; g.beginPath(); g.moveTo(x + s * ew * 0.9, yy - 2); g.lineTo(x + s * (ew + 5), yy - 6.5); g.stroke();
-        if (olhos === "F") { g.strokeStyle = escura ? "rgba(10,4,2,.25)" : "rgba(150,75,50,.28)"; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 11, yy + 11); g.quadraticCurveTo(x, yy + 15, x + 11, yy + 11); g.stroke(); }
+        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yb + 1); g.bezierCurveTo(x - ew * 0.6, yb - cima, x + ew * 0.5, yb - cima * 1.04, x + ew, yb - 1); g.stroke();
+        g.lineWidth = 2.4; g.beginPath(); g.moveTo(x + s * ew * 0.9, yb - 2); g.lineTo(x + s * (ew + 5), yb - 6.5); g.stroke();
+        if (feliz > 0.25) { g.strokeStyle = escura ? `rgba(10,4,2,${0.25 * feliz})` : `rgba(150,75,50,${0.3 * feliz})`; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 11, yb + 12); g.quadraticCurveTo(x, yb + 16, x + 11, yb + 12); g.stroke(); }
       } else {
-        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, ey + 1); g.quadraticCurveTo(x, ey + 7, x + ew, ey); g.stroke();
-        g.lineWidth = 1.8; for (const a of [-0.7, -0.15, 0.4, 0.85]) { const bx = x + a * ew; g.beginPath(); g.moveTo(bx, ey + 4.5 - Math.abs(a) * 2); g.lineTo(bx + s * 1.2, ey + 8.5 - Math.abs(a) * 2); g.stroke(); }
+        // fechado: arco para cima quando sorri, para baixo quando dorme ou pisca
+        const cv = feliz > 0.4 ? -7 * feliz : 6;
+        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yb + 1); g.quadraticCurveTo(x, yb + cv, x + ew, yb); g.stroke();
+        if (feliz <= 0.4) { g.lineWidth = 1.8; for (const a of [-0.7, -0.15, 0.4, 0.85]) { const bx = x + a * ew; g.beginPath(); g.moveTo(bx, yb + 4.5 - Math.abs(a) * 2); g.lineTo(bx + s * 1.2, yb + 8.5 - Math.abs(a) * 2); g.stroke(); } }
       }
     }
     // narinas
     g.fillStyle = escura ? "rgba(10,4,2,.35)" : "rgba(120,55,35,.28)";
     for (const s of [-1, 1]) { g.beginPath(); g.ellipse(cx + s * 6.5, 141, 3.2, 1.8, s * 0.35, 0, TAU); g.fill(); }
-    // boca com lábios
+    const red = cl(F.redondo);
+    // vincos do sorriso
+    if (sorr > 0.45 && red < 0.5) { const av = (sorr - 0.45) * 2 * (1 - red * 2); g.strokeStyle = escura ? `rgba(10,4,2,${0.3 * av})` : `rgba(140,70,50,${0.34 * av})`; g.lineWidth = 1.8; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * 22, 141); g.quadraticCurveTo(cx + s * 34, 152, cx + s * 31, 166); g.stroke(); } }
+    // boca: cantos (sorriso/assimetria), abertura, forma redonda, dentes e língua
     const my = 161, labS = misturaCor(pele, "#8E2F2B", escura ? 0.35 : 0.42), labI = misturaCor(pele, "#B5524A", escura ? 0.28 : 0.36), linha = misturaCor(pele, "#3A0F0C", 0.7), int = "#4A1216";
-    const lab = (w, up, down) => {
-      g.fillStyle = labS; g.beginPath(); g.moveTo(cx - w, my - up); g.quadraticCurveTo(cx - w * 0.45, my - 5.5, cx, my - 3.2); g.quadraticCurveTo(cx + w * 0.45, my - 5.5, cx + w, my - up); g.quadraticCurveTo(cx, my + 1 - up * 0.3, cx - w, my - up); g.fill();
-      g.fillStyle = labI; g.beginPath(); g.moveTo(cx - w + 2, my - up + 0.5); g.quadraticCurveTo(cx, my + 1.5 - up * 0.3, cx + w - 2, my - up + 0.5); g.quadraticCurveTo(cx, my + 9 + down - up * 0.3, cx - w + 2, my - up + 0.5); g.fill();
-      g.strokeStyle = linha; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - w, my - up); g.quadraticCurveTo(cx, my + 1.2 - up * 0.3, cx + w, my - up); g.stroke();
-    };
-    const aberta = (w, h, up) => {
-      const forma = () => { g.beginPath(); g.moveTo(cx - w, my - up); g.quadraticCurveTo(cx, my - 4 - up * 0.2, cx + w, my - up); g.quadraticCurveTo(cx + w * 0.7, my + h, cx, my + h); g.quadraticCurveTo(cx - w * 0.7, my + h, cx - w, my - up); g.closePath(); };
+    const w = 21 * (F.larg ?? 1) * (1 - 0.45 * red) * (1 + 0.15 * Math.max(0, sorr) * (1 - red));
+    const ca = (s) => my - sorr * 7.5 + (F.assim || 0) * s * 4.5;
+    const xL = cx - w, xR = cx + w, yL = ca(-1), yR = ca(1);
+    const alto = abre * (24 + 8 * red);
+    if (alto < 1.6) {
+      g.fillStyle = labS; g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx - w * 0.45, my - 5.5, cx, my - 3.2); g.quadraticCurveTo(cx + w * 0.45, my - 5.5, xR, yR); g.quadraticCurveTo(cx, my + 1 + sorr * 4, xL, yL); g.fill();
+      g.fillStyle = labI; g.beginPath(); g.moveTo(xL + 2, yL + 0.5); g.quadraticCurveTo(cx, my + 1.5 + sorr * 4, xR - 2, yR + 0.5); g.quadraticCurveTo(cx, my + 9 + sorr * 3.5, xL + 2, yL + 0.5); g.fill();
+      g.strokeStyle = linha; g.lineWidth = 2; g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, my + 1.2 + sorr * 5, xR, yR); g.stroke();
+      if (F.morde > 0.1) { g.fillStyle = "#FAF6F0"; g.beginPath(); g.ellipse(cx + 3, my + 2, 7 * F.morde, 2.6 * F.morde, 0, 0, TAU); g.fill(); }
+      if (F.lingua > 0.1) { g.fillStyle = "#E06D78"; g.beginPath(); g.ellipse(cx + 7, my + 4 + 2 * F.lingua, 6 * F.lingua, 4 * F.lingua, 0.3, 0, TAU); g.fill(); }
+    } else {
+      const sup = my - 3 - abre * 2, inf = my + alto - sorr * 3;
+      const forma = () => { g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, sup - sorr * 2, xR, yR); g.quadraticCurveTo(cx + w * 0.75, inf, cx, inf); g.quadraticCurveTo(cx - w * 0.75, inf, xL, yL); g.closePath(); };
       forma(); g.fillStyle = int; g.fill();
-      g.save(); forma(); g.clip(); g.fillStyle = "#FAF6F0"; g.fillRect(cx - w, my - 8, w * 2, 6.5 + Math.min(h, 14) * 0.12);
-      g.fillStyle = "#D2626A"; g.beginPath(); g.ellipse(cx, my + h * 0.95, w * 0.5, Math.max(3, h * 0.4), 0, 0, TAU); g.fill(); g.restore();
+      g.save(); forma(); g.clip();
+      if (F.dentes > 0.05) { g.fillStyle = "#FAF6F0"; g.fillRect(cx - w, sup - 6, w * 2, 4 + 6.5 * F.dentes); }
+      const lg = Math.max(F.lingua || 0, abre * 0.7); if (lg > 0.1) { g.fillStyle = "#D2626A"; g.beginPath(); g.ellipse(cx, inf, w * 0.55, Math.max(3, alto * 0.4) * lg, 0, 0, TAU); g.fill(); }
+      g.restore();
       g.strokeStyle = labS; g.lineWidth = 3.4; forma(); g.stroke();
-    };
-    switch (p.boca) {
-      case "sorriso": {
-        aberta(25, 13, 5);
-        g.strokeStyle = escura ? "rgba(10,4,2,.28)" : "rgba(140,70,50,.3)"; g.lineWidth = 1.8; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * 22, 141); g.quadraticCurveTo(cx + s * 33, 152, cx + s * 30, 164); g.stroke(); }
-        break;
-      }
-      case "leve": lab(20, 2.8, 0); break;
-      case "reta": lab(18, 0, 0); break;
-      case "triste": lab(18, -3.6, 1); break;
-      case "foco": { lab(16, 0.5, -1); g.strokeStyle = linha; g.lineWidth = 1.6; g.beginPath(); g.moveTo(cx + 16, my - 0.5); g.lineTo(cx + 19, my - 2.5); g.stroke(); break; }
-      case "o": { const h = 5 + 7 * p.abre; g.fillStyle = int; g.beginPath(); g.ellipse(cx, my + 3, 7.5, h, 0, 0, TAU); g.fill(); g.lineWidth = 3.4; g.strokeStyle = labS; g.stroke(); break; }
-      default: aberta(22, 6 + 22 * p.abre, 2);
     }
-    if (lagr >= 0) { const k = lagr / 24; g.fillStyle = `rgba(120,180,250,${0.9 * (1 - k)})`; const x = cx - dx - 12, y = ey + 12 + k * 60; g.beginPath(); g.moveTo(x, y - 7); g.quadraticCurveTo(x + 6, y + 3, x, y + 4.5); g.quadraticCurveTo(x - 6, y + 3, x, y - 7); g.fill(); }
+    if (F.lagrima > 0.05) { const k = (((T * 0.6) % 1) * 24 | 0) / 24; g.fillStyle = `rgba(120,180,250,${0.9 * (1 - k) * F.lagrima})`; const x = cx - dx - 12, y = ey + 12 + k * 60; g.beginPath(); g.moveTo(x, y - 7); g.quadraticCurveTo(x + 6, y + 3, x, y + 4.5); g.quadraticCurveTo(x - 6, y + 3, x, y - 7); g.fill(); }
     g.restore();
     t.needsUpdate = true;
   }
+}
+
+// gestos das mãos: curvatura [mínimo, anelar, médio, indicador, polegar] e abertura entre os dedos
+const GESTOS = {
+  solto: { c: [0.52, 0.44, 0.36, 0.28, 0.28], s: 0.06 },
+  segura: { c: [0.98, 0.95, 0.92, 0.88, 0.78], s: 0, preso: true },
+  punho: { c: [1.15, 1.15, 1.12, 1.08, 0.95], s: 0, preso: true },
+  pinca: { c: [0.85, 0.75, 0.6, 0.62, 0.62], s: 0, preso: true },
+  aponta: { c: [1.15, 1.15, 1.1, 0.02, 0.75], s: 0, preso: true },
+  joinha: { c: [1.15, 1.15, 1.12, 1.08, -0.45], s: 0, preso: true },
+  aberta: { c: [0.04, 0.03, 0.02, 0.02, 0.0], s: 0.38 },
+  ponte: { c: [0.3, 0.25, 0.2, 0.35, 0.1], s: 0.3, preso: true },
+  tecla: { c: [0.5, 0.48, 0.45, 0.42, 0.3], s: 0.08, preso: true },
+  controle: { c: [0.95, 0.9, 0.85, 0.7, 0.35], s: 0, preso: true },
+  carinho: { c: [0.2, 0.18, 0.15, 0.15, 0.15], s: 0.12 },
+};
+// expressão a partir dos campos simples da pose (boca, olhos, sobrancelha)
+function faceDePose(p) {
+  const F = { sorr: 0.3, abre: 0, larg: 1, redondo: 0, assim: 0, dentes: 0, lingua: 0, morde: 0, olho: 1, feliz: 0, fecha: 0, sobeS: 0, dentroS: 0, sobeAssim: 0, boch: p.boch || 0, lagrima: p.lagrima || 0, ox: p.olhar ? p.olhar[0] : 0, oy: p.olhar ? p.olhar[1] : 0 };
+  const a = cl(p.abre ?? 0.6);
+  switch (p.boca) {
+    case "sorriso": Object.assign(F, { sorr: 0.85, abre: 0.3, dentes: 0.9 }); break;
+    case "leve": F.sorr = 0.3; break;
+    case "reta": F.sorr = 0; break;
+    case "triste": F.sorr = -0.6; break;
+    case "foco": Object.assign(F, { sorr: -0.05, larg: 0.85, assim: 0.3 }); break;
+    case "o": Object.assign(F, { sorr: 0, abre: 0.18 + 0.3 * a, redondo: 1 }); break;
+    case "aberta": Object.assign(F, { sorr: 0.55, abre: 0.3 + 0.6 * a, dentes: 0.7 }); break;
+  }
+  if (p.olhos === "F") F.feliz = 1; if (p.olhos === "Z") F.fecha = 1;
+  if (p.sob === "triste" || (!p.sob && p.boca === "triste")) { F.dentroS = 0.85; F.sobeS = -0.1; F.olho = 0.82; }
+  if (p.sob === "tenso") { F.dentroS = -0.6; F.sobeS = -0.15; }
+  if (p.boca === "o" || p.boca === "aberta") F.sobeS += 0.45 * a;
+  if (p.boca === "sorriso" || p.olhos === "F") F.sobeS += 0.15;
+  return F;
 }

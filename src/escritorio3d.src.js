@@ -138,10 +138,10 @@ const AP_MAX = { p: 5, c: 9, k: 9, b: 3, l: 5, o: 1, a: 4, w: 4, r: 5, e: 1, s: 
 const AP_PAD = { p: 1, c: 1, k: 0, b: 0, l: 0, o: 0, a: 2, w: 2, r: 0, e: 0, s: 0 };
 const lerAp = (v) => { const r = { ...AP_PAD }; String(v || "").replace(/([pckbloawres])(\d)/g, (_, k, d) => { r[k] = Math.min(+d, AP_MAX[k]); }); return r; };
 const ALTURA = [0.9, 0.95, 1, 1.05, 1.1], CORPO = [0.84, 0.92, 1, 1.12, 1.26];
-const POSE0 = { alt: 0.89, dy: 0, hz: 0, lean: 0, side: 0, twist: 0, nod: 0, turn: 0, roll: 0, aL: [0, 0.12, 0.2], aR: [0, 0.12, 0.2], lL: [0, 0], lR: [0, 0], olhar: [0, 0], boch: 0, abre: 0.6, lagrima: 0, nuvem: 0, balao: 0, yawAdd: 0, sent: 0, kL: 0, kR: 0, ikL: null, ikR: null, mL: 0, mR: 0, taco: -1, recuo: 0, porta: 0, fxk: 0, gole: 0, olhos: "A", boca: "leve", sob: "", item: "", balaoT: "" };
-const NUM = ["alt", "dy", "hz", "lean", "side", "twist", "nod", "turn", "roll", "boch", "abre", "lagrima", "nuvem", "balao", "yawAdd", "sent", "kL", "kR", "mL", "mR", "taco", "recuo", "porta", "fxk", "gole"];
+const POSE0 = { alt: 0.89, dy: 0, hz: 0, lean: 0, side: 0, twist: 0, nod: 0, turn: 0, roll: 0, aL: [0, 0.12, 0.2], aR: [0, 0.12, 0.2], lL: [0, 0], lR: [0, 0], olhar: [0, 0], boch: 0, abre: 0.6, lagrima: 0, nuvem: 0, balao: 0, yawAdd: 0, sent: 0, kL: 0, kR: 0, ikL: null, ikR: null, mL: 0, mR: 0, taco: -1, recuo: 0, porta: 0, fxk: 0, gole: 0, pL: 0, pR: 0, olhos: "A", boca: "leve", sob: "", item: "", balaoT: "" };
+const NUM = ["alt", "dy", "hz", "lean", "side", "twist", "nod", "turn", "roll", "boch", "abre", "lagrima", "nuvem", "balao", "yawAdd", "sent", "kL", "kR", "mL", "mR", "taco", "recuo", "porta", "fxk", "gole", "pL", "pR"];
 const ARR = ["aL", "aR", "lL", "lR", "olhar"];
-const DISC = ["olhos", "boca", "sob", "item", "balaoT", "bolas", "solta", "fx"];
+const DISC = ["olhos", "boca", "sob", "item", "balaoT", "bolas", "solta", "fx", "gestoL", "gestoR"];
 // Cabeça modelada numa esfera de raio R e achatada pela escala do grupo (cabeça um pouco maior: traço de desenho animado)
 const CAB_ESC = [0.47, 0.565, 0.52], ESTICA = CAB_ESC[1] / CAB_ESC[0] * 0.98;
 const BR_A = 0.29, BR_B = 0.325;   // braço e antebraço (até o ponto de pegada)
@@ -298,7 +298,7 @@ class Boneco {
       return { sh, el, hand, lado, ombro, ombroPele, mangaC, bainhaC, mangaL, cot, cotM, antM, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
     };
     this.L = braco(-1, "L"); this.R = braco(1, "R");
-    this.cL = this.cR = 0.28;
+    this.curL = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 }; this.curR = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 };
     /* pernas: coxa, joelho, canela (calça ou bermuda), meia e tênis */
     const perna = (lado) => {
       const hp = new THREE.Group(); hp.position.set(0.094 * lado, -0.01, 0); hips.add(hp);
@@ -608,8 +608,8 @@ class Boneco {
     this.L.sh.position.y = 0.437 + sh; this.R.sh.position.y = 0.437 + sh;
     this.L.sh.rotation.set(-p.aL[0], 0, -p.aL[1]); this.L.el.rotation.x = -p.aL[2];
     this.R.sh.rotation.set(-p.aR[0], 0, p.aR[1]); this.R.el.rotation.x = -p.aR[2];
-    this.PL.hp.rotation.x = -p.lL[0]; this.PL.kn.rotation.x = p.lL[1]; this.PL.ft.rotation.x = p.lL[0] - p.lL[1];
-    this.PR.hp.rotation.x = -p.lR[0]; this.PR.kn.rotation.x = p.lR[1]; this.PR.ft.rotation.x = p.lR[0] - p.lR[1];
+    this.PL.hp.rotation.x = -p.lL[0]; this.PL.kn.rotation.x = p.lL[1]; this.PL.ft.rotation.x = p.lL[0] - p.lL[1] + (p.pL || 0);
+    this.PR.hp.rotation.x = -p.lR[0]; this.PR.kn.rotation.x = p.lR[1]; this.PR.ft.rotation.x = p.lR[0] - p.lR[1] + (p.pR || 0);
     // braços que buscam um ponto (teclado, taco, objetos)
     if ((p.kL > 0.001 && p.ikL) || (p.kR > 0.001 && p.ikR)) {
       this.root.updateMatrixWorld(true);
@@ -624,18 +624,19 @@ class Boneco {
     const [hl, hr] = pg;
     this.L.hand.rotation.set(hl ? hl[0] : p.mL * 0.9, hl ? hl[1] : 0, hl ? hl[2] : 0);
     this.R.hand.rotation.set(hr ? hr[0] : p.mR * 0.9, hr ? hr[1] : 0, hr ? hr[2] : 0);
-    // dedos: fechados ao segurar, abertos na comemoração, relaxados no resto
-    const segL = /controle|taco/.test(item) || p.mL > 0.5, segR = /controle|taco|xicara|nota|celular|moeda|dardo|trofeu/.test(item) || p.mR > 0.5;
-    const alvoL = item === "tecla" ? 0.45 : segL ? 0.95 : p.aL[0] > 2.2 ? 0.1 : 0.32 + 0.05 * Math.sin(T * 0.8);
-    const alvoR = item === "tecla" ? 0.45 : segR ? 0.95 : p.aR[0] > 2.2 ? 0.1 : 0.32 + 0.05 * Math.sin(T * 0.8 + 1);
-    const k = dt > 0 ? Math.min(1, dt * 12) : 1;
-    this.cL += (alvoL - this.cL) * k; this.cR += (alvoR - this.cR) * k;
-    for (const [lado, lista, c] of [[-1, this.dedos.L, this.cL], [1, this.dedos.R, this.cR]]) {
-      lista.forEach((d, i) => {
-        if (d.polegar) { d.p1.rotation.z = lado * 0.5 - lado * c * 0.35; d.p2.rotation.z = -lado * c * 0.6; return; }
-        const f2 = 1 + (i - 1.5) * 0.06;
-        d.p1.rotation.z = -lado * c * 1.05 * f2; d.p2.rotation.z = -lado * c * 1.25 * f2;
+    // dedos: cada um com a sua curva (pegada, gesto, digitação, controle) e um mexer leve quando estão soltos
+    const k = dt > 0 ? Math.min(1, dt * 16) : 1;
+    for (const [lado, nome, B] of [[-1, "L", this.L], [1, "R", this.R]]) {
+      const g = this.gestoDe(p, item, nome, T); const cur = nome === "L" ? this.curL : this.curR;
+      cur.s += (g.s - cur.s) * k;
+      this.dedos[nome].forEach((d, i) => {
+        cur.c[i] += (g.c[i] - cur.c[i]) * k * (d.polegar ? 0.9 : 1 - i * 0.04);
+        const c = cur.c[i];
+        if (d.polegar) { d.p1.rotation.z = lado * 0.5 - lado * c * 0.4; d.p1.rotation.x = 0.4 - 0.25 * c; d.p2.rotation.z = -lado * c * 0.7; return; }
+        d.p1.rotation.z = -lado * c * 1.08; d.p2.rotation.z = -lado * c * 1.3; d.p1.rotation.x = -cur.s * (i - 1.5) * 0.32;
       });
+      // punho vivo: um giro leve quando a mão está solta
+      if (!g.preso) { B.hand.rotation.x += 0.05 * Math.sin(T * 0.9 + lado); B.hand.rotation.z += 0.04 * Math.sin(T * 0.7 + lado * 2); }
     }
     // cabelo: molas amortecidas movidas pelo sobe e desce, pelo aceno de cabeça e pelos giros
     if (dt > 0 && this.pT !== null) {
@@ -657,20 +658,41 @@ class Boneco {
     this.root.updateMatrixWorld(true);
     this.L.hand.localToWorld(this.mL.copy(this.gp)); this.R.hand.localToWorld(this.mR.copy(this.gp));
   }
-  desenharRosto(p, T) {
-    let olhos = p.olhos, lid = 0;
-    if (olhos === "A") {
-      const n = Math.floor(T / 3.4), loc = T - n * 3.4 - (0.3 + ruido(n) * 2.3);
-      const dup = ruido(n + 9.3) > 0.82;
-      let b = 0; if (loc >= 0 && loc < 0.17) b = Math.sin((loc / 0.17) * PI); else if (dup && loc >= 0.27 && loc < 0.44) b = Math.sin(((loc - 0.27) / 0.17) * PI);
-      lid = Math.round(b * 4) / 4;
-      if (p.sob === "triste" || p.boca === "triste") lid = Math.max(lid, 0.25);
+  // curvatura de cada dedo [mínimo, anelar, médio, indicador, polegar] e abertura entre eles
+  gestoDe(p, item, lado, T) {
+    const G = GESTOS;
+    let nome = lado === "L" ? p.gestoL : p.gestoR;
+    if (!nome) {
+      const a = lado === "L" ? p.aL : p.aR, m = lado === "L" ? p.mL : p.mR;
+      if (item === "tecla") nome = "tecla";
+      else if (item === "controle") nome = "controle";
+      else if (item === "tacoShot") nome = lado === "L" ? "ponte" : "segura";
+      else if (item === "tacoV") nome = lado === "R" ? "segura" : "";
+      else if (lado === "R" && /moeda|dardo/.test(item)) nome = "pinca";
+      else if (lado === "R" && /xicara|nota|celular/.test(item)) nome = "segura";
+      if (!nome && m > 0.5) nome = "segura";
+      if (!nome && a[0] > 2.2) nome = "aberta";
     }
-    const ns = Math.floor(T / 0.85);
-    const sx = (ruido(ns) - 0.5) * 0.6, sy = (ruido(ns + 3.7) - 0.5) * 0.35;
-    const lagr = p.lagrima > 0.05 ? Math.floor(((T * 0.6) % 1) * 24) : -1;
-    const ox = p.olhar[0] * 4.5 + sx, oy = p.olhar[1] * 3 + sy;
-    const key = [olhos, p.boca, p.sob, Math.round(p.boch * 10), Math.round(p.abre * 8), Math.round(ox * 4), Math.round(oy * 4), lagr, lid].join("|");
+    const g = G[nome] || G.solto; const c = g.c.slice();
+    if (nome === "tecla") for (let i = 0; i < 4; i++) c[i] += 0.32 * Math.max(0, Math.sin(T * 12.5 + i * 2.1 + (lado === "L" ? 0 : 1.3))) ** 3;
+    else if (nome === "controle") c[4] = 0.35 + 0.25 * Math.max(0, Math.sin(T * (lado === "L" ? 7 : 9.5) + (lado === "L" ? 0 : 2)));
+    else if (!g.preso) for (let i = 0; i < 5; i++) c[i] += 0.07 * Math.sin(T * (0.6 + i * 0.17) + i * 1.7 + (lado === "L" ? 0 : 3)) + (p.tamb && lado === "R" && i < 4 ? 0.35 * Math.max(0, Math.sin(T * 14 - i * 1.1)) ** 4 : 0);
+    return { c, s: g.s, preso: !!g.preso };
+  }
+  /* --- rosto: desenhado a partir de parâmetros contínuos (as expressões se misturam sem saltos) ---
+     F: sorr (-1 triste … 1 sorriso), abre (boca 0…1), larg, redondo, assim, dentes, lingua, morde,
+        olho (abertura 0…1.2), feliz (olhos de quem sorri), fecha (olhos fechados), sobeS (sobrancelhas),
+        dentroS (+ ponta de dentro sobe: tristeza, − desce: raiva/tensão), sobeAssim, boch, lagrima, ox, oy (olhar) */
+  desenharRosto(F, T) {
+    if (F && F.boca !== undefined && F.sorr === undefined) F = faceDePose(F);   // pose antiga (vitrine)
+    // piscar: intervalos irregulares, às vezes duplo; mais rápido quando a pessoa está tensa
+    const pis = this.pisca || (this.pisca = { prox: 1.5, t: -9, dup: false });
+    if (T > pis.prox) { pis.t = T; pis.dup = Math.random() < 0.18; pis.prox = T + (1.8 + Math.random() * 3.6) * (F.dentroS < -0.3 ? 0.7 : 1); }
+    if (F.piscar && T - pis.t > 0.5) { pis.t = T; pis.prox = T + 2 + Math.random() * 3; }
+    const loc = T - pis.t; let bl = 0;
+    if (loc < 0.16) bl = Math.sin((loc / 0.16) * PI); else if (pis.dup && loc > 0.24 && loc < 0.4) bl = Math.sin(((loc - 0.24) / 0.16) * PI);
+    const q = (v, n = 20) => Math.round((v || 0) * n);
+    const key = ["sorr", "abre", "larg", "redondo", "assim", "dentes", "lingua", "morde", "olho", "feliz", "fecha", "sobeS", "dentroS", "sobeAssim", "boch", "ox", "oy"].map((k) => q(F[k])).join(",") + "|" + q(bl, 8) + "|" + (F.lagrima > 0.05 ? Math.floor(((T * 0.6) % 1) * 24) : -1);
     if (key === this.rostoKey) return; this.rostoKey = key;
     const { g, t } = this.rosto;
     g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 512, 384); g.restore();
@@ -680,76 +702,115 @@ class Boneco {
     const cx = 128, ey = 104, dx = 47, tom = escura ? "#160C07" : "#2A1810";
     const somb = escura ? "rgba(20,8,4,.2)" : "rgba(120,60,35,.12)";
     g.lineCap = "round"; g.lineJoin = "round";
+    const sorr = cl(F.sorr, -1, 1), abre = cl(F.abre), feliz = cl(F.feliz), fecha = cl(Math.max(F.fecha || 0, bl * 0.98));
     for (const s of [-1, 1]) { const gr = g.createRadialGradient(cx + s * dx, ey - 2, 4, cx + s * dx, ey - 2, 32); gr.addColorStop(0, somb); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * dx, ey - 2, 32, 22, 0, 0, TAU); g.fill(); }
-    // bochechas (sempre um pouco coradas: traço de desenho animado)
-    const bo = 0.18 + 0.82 * p.boch;
-    for (const s of [-1, 1]) { const gr = g.createRadialGradient(cx + s * 60, 138, 1, cx + s * 60, 138, 24); gr.addColorStop(0, `rgba(235,95,95,${0.4 * bo})`); gr.addColorStop(1, "rgba(235,95,95,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * 60, 138, 24, 14, 0, 0, TAU); g.fill(); }
-    // sobrancelhas
-    const triste = p.sob === "triste" || (!p.sob && p.boca === "triste"), tenso = p.sob === "tenso";
-    const surpr = (p.boca === "aberta" || p.boca === "o") ? 4 * cl(p.abre, 0, 1) : 0, alegre = p.boca === "sorriso" || olhos === "F" ? 2 : 0;
-    const by = ey - 30, bi = by + (triste ? -6 : tenso ? 5 : 0), bo2 = by + (triste ? 6 : tenso ? -3 : -2);
+    // bochechas: coram e sobem quando ele sorri
+    const bo = 0.16 + 0.84 * cl(F.boch), sobeB = Math.max(0, sorr) * 6;
+    for (const s of [-1, 1]) { const y = 140 - sobeB; const gr = g.createRadialGradient(cx + s * 60, y, 1, cx + s * 60, y, 25); gr.addColorStop(0, `rgba(235,95,95,${0.42 * bo})`); gr.addColorStop(1, "rgba(235,95,95,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * 60, y, 25, 14, 0, 0, TAU); g.fill(); }
+    // sobrancelhas: altura, ângulo (dentro/fora) e assimetria
+    const by = ey - 30;
     for (const s of [-1, 1]) {
-      const xi = cx + s * 16, xo = cx + s * (dx + 25), yi = bi - surpr - alegre * 0.3, yo = bo2 - surpr - alegre, ym = Math.min(yi, yo) - 5 + (tenso ? 2.5 : 0);
+      const assim = (F.sobeAssim || 0) * (s > 0 ? 1 : -1);
+      const yi = by - (F.sobeS || 0) * 9 - (F.dentroS || 0) * 8 - assim * 5, yo = by - (F.sobeS || 0) * 8 + (F.dentroS || 0) * 4 - 2 - assim * 6 - feliz * 2;
+      const xi = cx + s * 16, xo = cx + s * (dx + 25), ym = Math.min(yi, yo) - 5;
       g.fillStyle = misturaCor(cabelo, "#000000", 0.3); g.beginPath(); g.moveTo(xi, yi + 2); g.quadraticCurveTo((xi + xo) / 2, ym - 2, xo, yo + 1); g.quadraticCurveTo((xi + xo) / 2, ym + 5, xi, yi + 9); g.closePath(); g.fill();
     }
-    // olhos grandes e brilhantes
+    // olhos: pálpebra de cima (abertura), de baixo (sobe no sorriso), íris que segue o olhar
     const ew = 23.5, eh = 17;
-    const amendoa = (x, y, h) => { g.beginPath(); g.moveTo(x - ew, y + 1); g.bezierCurveTo(x - ew * 0.6, y - h * 1.2, x + ew * 0.5, y - h * 1.25, x + ew, y - 1); g.bezierCurveTo(x + ew * 0.55, y + h * 1.05, x - ew * 0.55, y + h * 1.05, x - ew, y + 1); g.closePath(); };
+    const ab = cl((F.olho ?? 1) * (1 - fecha), 0, 1.25);
     for (const s of [-1, 1]) {
       const x = cx + s * dx;
-      if (olhos === "A" || olhos === "F") {
-        const h = olhos === "F" ? eh * 0.42 : eh * (1 - lid * 0.98), yy = olhos === "F" ? ey + 3 : ey;
-        g.save(); amendoa(x, yy, Math.max(h, 0.6)); g.clip();
-        g.fillStyle = "#FBF8F4"; g.fillRect(x - ew - 2, yy - eh * 1.5, ew * 2 + 4, eh * 3);
-        const ix = x + ox, iy = yy + oy + 1, rI = 13, ir = g.createRadialGradient(ix, iy - 2, 1, ix, iy, rI); ir.addColorStop(0, "#8A5530"); ir.addColorStop(0.6, "#55301A"); ir.addColorStop(1, "#22120A");
+      const cima = eh * 1.22 * ab, baixo = Math.max(eh * (1.05 - 0.85 * feliz) * Math.min(ab, 1), 0);
+      const yb = ey + feliz * 4;
+      const contorno = () => { g.beginPath(); g.moveTo(x - ew, yb + 1); g.bezierCurveTo(x - ew * 0.6, yb - cima, x + ew * 0.5, yb - cima * 1.04, x + ew, yb - 1); g.bezierCurveTo(x + ew * 0.55, yb + baixo - feliz * 9, x - ew * 0.55, yb + baixo - feliz * 9, x - ew, yb + 1); g.closePath(); };
+      if (cima > 1.2 && cima + baixo - feliz * 9 > 2.5) {
+        g.save(); contorno(); g.clip();
+        g.fillStyle = "#FBF8F4"; g.fillRect(x - ew - 2, yb - eh * 1.6, ew * 2 + 4, eh * 3.2);
+        const ix = x + (F.ox || 0) * 4.8, iy = yb + (F.oy || 0) * 3.2 + 1, rI = 13 * (1 - 0.05 * Math.max(0, ab - 1) * 4);
+        const ir = g.createRadialGradient(ix, iy - 2, 1, ix, iy, rI); ir.addColorStop(0, "#8A5530"); ir.addColorStop(0.6, "#55301A"); ir.addColorStop(1, "#22120A");
         g.fillStyle = ir; g.beginPath(); g.arc(ix, iy, rI, 0, TAU); g.fill();
-        g.fillStyle = "#0B0604"; g.beginPath(); g.arc(ix, iy, 6, 0, TAU); g.fill();
+        g.fillStyle = "#0B0604"; g.beginPath(); g.arc(ix, iy, 6 - 1.2 * Math.max(0, ab - 1) * 4, 0, TAU); g.fill();
         g.fillStyle = "rgba(255,255,255,.97)"; g.beginPath(); g.arc(ix - 4, iy - 4.6, 3.8, 0, TAU); g.fill();
         g.fillStyle = "rgba(255,255,255,.75)"; g.beginPath(); g.arc(ix + 3.6, iy + 3.4, 1.5, 0, TAU); g.fill();
-        g.fillStyle = "rgba(0,0,0,.16)"; g.fillRect(x - ew - 2, yy - eh * 1.5, ew * 2 + 4, 7);
+        g.fillStyle = "rgba(0,0,0,.16)"; g.fillRect(x - ew - 2, yb - cima - 2, ew * 2 + 4, 7);
         g.restore();
-        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yy + 1); g.bezierCurveTo(x - ew * 0.6, yy - Math.max(h, 0.6) * 1.2, x + ew * 0.5, yy - Math.max(h, 0.6) * 1.25, x + ew, yy - 1); g.stroke();
-        g.lineWidth = 2.4; g.beginPath(); g.moveTo(x + s * ew * 0.9, yy - 2); g.lineTo(x + s * (ew + 5), yy - 6.5); g.stroke();
-        if (olhos === "F") { g.strokeStyle = escura ? "rgba(10,4,2,.25)" : "rgba(150,75,50,.28)"; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 11, yy + 11); g.quadraticCurveTo(x, yy + 15, x + 11, yy + 11); g.stroke(); }
+        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yb + 1); g.bezierCurveTo(x - ew * 0.6, yb - cima, x + ew * 0.5, yb - cima * 1.04, x + ew, yb - 1); g.stroke();
+        g.lineWidth = 2.4; g.beginPath(); g.moveTo(x + s * ew * 0.9, yb - 2); g.lineTo(x + s * (ew + 5), yb - 6.5); g.stroke();
+        if (feliz > 0.25) { g.strokeStyle = escura ? `rgba(10,4,2,${0.25 * feliz})` : `rgba(150,75,50,${0.3 * feliz})`; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 11, yb + 12); g.quadraticCurveTo(x, yb + 16, x + 11, yb + 12); g.stroke(); }
       } else {
-        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, ey + 1); g.quadraticCurveTo(x, ey + 7, x + ew, ey); g.stroke();
-        g.lineWidth = 1.8; for (const a of [-0.7, -0.15, 0.4, 0.85]) { const bx = x + a * ew; g.beginPath(); g.moveTo(bx, ey + 4.5 - Math.abs(a) * 2); g.lineTo(bx + s * 1.2, ey + 8.5 - Math.abs(a) * 2); g.stroke(); }
+        // fechado: arco para cima quando sorri, para baixo quando dorme ou pisca
+        const cv = feliz > 0.4 ? -7 * feliz : 6;
+        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yb + 1); g.quadraticCurveTo(x, yb + cv, x + ew, yb); g.stroke();
+        if (feliz <= 0.4) { g.lineWidth = 1.8; for (const a of [-0.7, -0.15, 0.4, 0.85]) { const bx = x + a * ew; g.beginPath(); g.moveTo(bx, yb + 4.5 - Math.abs(a) * 2); g.lineTo(bx + s * 1.2, yb + 8.5 - Math.abs(a) * 2); g.stroke(); } }
       }
     }
     // narinas
     g.fillStyle = escura ? "rgba(10,4,2,.35)" : "rgba(120,55,35,.28)";
     for (const s of [-1, 1]) { g.beginPath(); g.ellipse(cx + s * 6.5, 141, 3.2, 1.8, s * 0.35, 0, TAU); g.fill(); }
-    // boca com lábios
+    const red = cl(F.redondo);
+    // vincos do sorriso
+    if (sorr > 0.45 && red < 0.5) { const av = (sorr - 0.45) * 2 * (1 - red * 2); g.strokeStyle = escura ? `rgba(10,4,2,${0.3 * av})` : `rgba(140,70,50,${0.34 * av})`; g.lineWidth = 1.8; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * 22, 141); g.quadraticCurveTo(cx + s * 34, 152, cx + s * 31, 166); g.stroke(); } }
+    // boca: cantos (sorriso/assimetria), abertura, forma redonda, dentes e língua
     const my = 161, labS = misturaCor(pele, "#8E2F2B", escura ? 0.35 : 0.42), labI = misturaCor(pele, "#B5524A", escura ? 0.28 : 0.36), linha = misturaCor(pele, "#3A0F0C", 0.7), int = "#4A1216";
-    const lab = (w, up, down) => {
-      g.fillStyle = labS; g.beginPath(); g.moveTo(cx - w, my - up); g.quadraticCurveTo(cx - w * 0.45, my - 5.5, cx, my - 3.2); g.quadraticCurveTo(cx + w * 0.45, my - 5.5, cx + w, my - up); g.quadraticCurveTo(cx, my + 1 - up * 0.3, cx - w, my - up); g.fill();
-      g.fillStyle = labI; g.beginPath(); g.moveTo(cx - w + 2, my - up + 0.5); g.quadraticCurveTo(cx, my + 1.5 - up * 0.3, cx + w - 2, my - up + 0.5); g.quadraticCurveTo(cx, my + 9 + down - up * 0.3, cx - w + 2, my - up + 0.5); g.fill();
-      g.strokeStyle = linha; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - w, my - up); g.quadraticCurveTo(cx, my + 1.2 - up * 0.3, cx + w, my - up); g.stroke();
-    };
-    const aberta = (w, h, up) => {
-      const forma = () => { g.beginPath(); g.moveTo(cx - w, my - up); g.quadraticCurveTo(cx, my - 4 - up * 0.2, cx + w, my - up); g.quadraticCurveTo(cx + w * 0.7, my + h, cx, my + h); g.quadraticCurveTo(cx - w * 0.7, my + h, cx - w, my - up); g.closePath(); };
+    const w = 21 * (F.larg ?? 1) * (1 - 0.45 * red) * (1 + 0.15 * Math.max(0, sorr) * (1 - red));
+    const ca = (s) => my - sorr * 7.5 + (F.assim || 0) * s * 4.5;
+    const xL = cx - w, xR = cx + w, yL = ca(-1), yR = ca(1);
+    const alto = abre * (24 + 8 * red);
+    if (alto < 1.6) {
+      g.fillStyle = labS; g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx - w * 0.45, my - 5.5, cx, my - 3.2); g.quadraticCurveTo(cx + w * 0.45, my - 5.5, xR, yR); g.quadraticCurveTo(cx, my + 1 + sorr * 4, xL, yL); g.fill();
+      g.fillStyle = labI; g.beginPath(); g.moveTo(xL + 2, yL + 0.5); g.quadraticCurveTo(cx, my + 1.5 + sorr * 4, xR - 2, yR + 0.5); g.quadraticCurveTo(cx, my + 9 + sorr * 3.5, xL + 2, yL + 0.5); g.fill();
+      g.strokeStyle = linha; g.lineWidth = 2; g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, my + 1.2 + sorr * 5, xR, yR); g.stroke();
+      if (F.morde > 0.1) { g.fillStyle = "#FAF6F0"; g.beginPath(); g.ellipse(cx + 3, my + 2, 7 * F.morde, 2.6 * F.morde, 0, 0, TAU); g.fill(); }
+      if (F.lingua > 0.1) { g.fillStyle = "#E06D78"; g.beginPath(); g.ellipse(cx + 7, my + 4 + 2 * F.lingua, 6 * F.lingua, 4 * F.lingua, 0.3, 0, TAU); g.fill(); }
+    } else {
+      const sup = my - 3 - abre * 2, inf = my + alto - sorr * 3;
+      const forma = () => { g.beginPath(); g.moveTo(xL, yL); g.quadraticCurveTo(cx, sup - sorr * 2, xR, yR); g.quadraticCurveTo(cx + w * 0.75, inf, cx, inf); g.quadraticCurveTo(cx - w * 0.75, inf, xL, yL); g.closePath(); };
       forma(); g.fillStyle = int; g.fill();
-      g.save(); forma(); g.clip(); g.fillStyle = "#FAF6F0"; g.fillRect(cx - w, my - 8, w * 2, 6.5 + Math.min(h, 14) * 0.12);
-      g.fillStyle = "#D2626A"; g.beginPath(); g.ellipse(cx, my + h * 0.95, w * 0.5, Math.max(3, h * 0.4), 0, 0, TAU); g.fill(); g.restore();
+      g.save(); forma(); g.clip();
+      if (F.dentes > 0.05) { g.fillStyle = "#FAF6F0"; g.fillRect(cx - w, sup - 6, w * 2, 4 + 6.5 * F.dentes); }
+      const lg = Math.max(F.lingua || 0, abre * 0.7); if (lg > 0.1) { g.fillStyle = "#D2626A"; g.beginPath(); g.ellipse(cx, inf, w * 0.55, Math.max(3, alto * 0.4) * lg, 0, 0, TAU); g.fill(); }
+      g.restore();
       g.strokeStyle = labS; g.lineWidth = 3.4; forma(); g.stroke();
-    };
-    switch (p.boca) {
-      case "sorriso": {
-        aberta(25, 13, 5);
-        g.strokeStyle = escura ? "rgba(10,4,2,.28)" : "rgba(140,70,50,.3)"; g.lineWidth = 1.8; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * 22, 141); g.quadraticCurveTo(cx + s * 33, 152, cx + s * 30, 164); g.stroke(); }
-        break;
-      }
-      case "leve": lab(20, 2.8, 0); break;
-      case "reta": lab(18, 0, 0); break;
-      case "triste": lab(18, -3.6, 1); break;
-      case "foco": { lab(16, 0.5, -1); g.strokeStyle = linha; g.lineWidth = 1.6; g.beginPath(); g.moveTo(cx + 16, my - 0.5); g.lineTo(cx + 19, my - 2.5); g.stroke(); break; }
-      case "o": { const h = 5 + 7 * p.abre; g.fillStyle = int; g.beginPath(); g.ellipse(cx, my + 3, 7.5, h, 0, 0, TAU); g.fill(); g.lineWidth = 3.4; g.strokeStyle = labS; g.stroke(); break; }
-      default: aberta(22, 6 + 22 * p.abre, 2);
     }
-    if (lagr >= 0) { const k = lagr / 24; g.fillStyle = `rgba(120,180,250,${0.9 * (1 - k)})`; const x = cx - dx - 12, y = ey + 12 + k * 60; g.beginPath(); g.moveTo(x, y - 7); g.quadraticCurveTo(x + 6, y + 3, x, y + 4.5); g.quadraticCurveTo(x - 6, y + 3, x, y - 7); g.fill(); }
+    if (F.lagrima > 0.05) { const k = (((T * 0.6) % 1) * 24 | 0) / 24; g.fillStyle = `rgba(120,180,250,${0.9 * (1 - k) * F.lagrima})`; const x = cx - dx - 12, y = ey + 12 + k * 60; g.beginPath(); g.moveTo(x, y - 7); g.quadraticCurveTo(x + 6, y + 3, x, y + 4.5); g.quadraticCurveTo(x - 6, y + 3, x, y - 7); g.fill(); }
     g.restore();
     t.needsUpdate = true;
   }
+}
+
+// gestos das mãos: curvatura [mínimo, anelar, médio, indicador, polegar] e abertura entre os dedos
+const GESTOS = {
+  solto: { c: [0.52, 0.44, 0.36, 0.28, 0.28], s: 0.06 },
+  segura: { c: [0.98, 0.95, 0.92, 0.88, 0.78], s: 0, preso: true },
+  punho: { c: [1.15, 1.15, 1.12, 1.08, 0.95], s: 0, preso: true },
+  pinca: { c: [0.85, 0.75, 0.6, 0.62, 0.62], s: 0, preso: true },
+  aponta: { c: [1.15, 1.15, 1.1, 0.02, 0.75], s: 0, preso: true },
+  joinha: { c: [1.15, 1.15, 1.12, 1.08, -0.45], s: 0, preso: true },
+  aberta: { c: [0.04, 0.03, 0.02, 0.02, 0.0], s: 0.38 },
+  ponte: { c: [0.3, 0.25, 0.2, 0.35, 0.1], s: 0.3, preso: true },
+  tecla: { c: [0.5, 0.48, 0.45, 0.42, 0.3], s: 0.08, preso: true },
+  controle: { c: [0.95, 0.9, 0.85, 0.7, 0.35], s: 0, preso: true },
+  carinho: { c: [0.2, 0.18, 0.15, 0.15, 0.15], s: 0.12 },
+};
+// expressão a partir dos campos simples da pose (boca, olhos, sobrancelha)
+function faceDePose(p) {
+  const F = { sorr: 0.3, abre: 0, larg: 1, redondo: 0, assim: 0, dentes: 0, lingua: 0, morde: 0, olho: 1, feliz: 0, fecha: 0, sobeS: 0, dentroS: 0, sobeAssim: 0, boch: p.boch || 0, lagrima: p.lagrima || 0, ox: p.olhar ? p.olhar[0] : 0, oy: p.olhar ? p.olhar[1] : 0 };
+  const a = cl(p.abre ?? 0.6);
+  switch (p.boca) {
+    case "sorriso": Object.assign(F, { sorr: 0.85, abre: 0.3, dentes: 0.9 }); break;
+    case "leve": F.sorr = 0.3; break;
+    case "reta": F.sorr = 0; break;
+    case "triste": F.sorr = -0.6; break;
+    case "foco": Object.assign(F, { sorr: -0.05, larg: 0.85, assim: 0.3 }); break;
+    case "o": Object.assign(F, { sorr: 0, abre: 0.18 + 0.3 * a, redondo: 1 }); break;
+    case "aberta": Object.assign(F, { sorr: 0.55, abre: 0.3 + 0.6 * a, dentes: 0.7 }); break;
+  }
+  if (p.olhos === "F") F.feliz = 1; if (p.olhos === "Z") F.fecha = 1;
+  if (p.sob === "triste" || (!p.sob && p.boca === "triste")) { F.dentroS = 0.85; F.sobeS = -0.1; F.olho = 0.82; }
+  if (p.sob === "tenso") { F.dentroS = -0.6; F.sobeS = -0.15; }
+  if (p.boca === "o" || p.boca === "aberta") F.sobeS += 0.45 * a;
+  if (p.boca === "sorriso" || p.olhos === "F") F.sobeS += 0.15;
+  return F;
 }
 
 /* ---------- poses ---------- */
@@ -765,20 +826,27 @@ const SENT = [1.25, 1.4];
 function sentado(T, alt, o = {}) { const b = Math.sin(T * 1.8); const r = P({ alt, sent: 1, lL: SENT, lR: SENT, aL: [0.62 + 0.02 * b, -0.08, 0.98], aR: [0.6 + 0.02 * b, -0.08, 1.0], ...o }); r.lean += 0.04 + 0.01 * b; return r; }
 // agachado (para mexer em algo baixo): joelhos dobrados, tronco para a frente
 function agachado(T, k, o = {}) { const r = emPe(T, o); r.alt = lerp(0.89, 0.5, k); r.lL = [lerp(0.02, 1.35, k), lerp(0.04, 2.1, k)]; r.lR = [lerp(0.02, 1.05, k), lerp(0.04, 1.9, k)]; r.lean += 0.35 * k; r.nod += 0.15 * k; return r; }
-// caminhada: o passo acompanha a distância percorrida (sem pé deslizando)
+// caminhada: o passo acompanha a distância percorrida (sem pé deslizando), com calcanhar e ponta do pé,
+// quadril que sobe e desce duas vezes por passada, braços com o cotovelo atrasado e cabeça estável
 function andar(dist, est, T, esc = 1) {
   const corre = est === "corre", tri = est === "triste";
   const passo = corre ? 2.1 : tri ? 0.95 : 1.32;
   const perna = 0.88 * esc;
   const amp = Math.asin(cl(passo / (4 * perna), 0, 0.85)) * (corre ? 1.05 : 1);
   const ph = (dist / passo) * TAU, s = Math.sin(ph), c = Math.cos(ph);
-  const kb = corre ? 1.3 : tri ? 0.6 : 0.85;
+  const kb = corre ? 1.35 : tri ? 0.65 : 0.95;
+  // fase de balanço (perna indo para a frente): joelho dobra; apoio: joelho quase reto, leve amortecimento
+  const joelho = (sw, st) => 0.08 + kb * Math.pow(Math.max(0, sw), 1.6) + 0.12 * Math.max(0, st) * (corre ? 0.5 : 1);
+  const pe = (sn, cs) => 0.38 * Math.max(0, -sn) * Math.max(0, cs) * 1.6 - 0.22 * Math.max(0, sn) * Math.max(0, -cs);   // ponta empurra / calcanhar toca
   const r = P({
-    lL: [amp * s, 0.1 + kb * Math.max(0, c) * Math.max(0, c + 0.2)], lR: [-amp * s, 0.1 + kb * Math.max(0, -c) * Math.max(0, -c + 0.2)],
-    aL: [-amp * 0.9 * s, 0.1, (corre ? 1.35 : 0.32) + 0.18 * Math.max(0, -s)], aR: [amp * 0.9 * s, 0.1, (corre ? 1.35 : 0.32) + 0.18 * Math.max(0, s)],
-    lean: corre ? 0.2 : tri ? 0.16 : 0.06, twist: 0.09 * s, turn: -0.1 * s, side: 0.025 * c, roll: -0.02 * c, nod: tri ? 0.45 : 0.03 * Math.abs(c), boca: tri ? "triste" : corre ? "aberta" : "leve",
+    lL: [amp * s, joelho(c, s)], lR: [-amp * s, joelho(-c, -s)], pL: pe(s, c), pR: pe(-s, -c),
+    aL: [-amp * 0.95 * s, 0.1, (corre ? 1.35 : 0.3) + 0.22 * Math.max(0, -Math.sin(ph - 0.5))], aR: [amp * 0.95 * s, 0.1, (corre ? 1.35 : 0.3) + 0.22 * Math.max(0, Math.sin(ph - 0.5))],
+    lean: corre ? 0.2 : tri ? 0.16 : 0.07, twist: 0.1 * s, side: 0.03 * c, roll: -0.025 * c,
+    boca: tri ? "triste" : corre ? "aberta" : "leve",
   });
-  r.alt = 0.07 + 0.82 * Math.cos(amp * Math.abs(s)) + (corre ? 0.05 * Math.abs(c) : 0.012 * Math.abs(c));
+  // cabeça compensa o giro do tronco e o balanço (olha para a frente)
+  r.turn = -0.09 * s; r.nod = tri ? 0.45 : -0.03 + 0.025 * Math.abs(c);
+  r.alt = 0.07 + 0.82 * Math.cos(amp * Math.abs(s)) + (corre ? 0.05 * Math.abs(c) : 0.014 * Math.abs(c));
   r.andando = 1;
   return r;
 }
@@ -792,6 +860,7 @@ function mistura(a, b, w) {
   return r;
 }
 // Filtro de mola criticamente amortecida em cada articulação: tira qualquer tranco entre poses
+const WF = { yawAdd: 30, nod: 8, turn: 7.5, roll: 8, lean: 10, side: 10, twist: 10, alt: 18, dy: 20, hz: 14, pL: 26, pR: 26, olhar: 30, lL: 24, lR: 24, aL: 13, aR: 13 };
 class Filtro {
   constructor() { this.x = null; this.v = {}; }
   mola(k, alvo, dt, w) {
@@ -809,14 +878,193 @@ class Filtro {
       return p;
     }
     const r = { ...p };
-    for (const k of NUM) r[k] = this.mola(k, p[k] ?? POSE0[k], dt, k === "yawAdd" ? 30 : w);
-    for (const k of ARR) r[k] = (p[k] || POSE0[k]).map((v, i) => this.mola(k + i, v, dt, w * 1.1));
+    // cada parte com o seu tempo: olhos rápidos, cabeça um pouco atrasada, tronco mais pesado, pés firmes
+    for (const k of NUM) r[k] = this.mola(k, p[k] ?? POSE0[k], dt, WF[k] || w);
+    for (const k of ARR) r[k] = (p[k] || POSE0[k]).map((v, i) => this.mola(k + i, v, dt, WF[k] || w * 1.1));
     for (const k of ["ikL", "ikR"]) {
       if (!p[k]) { if (this.x[k + "0"] != null) r[k] = [0, 1, 2].map((i) => this.x[k + i]); continue; }
       if (this.x[k + "0"] == null) { p[k].forEach((v, i) => { this.x[k + i] = v; this.v[k + i] = 0; }); r[k] = p[k]; continue; }
       r[k] = p[k].map((v, i) => this.mola(k + i, v, dt, w * 1.3));
     }
     return r;
+  }
+}
+
+/* ---------- vida: o que faz o boneco parecer gente ----------
+   Por cima da rotina: expressões que mudam sozinhas dentro do mesmo humor, olhar que procura coisas
+   (os olhos chegam antes da cabeça), manias (coçar o nariz, alongar o pescoço, suspirar, tamborilar),
+   transferência de peso quando está em pé e rosto com parâmetros contínuos que se misturam sem saltos. */
+const EXPR = {
+  neutro: {},
+  contente: { sorr: 0.45, feliz: 0.3, boch: 0.3 },
+  concentrado: { sorr: -0.05, larg: 0.82, assim: 0.35, dentroS: -0.3, olho: 0.9, lingua: 0.55 },
+  surpreso: { abre: 0.42, redondo: 0.7, sorr: 0.1, sobeS: 0.85, olho: 1.2 },
+  rindo: { sorr: 0.9, abre: 0.5, dentes: 1, feliz: 0.9, boch: 0.6, sobeS: 0.2 },
+  bocejo: { abre: 1, redondo: 0.55, sorr: 0, fecha: 0.85, sobeS: 0.35 },
+  pensativo: { sorr: 0.05, assim: 0.55, sobeAssim: 0.6, olho: 0.9, larg: 0.85 },
+  orgulhoso: { sorr: 0.6, assim: 0.55, feliz: 0.45, sobeAssim: 0.35, boch: 0.35 },
+  assovia: { redondo: 1, abre: 0.14, larg: 0.42, sobeS: 0.25, sorr: 0.1 },
+  gargalhada: { sorr: 1, abre: 0.85, dentes: 1, feliz: 1, boch: 0.9, sobeS: 0.45 },
+  grito: { abre: 0.95, redondo: 0.35, sorr: 0.65, olho: 1.12, sobeS: 0.75, dentes: 0.8, boch: 0.8 },
+  tenso: { sorr: -0.25, larg: 0.8, dentroS: -0.75, olho: 1.05 },
+  mordeLabio: { sorr: -0.15, larg: 0.75, assim: -0.5, dentroS: -0.35, morde: 1 },
+  aflito: { sorr: -0.45, dentroS: 0.75, sobeS: 0.25, olho: 1.1 },
+  resmunga: { sorr: -0.2, dentroS: -0.45, larg: 0.85 },
+  suspira: { sorr: -0.1, abre: 0.15, redondo: 0.4, fecha: 0.5, dentroS: 0.3 },
+  esperanca: { sorr: 0.25, dentroS: 0.45, sobeS: 0.2 },
+  choroso: { sorr: -0.75, dentroS: 1, olho: 0.72, lagrima: 1, abre: 0.08 },
+  vazio: { sorr: -0.15, olho: 0.68, dentroS: 0.35 },
+  sorrisoFraco: { sorr: 0.2, dentroS: 0.55, olho: 0.85 },
+  cumprimenta: { sorr: 0.75, feliz: 0.6, sobeS: 0.6, boch: 0.5 },
+};
+// repertório de cada humor: [expressão, peso, duração mín, máx]
+const REPERT = {
+  tranquilo: [["contente", 4, 3, 6], ["concentrado", 3, 3, 7], ["surpreso", 1, 0.9, 1.6], ["rindo", 1.2, 1.4, 2.6], ["bocejo", 0.6, 2.4, 3.2], ["pensativo", 1, 2.5, 4.5], ["assovia", 0.8, 2.5, 4], ["neutro", 2, 2, 4]],
+  feliz: [["contente", 3, 3, 6], ["rindo", 2, 1.5, 3], ["orgulhoso", 2, 2.5, 4.5], ["concentrado", 1.5, 2, 4], ["assovia", 1.2, 2.5, 4], ["neutro", 1, 2, 3]],
+  euforico: [["gargalhada", 3, 1.5, 3], ["grito", 2, 0.9, 1.8], ["rindo", 2, 1.5, 3], ["contente", 1.5, 2, 4]],
+  preocupado: [["tenso", 3, 3, 6], ["mordeLabio", 2, 1.5, 3], ["aflito", 2, 2, 4], ["resmunga", 2, 1.8, 3.5], ["suspira", 1.5, 1.8, 2.6], ["esperanca", 1, 2, 3.5], ["pensativo", 1, 2, 4]],
+  triste: [["choroso", 2, 3, 6], ["vazio", 3, 3, 6], ["suspira", 2, 1.8, 2.6], ["sorrisoFraco", 0.6, 1.5, 3], ["aflito", 1, 2, 4]],
+};
+// manias: precisam de partes livres ("R" mão direita, "L" esquerda, "pe" em pé, "sent" sentado)
+const MANIAS = [
+  { nome: "nariz", req: ["R"], dur: 1.7, humores: "*", peso: 1 },
+  { nome: "nuca", req: ["R"], dur: 2.2, humores: ["preocupado", "triste", "tranquilo"], peso: 1 },
+  { nome: "coca", req: ["R"], dur: 1.9, humores: ["preocupado", "tranquilo"], peso: 1 },
+  { nome: "pescoco", req: [], dur: 2.6, humores: "*", peso: 1 },
+  { nome: "suspiro", req: [], dur: 2.4, humores: ["preocupado", "triste", "tranquilo"], peso: 1.2 },
+  { nome: "tamborila", req: ["Rapoio"], dur: 2.6, humores: ["preocupado", "tranquilo", "feliz"], peso: 1.4 },
+  { nome: "cintura", req: ["R", "L", "pe"], dur: 3.2, humores: ["feliz", "preocupado", "tranquilo"], peso: 1 },
+  { nome: "alonga", req: ["R", "L", "pe"], dur: 3.0, humores: ["tranquilo", "triste"], peso: 0.6 },
+  { nome: "ombros", req: [], dur: 1.6, humores: "*", peso: 0.8 },
+];
+const sorteia = (lista, peso) => { const tot = lista.reduce((a, x) => a + peso(x), 0); let r = Math.random() * tot; for (const x of lista) { r -= peso(x); if (r <= 0) return x; } return lista[lista.length - 1]; };
+const ROSTO0 = { sorr: 0.3, abre: 0, larg: 1, redondo: 0, assim: 0, dentes: 0, lingua: 0, morde: 0, olho: 1, feliz: 0, fecha: 0, sobeS: 0, dentroS: 0, sobeAssim: 0, boch: 0, lagrima: 0 };
+
+class Vida {
+  constructor() {
+    this.emo = { nome: "neutro", t0: 0, fim: 2 }; this.emoAnt = { nome: "neutro" };
+    this.glance = null; this.proxGlance = 2 + Math.random() * 3;
+    this.mania = null; this.proxMania = 5 + Math.random() * 4;
+    this.F = { ...ROSTO0 }; this.Fv = {}; this.wGaze = 0; this.yawG = 0; this.pitchG = 0;
+  }
+  // expressão atual (com entrada e saída suaves)
+  expressao(T, humor) {
+    const e = this.emo;
+    if (T > e.fim || this.humor !== humor) {
+      this.humor = humor; const rep = REPERT[humor] || REPERT.tranquilo;
+      const [nome, , a, b] = sorteia(rep.filter((x) => x[0] !== e.nome || rep.length < 2), (x) => x[1]);
+      this.emoAnt = { nome: e.nome, ate: T + 0.5 }; this.emo = { nome, t0: T, fim: T + a + Math.random() * (b - a) };
+    }
+    return this.emo;
+  }
+  // camada de pose: olhar, manias, peso do corpo, efeitos das expressões no corpo
+  passo(p, c) {
+    const T = c.T, dt = c.dt; p = { ...p, aL: p.aL.slice(), aR: p.aR.slice(), lL: p.lL.slice(), lR: p.lR.slice(), olhar: p.olhar.slice() };
+    const parado = !p.andando && Math.abs(p.dy || 0) < 0.03, emPe = (p.sent || 0) < 0.3;
+    const livreR = parado && (p.kR || 0) < 0.05 && !p.item && !c.ocupado && p.aR[0] < 1.3 && !p.gestoR, livreL = parado && (p.kL || 0) < 0.05 && !c.ocupadoL && !c.ocupado && p.aL[0] < 1.3 && p.mL < 0.5 && !p.gestoL;
+    const apoioR = parado && !c.ocupado && (p.kR || 0) < 0.05 && !p.item && (p.sent || 0) > 0.5;
+    const emo = this.expressao(T, c.humor); const ke = jan(T - emo.t0, 0, emo.fim - emo.t0, 0.45);
+    /* manias */
+    if (!this.mania && T > this.proxMania && !c.reduz) {
+      const ok = MANIAS.filter((m) => (m.humores === "*" || m.humores.includes(c.humor)) && m.req.every((r) => (r === "R" ? livreR : r === "L" ? livreL : r === "pe" ? emPe && parado : r === "Rapoio" ? apoioR : true)) && parado);
+      if (ok.length) { const m = sorteia(ok, (x) => x.peso); this.mania = { ...m, t0: T }; }
+      this.proxMania = T + (c.humor === "preocupado" ? 4 : 6) + Math.random() * 6;
+    }
+    const mn = this.mania;
+    if (mn) {
+      const tl = T - mn.t0; const w = jan(tl, 0, mn.dur, 0.45);
+      const aindaPode = mn.req.every((r) => (r === "R" ? livreR || tl > 0.2 && !p.item && (p.kR || 0) < 0.05 && parado : r === "L" ? livreL || tl > 0.2 && parado : r === "pe" ? emPe && parado : r === "Rapoio" ? apoioR : true));
+      if (tl > mn.dur || !aindaPode && w < 0.05) this.mania = null;
+      else {
+        const wk = aindaPode ? w : w * 0.5; const mix = (arr, alvo) => arr.forEach((v, i) => { arr[i] = lerp(v, alvo[i], wk); });
+        switch (mn.nome) {
+          case "nariz": { const n = c.nariz; if (n) { const s = Math.sin(tl * 16) * 0.012 * w; p.ikR = [n.x + s, n.y, n.z]; p.kR = wk * 0.95; p.gestoR = "aponta"; p.nod += 0.06 * wk; } break; }
+          case "nuca": mix(p.aR, [2.55, 0.65, 2.55 + 0.12 * Math.sin(tl * 9)]); p.nod += 0.18 * wk; p.gestoR = "carinho"; break;
+          case "coca": mix(p.aR, [2.65, 0.25, 2.3 + 0.15 * Math.sin(tl * 13)]); p.roll -= 0.08 * wk; p.gestoR = "carinho"; break;
+          case "pescoco": { const s = Math.sin(fase(tl, 0.2, mn.dur - 0.2) * TAU); p.roll += 0.28 * s * wk; p.nod += 0.12 * wk; p.fechaOlhos = wk; break; }
+          case "suspiro": { const s = Math.sin(PI * fase(tl, 0.1, 1.4)); p.lean -= 0.06 * s * wk; p.dy += 0.012 * s * wk; p.nod += -0.08 * s * wk + 0.1 * fase(tl, 1.4, mn.dur) * wk; p.suspiro = s * wk; break; }
+          case "tamborila": p.tamb = 1; break;
+          case "cintura": mix(p.aR, [0.35, 0.85, 1.75]); mix(p.aL, [0.35, 0.85, 1.75]); p.lean -= 0.04 * wk; p.gestoR = p.gestoL = "solto"; break;
+          case "alonga": { const up = suave(fase(tl, 0.2, 1.2)) * (1 - suave(fase(tl, 2.2, 3.0))); mix(p.aR, [lerp(0.2, 3.0, up), 0.2, 0.25]); mix(p.aL, [lerp(0.2, 3.0, up), 0.2, 0.25]); p.lean -= 0.12 * up * wk; p.nod -= 0.25 * up * wk; p.dy += 0.03 * up * wk; p.gestoR = p.gestoL = up > 0.5 ? "aberta" : ""; p.boceja = up * wk; break; }
+          case "ombros": { const s = Math.sin(PI * fase(tl, 0, mn.dur)); p.dy += 0.018 * s; p.lean -= 0.04 * s; break; }
+        }
+      }
+    }
+    /* transferência de peso em pé, parado: o quadril balança devagar e um joelho afrouxa */
+    if (emPe && parado && !p.andando) {
+      const ph = Math.sin(T * 0.21 + 1.3) * 0.7 + Math.sin(T * 0.13) * 0.3;
+      const k = c.legsLivres ? 1 : 0;
+      p.side += 0.03 * ph * k; p.twist += 0.025 * ph * k;
+      p.lL[1] += 0.14 * Math.max(0, ph) * k; p.lL[0] += 0.05 * Math.max(0, ph) * k;
+      p.lR[1] += 0.14 * Math.max(0, -ph) * k; p.lR[0] += 0.05 * Math.max(0, -ph) * k;
+      p.alt -= 0.008 * Math.abs(ph) * k;
+    }
+    // braços soltos nunca ficam parados de todo
+    if (livreR && !(mn && mn.req.includes("R"))) { p.aR[2] += 0.04 * Math.sin(T * 0.71 + 1); p.aR[0] += 0.025 * Math.sin(T * 0.53); }
+    if (livreL && !(mn && mn.req.includes("L"))) { p.aL[2] += 0.04 * Math.sin(T * 0.67); p.aL[0] += 0.025 * Math.sin(T * 0.49 + 2); }
+    /* o corpo acompanha a expressão */
+    const en = emo.nome, we = ke * (c.facePropria ? 0.3 : 1);
+    if (en === "rindo" || en === "gargalhada") { const f = en === "gargalhada" ? 1 : 0.55; p.dy += 0.01 * Math.abs(Math.sin(T * 11)) * we * f; p.lean -= 0.07 * we * f; p.nod -= 0.08 * we * f + 0.04 * Math.sin(T * 11) * we * f; }
+    if (en === "bocejo" && !p.boceja) { p.nod -= 0.25 * we; p.lean -= 0.05 * we; }
+    if (en === "resmunga") { p.turn += 0.06 * Math.sin(T * 3.3) * we; p.roll += 0.04 * Math.sin(T * 2.1) * we; }
+    if (en === "surpreso") { p.nod -= 0.12 * we; p.lean -= 0.04 * we; }
+    if (en === "aflito" || en === "choroso" || en === "vazio") { p.nod += 0.1 * we; }
+    if (en === "orgulhoso") { p.nod -= 0.08 * we; p.lean -= 0.03 * we; }
+    /* olhar: alvo da cena (passo), o que a mão vai pegar, uma olhadinha qualquer ou a câmera */
+    if (!this.glance && T > this.proxGlance && c.alvos && c.alvos.length && !c.reduz) {
+      const a = sorteia(c.alvos, (x) => x.peso); this.glance = { ...a, t0: T, dur: 0.9 + Math.random() * 1.8 }; if (a.nome === "camera" && c.humor !== "triste" && Math.random() < 0.35) { this.glance.acena = true; this.glance.dur = 2.4; }
+      this.proxGlance = T + 3 + Math.random() * 5.5;
+    }
+    if (this.glance && T - this.glance.t0 > this.glance.dur) this.glance = null;
+    // às vezes, ao olhar para quem está vendo, ele acena
+    if (this.glance && this.glance.acena && livreR && !this.mania) { const w2 = jan(T - this.glance.t0, 0.2, this.glance.dur, 0.4); p.aR = p.aR.map((v, i) => lerp(v, [2.55, 0.5, 0.9 + 0.35 * Math.sin(T * 9)][i], w2)); if (w2 > 0.3) p.gestoR = "aberta"; }
+    let alvo = null, w = 0;
+    const alc = (p.kR || 0) > 0.25 && p.ikR && !p.item ? ["R", p.kR] : (p.kL || 0) > 0.25 && p.ikL && !p.gestoL ? ["L", p.kL] : null;
+    if (p.olharW) { alvo = V(...p.olharW); w = 1; }
+    else if (alc && !c.semOlharMao) { const q = alc[0] === "R" ? p.ikR : p.ikL; alvo = V(...q); w = 0.85 * cl(alc[1]); }
+    else if (this.glance) { alvo = this.glance.pos; w = jan(T - this.glance.t0, 0, this.glance.dur, 0.25) * (p.andando ? 0.6 : 0.9); }
+    else if (c.foco) { alvo = c.foco; w = p.andando ? 0.3 : 0.75; }
+    this.olhandoCamera = this.glance && this.glance.nome === "camera" ? jan(T - this.glance.t0, 0, this.glance.dur, 0.25) : 0;
+    this.wGaze = lerp(this.wGaze, alvo ? w : 0, Math.min(1, dt * 6));
+    if (alvo && c.cabeca) {
+      const d = alvo.clone().sub(c.cabeca); const yaw = difAng(c.yawCorpo + (p.twist || 0), Math.atan2(d.x, d.z)); const pitch = Math.atan2(d.y, Math.hypot(d.x, d.z));
+      this.yawG = cl(yaw, -1.6, 1.6); this.pitchG = cl(pitch, -1.0, 0.8);
+    }
+    const wg = this.wGaze;
+    if (wg > 0.01) {
+      const tt = cl(this.yawG * 0.78, -1.05, 1.05), nn = cl(-this.pitchG * 0.65, -0.5, 0.65);
+      p.turn = lerp(p.turn, tt, wg); p.nod = lerp(p.nod, nn + (p.nod - (p.nod || 0)), wg * 0.85);
+      p.olhar[0] = lerp(p.olhar[0], cl((this.yawG - tt) * 2.4, -1.4, 1.4), wg); p.olhar[1] = lerp(p.olhar[1], cl(-(this.pitchG + nn / 0.65 * 0.65) * 2.2, -1.4, 1.4), wg);
+    }
+    return p;
+  }
+  // rosto final: pose (o que a rotina pede) + expressão do momento, tudo com mola
+  rosto(p, c) {
+    const T = c.T, dt = c.dt;
+    const base = faceDePose(p);
+    const emo = this.emo; const ke = jan(T - emo.t0, 0, emo.fim - emo.t0, 0.45) * (c.facePropria ? 0.25 : 1);
+    const ex = EXPR[emo.nome] || {};
+    const alvo = { ...base };
+    for (const k in ex) alvo[k] = lerp(base[k] ?? ROSTO0[k], ex[k] * (k === "sorr" || k === "dentroS" || k === "sobeS" ? 1.15 : 1), ke);
+    // falar sozinho, rir, suspirar, bocejar, cumprimentar quem está olhando
+    if (emo.nome === "resmunga") alvo.abre = Math.max(alvo.abre, ke * (0.08 + 0.14 * Math.max(0, Math.sin(T * 9) * Math.sin(T * 3.7))));
+    if (emo.nome === "rindo" || emo.nome === "gargalhada") alvo.abre = Math.max(0, alvo.abre - ke * 0.2 * Math.abs(Math.sin(T * 11)));
+    if (p.suspiro) { alvo.abre = Math.max(alvo.abre, 0.15 * p.suspiro); alvo.redondo = Math.max(alvo.redondo, 0.5 * p.suspiro); alvo.fecha = Math.max(alvo.fecha, 0.5 * p.suspiro); }
+    if (p.boceja) { alvo.abre = Math.max(alvo.abre, p.boceja); alvo.redondo = Math.max(alvo.redondo, 0.5 * p.boceja); alvo.fecha = Math.max(alvo.fecha, 0.85 * p.boceja); }
+    if (p.fechaOlhos) alvo.fecha = Math.max(alvo.fecha, 0.9 * p.fechaOlhos);
+    if (this.olhandoCamera > 0.01 && !c.facePropria && c.humor !== "triste") { const k = this.olhandoCamera; for (const kk in EXPR.cumprimenta) alvo[kk] = lerp(alvo[kk], EXPR.cumprimenta[kk], k * 0.8); }
+    // micro: sobrancelhas e boca nunca ficam congeladas
+    alvo.sobeS += 0.06 * Math.sin(T * 0.83) + 0.04 * Math.sin(T * 2.3 + 1);
+    alvo.sorr += 0.04 * Math.sin(T * 0.61 + 2);
+    for (const k in ROSTO0) {
+      const w = k === "abre" || k === "fecha" ? 22 : k === "sobeS" || k === "dentroS" ? 14 : 9;
+      let x = this.F[k] ?? ROSTO0[k], v = this.Fv[k] || 0; const e = x - (alvo[k] ?? ROSTO0[k]), ee = Math.exp(-w * dt), tmp = (v + w * e) * dt;
+      this.F[k] = (alvo[k] ?? ROSTO0[k]) + (e + tmp) * ee; this.Fv[k] = (v - w * tmp) * ee;
+      if (!(dt > 0)) this.F[k] = alvo[k] ?? ROSTO0[k];
+    }
+    this.F.ox = p.olhar[0]; this.F.oy = p.olhar[1];
+    this.F.piscar = Math.abs(this.yawG - (this.yawGAnt ?? this.yawG)) > 0.5; this.yawGAnt = this.yawG;
+    return this.F;
   }
 }
 
@@ -1000,7 +1248,7 @@ function poseFesta(tt, T) {
   return r;
 }
 // comemoração rápida (soco no ar)
-const vibra = (tl, dur, o = {}) => { const up = jan(tl, 0, dur, 0.3), pump = Math.abs(Math.sin(tl * PI / 0.42)) * up; return { aR: [lerp(0, 2.55 + 0.3 * pump, up), 0.25, lerp(0.2, 0.9 - 0.5 * pump, up)], dy: 0.03 * pump, olhos: up > 0.5 ? "F" : "A", boca: up > 0.3 ? "aberta" : "sorriso", boch: 0.7, ...o }; };
+const vibra = (tl, dur, o = {}) => { const up = jan(tl, 0, dur, 0.3), pump = Math.abs(Math.sin(tl * PI / 0.42)) * up; return { gestoR: up > 0.3 ? "punho" : "", aR: [lerp(0, 2.55 + 0.3 * pump, up), 0.25, lerp(0.2, 0.9 - 0.5 * pump, up)], dy: 0.03 * pump, olhos: up > 0.5 ? "F" : "A", boca: up > 0.3 ? "aberta" : "sorriso", boch: 0.7, ...o }; };
 
 // L: lugares no mundo (dependem de onde estão os móveis); e: a cena (alvos ao vivo); ciclo: nº da volta (para variar)
 // Cada rotina termina exatamente na pose em que começa (o laço não aparece). "entrada" e "saida" levam o boneco
@@ -1009,16 +1257,16 @@ const sofaSent = (T) => sentado(T, 0.62, { lean: -0.1 });
 function jogando(T, tl, o = {}) {
   const curva = Math.sin(tl * 0.9) * 0.08 + Math.sin(tl * 2.3) * 0.03;
   const tap = (x) => Math.max(0, Math.sin(T * 10 + x)) * 0.12;
-  return sentado(T, 0.62, { lean: -0.1 + curva * 0.3, side: curva, nod: 0.15, turn: curva * 0.6, aL: [0.85 + tap(0), -0.22, 1.25], aR: [0.85 + tap(2), -0.22, 1.25], boca: "foco", ...o });
+  return sentado(T, 0.62, { lean: -0.1 + curva * 0.3, side: curva, nod: 0.15, turn: curva * 0.6, aL: [0.85 + tap(0), -0.22, 1.25], aR: [0.85 + tap(2), -0.22, 1.25], ...o });
 }
 // partida no sofá: vibra com os braços para cima (o controle vai junto na mão direita)
 const partida = (dur, vibras) => F(dur, (k, tl, T) => {
   let yes = 0; for (const v of vibras) yes = Math.max(yes, jan(tl, v, v + 1.3));
-  const r = jogando(T, tl, { boca: yes > 0.4 ? "aberta" : "foco", olhos: yes > 0.5 ? "F" : "A", boch: 0.15 + 0.5 * yes });
+  const r = jogando(T, tl, yes > 0.3 ? { boca: "aberta", olhos: yes > 0.5 ? "F" : "A", boch: 0.15 + 0.5 * yes, gestoR: "punho", gestoL: "aberta" } : {});
   r.aR = r.aR.map((x, i) => lerp(x, [2.7, 0.5, 0.4][i], yes)); r.aL = r.aL.map((x, i) => lerp(x, [2.5, 0.55, 0.5][i], yes));
   r.lean -= 0.08 * yes; r.nod -= 0.25 * yes; r.dy = 0.04 * yes * Math.abs(Math.sin(tl * 9));
   return r;
-}, { tv: "jogo", props: { controle: "LR" } });
+}, { tv: "jogo", props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) });
 const pegaControle = (e) => F(1.6, (k, tl, T) => {
   const a = jan(tl, 0, 1.15, 0.4); const c = e.casaDe("controle").pos;
   const r = mistura(sofaSent(T), jogando(T, 0), suave(fase(tl, 0.75, 1.6))); r.ikR = [c.x, c.y + 0.03, c.z]; r.kR = a; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
@@ -1045,7 +1293,7 @@ const ROTEIROS = {
         const c = e.casaDe("xicara").pos, bico = e.bico(); const alc = jan(tl, 0, 5.3, 0.45), ida = suave(fase(tl, 0.9, 1.7)), volta = suave(fase(tl, 4.3, 5.3));
         const alvo = c.clone().add(V(0, 0.06, 0)).lerp(bico, ida); const bt = e.botaoCafe(), aperta = jan(tl, 1.9, 2.9, 0.25);
         return emPe(T, { ikR: [alvo.x, alvo.y, alvo.z], kR: alc * (1 - volta), aR: [0.6, -0.25, 1.75], ikL: [bt.x, bt.y - 0.02 * Math.max(0, Math.sin((tl - 2.1) * 9)), bt.z], kL: aperta, lean: 0.14 * alc, nod: 0.28, olhar: [0, 1] });
-      }, { ate: L.cafeP, props: { xicara: (k, tl) => tl < 0.75 ? "casa" : "R" }, fx: "cafe" }),
+      }, { ate: L.cafeP, props: { xicara: (k, tl) => tl < 0.75 ? "casa" : "R" }, fx: "cafe", foco: (e) => e.bico() }),
       F(4.4, (k, tl, T) => { const g = jan(tl, 0.6, 1.8, 0.35) + jan(tl, 2.6, 3.7, 0.35);
         return emPe(T, { aR: [0.6 + 0.75 * g, -0.25, 1.75 + 0.4 * g], gole: g, nod: -0.25 * g, olhos: g > 0.5 ? "Z" : "A", boca: g > 0.5 ? "reta" : "sorriso", boch: 0.35 }); }, { props: { xicara: "R" } }),
       F(1.6, (k, tl, T) => { const c = e.casaDe("xicara").pos; const a = jan(tl, 0, 1.6, 0.45); return emPe(T, { ikR: [c.x, c.y + 0.06, c.z], kR: a, aR: [0.6, -0.25, 1.75], lean: 0.14 * a, nod: 0.25 }); }, { props: { xicara: (k, tl) => tl < 0.85 ? "R" : "casa" } }),
@@ -1053,21 +1301,21 @@ const ROTEIROS = {
     ] : [
       partida(9 + (ciclo % 3) * 2, [3.4]),
       // relaxa: encosta, estica as pernas, o controle descansa na mão direita
-      F(6.5, (k, tl, T) => { const w = jan(tl, 0, 6.5, 0.9); const r = jogando(T, tl * 0.3, { boca: "sorriso", boch: 0.3 }); r.lean -= 0.22 * w; r.nod -= 0.15 * w; r.lL = r.lL.map((x, i) => lerp(x, [0.95, 0.5][i], w)); r.lR = r.lR.map((x, i) => lerp(x, [0.9, 0.45][i], w)); r.aL = r.aL.map((x, i) => lerp(x, [0.5, -0.05, 0.6][i], w)); r.aR = r.aR.map((x, i) => lerp(x, [0.65, -0.1, 0.9][i], w)); r.olhos = tl > 2 && tl < 4.4 ? "Z" : "A"; return r; }, { props: { controle: "LR" } }),
+      F(6.5, (k, tl, T) => { const w = jan(tl, 0, 6.5, 0.9); const r = jogando(T, tl * 0.3, { boca: "sorriso", boch: 0.3 }); r.lean -= 0.22 * w; r.nod -= 0.15 * w; r.lL = r.lL.map((x, i) => lerp(x, [0.95, 0.5][i], w)); r.lR = r.lR.map((x, i) => lerp(x, [0.9, 0.45][i], w)); r.aL = r.aL.map((x, i) => lerp(x, [0.5, -0.05, 0.6][i], w)); r.aR = r.aR.map((x, i) => lerp(x, [0.65, -0.1, 0.9][i], w)); r.olhos = tl > 2 && tl < 4.4 ? "Z" : "A"; return r; }, { props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) }),
       partida(8, [4.4]),
     ];
     return { inicio: L.sofaS, aprox: L.sofaP, sentado: true, sentPose: sofaSent, padrao: { boca: "leve", boch: 0.15 }, passos, entrada: [sentar, pegaControle(e)], saida: [largaControle(e), levantar] };
   },
   feliz: (L, e, ciclo = 0) => {
     const passos = [
-      F(2.6, (k, tl, T) => { const r = Math.sin(tl * 9) * 0.12 * jan(tl, 0.4, 2.2); return emPe(T, { taco: 0, aL: [1.4 + r, 0.1, 1.9], nod: -0.25, olhar: [0, -1.5], boca: "leve" }); }, { bolas: "ini" }),
+      F(2.6, (k, tl, T) => { const r = Math.sin(tl * 9) * 0.12 * jan(tl, 0.4, 2.2); return emPe(T, { taco: 0, aL: [1.4 + r, 0.1, 1.9], nod: -0.25, olhar: [0, -1.5], boca: "leve" }); }, { bolas: "ini", foco: (e) => e.pto("sinuca", 7.62, 0.81, 4.52) }),
       F(5.6, (k, tl, T) => poseTacada(tl, T)),
       F(3.0, (k, tl, T) => { const v = vibra(tl, 3.0); return emPe(T, { ...v, taco: 0, aL: v.aR, aR: undefined, bolas: "fim" }); }),
     ];
     if (ciclo % 2 === 0) passos.push(
       A(1.25, [L.monP], { taco: 0, bolas: "fim" }),
       F(4.6, (k, tl, T) => { const up = jan(tl, 1.4, 3.6, 0.4); const nod = Math.sin(tl * 6) * 0.1 * jan(tl, 0.3, 1.3);
-        return emPe(T, { taco: 0, aL: [lerp(0, 1.3, up), -0.15, lerp(0.2, 1.7, up)], lean: 0.1, nod: 0.05 + nod, boca: up > 0.5 ? "aberta" : "sorriso", olhos: up > 0.5 ? "F" : "A" }); }, { bolas: "fim", ate: L.monP }),
+        return emPe(T, { taco: 0, aL: [lerp(0, 1.3, up), -0.15, lerp(0.2, 1.7, up)], lean: 0.1, nod: 0.05 + nod, boca: up > 0.5 ? "aberta" : "sorriso", olhos: up > 0.5 ? "F" : "A" }); }, { bolas: "fim", ate: L.monP, foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22) }),
       A(1.25, [L.sinP], { taco: 0, bolas: "fim" }));
     else passos.push(F(3.2, (k, tl, T) => emPe(T, { taco: 0, nod: 0.2, olhar: [0.6 * Math.sin(tl * 1.5), -1], boca: "sorriso", aL: [0.3, 0.25, 1.2 * jan(tl, 0, 3.2, 0.5)], side: 0.05 * Math.sin(tl * 2) }), { bolas: "fim" }));
     // a bola encaçapada volta para a mesa e a branca rola para o lugar dela
@@ -1086,7 +1334,7 @@ const ROTEIROS = {
     }, { props: { maco: (k, tl) => tl < 0.45 ? "casa" : tl > 5.0 ? "casa" : "L", nota: (k, tl) => { const c = ((Math.max(0, tl - 0.8)) % 1.1) / 1.1; return tl > 0.8 && tl < 4.9 && c < 0.5 ? "R" : "casa"; } } }),
     A(2.2, [L.monP], { estilo: "corre" }),
     F(3.4, (k, tl, T) => { const j = (tl % 0.85) / 0.85, h = Math.sin(PI * j);
-      return emPe(T, { dy: 0.35 * h, aL: [2.9, 0.4, 0.2], aR: [2.9, 0.4, 0.2], lL: [0.3 * h, 0.7 * h], lR: [0.3 * h, 0.7 * h], boca: "aberta", olhos: "F" }); }, { ate: L.monP }),
+      return emPe(T, { dy: 0.35 * h, aL: [2.9, 0.4, 0.2], aR: [2.9, 0.4, 0.2], lL: [0.3 * h, 0.7 * h], lR: [0.3 * h, 0.7 * h], boca: "aberta", olhos: "F" }); }, { ate: L.monP, foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22), semPeso: true }),
     A(2.2, [L.danca], { estilo: "corre" }),
     F(5.0, (k, tl, T) => poseFesta(1.05 + (tl % 2.48), T), { ate: L.danca, fx: "globo" }),
   ] }),
@@ -1101,7 +1349,7 @@ const ROTEIROS = {
         ikL: [kb.L.x + dx, kb.L.y + tE, kb.L.z], kL: entra, ikR: [kb.R.x - dx, kb.R.y + tD, kb.R.z], kR: entra * (1 - coca),
         aR: [lerp(0.6, 2.3, coca), lerp(-0.08, 0.6, coca), lerp(1.0, 2.4 + 0.15 * Math.sin(T * 16), coca)], item: entra > 0.3 ? "tecla" : "",
         olhar: [0.3 * Math.sin(tl * 2), -0.6] });
-    }, { mon: "foco" });
+    }, { mon: "foco", foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22) });
     const passos = [digita(9 + (ciclo % 2) * 3),
       F(3.6, (k, tl, T) => { const c = jan(tl, 0, 3.6, 0.6); const sh = Math.sin(T * 9) * 0.12 * c;
         return sentado(T, 0.6, { lean: 0.22 - 0.3 * c, nod: -0.1 * c, turn: sh, aL: [lerp(0.62, 2.5, c), lerp(-0.08, 0.7, c), lerp(0.98, 2.3, c)], aR: [lerp(0.6, 2.5, c), lerp(-0.08, 0.7, c), lerp(1.0, 2.3, c)], balao: jan(tl, 0.3, 3.4, 0.3), balaoT: "smiley-nervous", boca: "o", abre: 0.4 }); })];
@@ -1126,7 +1374,7 @@ const ROTEIROS = {
       })];
     if (ciclo % 2 === 0) passos.push(levantar, A(0.62, [L.janP], { estilo: "triste" }),
       F(9.5, (k, tl, T) => { const mao = jan(tl, 0.8, 7.8, 0.6), sus = Math.sin(PI * fase(tl, 3.6, 5.2)), enc = jan(tl, 5.6, 7.4, 0.5);
-        return emPe(T, { aL: [lerp(0, 1.75, mao), -0.1 * mao, lerp(0.2, 0.55, mao)], alt: 0.89 - 0.02 * sus, lean: 0.06 + 0.1 * enc, nod: 0.1 + 0.3 * enc - 0.1 * mao, side: -0.05 * enc, olhar: [0, -0.5] }); }, { ate: L.janP }),
+        return emPe(T, { aL: [lerp(0, 1.75, mao), -0.1 * mao, lerp(0.2, 0.55, mao)], alt: 0.89 - 0.02 * sus, lean: 0.06 + 0.1 * enc, nod: 0.1 + 0.3 * enc - 0.1 * mao, side: -0.05 * enc, olhar: [0, -0.5] }); }, { ate: L.janP, foco: () => V(-1.2, 1.5, 1.8) }),
       A(0.62, [L.polP], { estilo: "triste" }), F(0.6, (k, tl, T) => pe(T), { ate: L.polP }), sentar);
     else passos.push(F(7, (k, tl, T) => { const s = Math.sin(PI * fase(tl, 1.5, 3.5)); return sentado(T, 0.6, { lean: 0.32 + 0.08 * s, nod: 0.35 - 0.2 * jan(tl, 3.8, 6.6, 0.6), turn: -0.6 * jan(tl, 3.8, 6.6, 0.6), aL: [0.72, -0.1, 1.05], aR: [0.72, -0.1, 1.05], olhar: [-1.4, -0.4], olhos: s > 0.6 ? "Z" : "A" }); }));
     return { inicio: L.polS, aprox: L.polP, sentado: true, sentPose: sentP, padrao: { sob: "triste", boca: "triste", nuvem: 1, lagrima: 1 }, passos, entrada: [sentar], saida: [levantar] };
@@ -1264,7 +1512,7 @@ class Escritorio {
     this.construir();
     this.boneco = new Boneco(d.cor, d.icone, d.boneco, d.acessorio); sc.add(this.boneco.root); sc.add(this.boneco.blob);
     this.cao = new Cao(); sc.add(this.cao.g);
-    this.filtro = new Filtro();
+    this.filtro = new Filtro(); this.vida = new Vida();
     this.vistos = this.lerVistos();
     if (window.__ofDebug) window.__ofDebug = this;
     this.ligarControles();
@@ -1966,19 +2214,33 @@ class Escritorio {
         p = { ...p, lL: [p.lL[0] + 0.28 * Math.max(0, s) * k, p.lL[1] + 0.55 * Math.max(0, s) * k], lR: [p.lR[0] + 0.28 * Math.max(0, -s) * k, p.lR[1] + 0.55 * Math.max(0, -s) * k], alt: p.alt - 0.012 * Math.abs(s) * k };
       }
     }
+    // camada de vida (olhar, manias, peso do corpo, expressões) por cima da rotina
+    this.decidirProps(st, r.k, tl);
+    const segurando = Object.keys(this.prop).find((n) => ["R", "LR", "joga"].includes(this.prop[n].h));
+    const segL = Object.keys(this.prop).find((n) => ["L", "LR"].includes(this.prop[n].h));
+    const cabW = this.mundo(b.head), fwd = V(Math.sin(pf.y), 0, Math.cos(pf.y));
+    const alvos = [];
+    const add = (nome, pos, peso) => { const d = pos.clone().sub(cabW); if (Math.abs(difAng(pf.y, Math.atan2(d.x, d.z))) < 1.5 && d.length() > 0.5) alvos.push({ nome, pos, peso }); };
+    add("tv", V(3.2, 1.5, 0.12), 1); add("janela", V(-0.6, 1.7, 1.8), 0.9); add("relogio", V(5.25, 2.35, 0.05), 0.5); add("camera", this.cam.position.clone(), this.h === "triste" ? 0.4 : 1.2);
+    add("monitor", this.pto("mesa", 6.8, 1.14, 0.22), 0.6);
+    if (this.cao.g.visible) add("cao", this.mundo(this.cao.cab), 1.3);
+    p = this.vida.passo({ ...p, item: segurando ? (p.item || segurando) : p.item }, {
+      T, dt, humor: this.h, reduz: this.reduz, cabeca: cabW, yawCorpo: pf.y, alvos, foco: st.foco ? st.foco(this) : null,
+      nariz: cabW.clone().addScaledVector(fwd, 0.15 * b.esc).add(V(0, -0.02, 0)), ocupado: !!st.ocupado || p.taco > -0.9, ocupadoL: !!segL,
+      facePropria: !!r.pose._fp, legsLivres: p.alt > 0.86 && Math.abs(p.lL[0]) < 0.25 && Math.abs(p.lR[0]) < 0.25 && !st.semPeso,
+    });
     p = this.filtro.passo(p, dt);
     b.root.position.set(pf.x, 0, pf.z); b.root.rotation.y = pf.y + (p.yawAdd || 0);
     b.root.updateMatrixWorld(true);
     const comTaco = p.taco > -0.98 && this.h === "feliz";
     if (comTaco) { p = { ...p }; this.aplicarTaco(p); }
     else { /* taco encostado na mesa */ const q = this.tacoPontas({ taco: -1 }); const dir = q.tip.clone().sub(q.butt).normalize(); const tc = this.itens.taco; tc.visible = true; tc.position.copy(q.butt); tc.quaternion.setFromUnitVectors(V(0, 1, 0), dir); }
-    // objetos: decide quem segura o quê neste instante (antes de posar as mãos)
-    this.decidirProps(st, r.k, tl);
+    // objetos: quem segura o quê neste instante (antes de posar as mãos)
     const naMaoR = Object.keys(this.prop).find((n) => ["R", "LR", "joga"].includes(this.prop[n].h));
     const naMaoL = Object.keys(this.prop).find((n) => this.prop[n].h === "L");
     if (!["tecla", "tacoV", "tacoShot"].includes(p.item)) p.item = naMaoR === "joga" ? "" : naMaoR || "";
     if (naMaoL) p.mL = Math.max(p.mL || 0, 0.9);
-    b.aplicar(p, T, dt); b.desenharRosto(p, T);
+    b.aplicar(p, T, dt); b.desenharRosto(this.vida.rosto(p, { T, dt, humor: this.h, facePropria: !!r.pose._fp }), T);
     b.blob.position.set(pf.x, 0.004, pf.z); b.blob.material.opacity = cl(1 - (p.dy || 0) * 2, 0.3, 1);
     this.moverProps(p, tl, fxk, dt);
     if (this.itens.celular.visible) this.desenharCel(T);
@@ -2515,6 +2777,7 @@ class Diretor {
       if (s.bolas && !pose.bolas) pose.bolas = s.bolas;
       if (s.taco != null && pose.taco === POSE0.taco) pose.taco = s.taco;
     }
+    pose._fp = ["aberta", "o", "sorriso", "triste"].includes(pose.boca) || pose.olhos === "F" || pose.olhos === "Z" || pose.sob === "triste";   // a cena pediu uma expressão
     const rt = this.padrao || {}; for (const k in rt) if (!(k in pose) || pose[k] === POSE0[k]) pose[k] = rt[k];
     return { pose, pos };
   }
@@ -2558,7 +2821,7 @@ export function vitrine(el, d) {
   const chao = new THREE.Mesh(new THREE.CircleGeometry(0.75, 48), new THREE.ShadowMaterial({ opacity: 0.22 })); chao.rotation.x = -PI / 2; chao.receiveShadow = true; sc.add(chao);
   const b = new Boneco(d.cor, d.icone, d.boneco, d.acessorio); sc.add(b.root); b.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   const cam = new THREE.PerspectiveCamera(24, 3 / 4, 0.1, 20);
-  const filtro = new Filtro();
+  const filtro = new Filtro(), vida = new Vida();
   let yaw = -0.35, arrastando = false, x0 = 0, ultimoToque = 0, raf = 0, morto = false;
   const t0 = performance.now(); let tAnt = t0;
   const tam = () => { const w = el.clientWidth || 200, h = el.clientHeight || 260; r.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); };
@@ -2579,8 +2842,11 @@ export function vitrine(el, d) {
     else if (c < 6) { const w = jan(c, 3.5, 6, 0.4); p = emPe(T, { aR: [lerp(0, 2.6, w), lerp(0.12, 0.5, w), lerp(0.2, 0.9 + 0.35 * Math.sin(T * 9), w)], boca: w > 0.5 ? "sorriso" : "leve", olhos: w > 0.5 ? "F" : "A", boch: 0.4 * w, nod: -0.05 * w, roll: 0.06 * w }); }
     else if (c < 8.5) { const w = jan(c, 6, 8.5, 0.4); p = emPe(T, { aL: [lerp(0, 1.2, w), lerp(0.12, -0.2, w), lerp(0.2, 1.4, w)], mL: w, boca: "sorriso", boch: 0.3, turn: 0.12 * w, nod: -0.04 * w }); }
     else p = emPe(T, { boca: "sorriso", olhos: "A", boch: 0.25, turn: 0.15 * Math.sin(T * 1.2) });
+    b.root.rotation.y = yaw;
+    const cab = b.head.getWorldPosition(new THREE.Vector3());
+    p = vida.passo(p, { T, dt, humor: "feliz", cabeca: cab, yawCorpo: yaw, alvos: [{ nome: "camera", pos: cam.position.clone(), peso: 2 }, { nome: "lado", pos: V(Math.sin(yaw + 1) * 3, 1.4, Math.cos(yaw + 1) * 3), peso: 1 }], legsLivres: true, nariz: cab.clone().add(V(Math.sin(yaw) * 0.15, -0.02, Math.cos(yaw) * 0.15)) });
     p = filtro.passo(p, dt);
-    b.root.rotation.y = yaw; b.aplicar(p, T, dt); b.desenharRosto(p, T);
+    b.aplicar(p, T, dt); b.desenharRosto(vida.rosto(p, { T, dt, humor: "feliz", facePropria: c >= 3.5 && c < 6 }), T);
     const e = b.esc; const vc = window.__ofVitCam; if (vc) { cam.position.set(0, vc[0], vc[1]); cam.lookAt(0, vc[2], 0); } else { cam.position.set(0, 1.0 * e, 4.2 * (0.6 + 0.4 * e)); cam.lookAt(0, 0.9 * e, 0); }
     r.render(sc, cam);
     raf = requestAnimationFrame(quadro);

@@ -38,7 +38,7 @@ class Escritorio {
     this.construir();
     this.boneco = new Boneco(d.cor, d.icone, d.boneco, d.acessorio); sc.add(this.boneco.root); sc.add(this.boneco.blob);
     this.cao = new Cao(); sc.add(this.cao.g);
-    this.filtro = new Filtro();
+    this.filtro = new Filtro(); this.vida = new Vida();
     this.vistos = this.lerVistos();
     if (window.__ofDebug) window.__ofDebug = this;
     this.ligarControles();

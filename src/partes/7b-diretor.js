@@ -117,6 +117,7 @@ class Diretor {
       if (s.bolas && !pose.bolas) pose.bolas = s.bolas;
       if (s.taco != null && pose.taco === POSE0.taco) pose.taco = s.taco;
     }
+    pose._fp = ["aberta", "o", "sorriso", "triste"].includes(pose.boca) || pose.olhos === "F" || pose.olhos === "Z" || pose.sob === "triste";   // a cena pediu uma expressão
     const rt = this.padrao || {}; for (const k in rt) if (!(k in pose) || pose[k] === POSE0[k]) pose[k] = rt[k];
     return { pose, pos };
   }
