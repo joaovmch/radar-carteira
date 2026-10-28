@@ -26,14 +26,14 @@ const ROUPAS = [
   { m: "camisa", manga: "C", estampa: 1 }, { m: "camisa", manga: "C", estampa: 1 }, { m: "camisa", manga: "L", estampa: 1 }, { m: "branco", manga: "L" }, { m: "camisa", manga: "L" }, { m: "camisa", manga: "R", estampa: 1 },
   { m: "paleto", manga: "L", punho: "branco" }, { m: "camisa", manga: "L", punho: "branco" }, { m: "xadrez", manga: "L" }, { m: "havai", manga: "C" },
 ];
-const ALTURA = [0.9, 0.95, 1, 1.05, 1.1], CORPO = [0.84, 0.92, 1, 1.12, 1.26];
+const ALTURA = [0.9, 0.95, 1, 1.05, 1.1], CORPO = [0.84, 0.92, 1, 1.12, 1.26].map((x) => x * 1.12);   // corpo mais cheio, proporção de boneco de animação
 const POSE0 = { alt: 0.89, dy: 0, hz: 0, lean: 0, side: 0, twist: 0, nod: 0, turn: 0, roll: 0, aL: [0, 0.12, 0.2], aR: [0, 0.12, 0.2], lL: [0, 0], lR: [0, 0], olhar: [0, 0], boch: 0, abre: 0.6, lagrima: 0, nuvem: 0, balao: 0, yawAdd: 0, sent: 0, kL: 0, kR: 0, ikL: null, ikR: null, mL: 0, mR: 0, taco: -1, recuo: 0, porta: 0, fxk: 0, gole: 0, pL: 0, pR: 0, olhos: "A", boca: "leve", sob: "", item: "", balaoT: "" };
 const NUM = ["alt", "dy", "hz", "lean", "side", "twist", "nod", "turn", "roll", "boch", "abre", "lagrima", "nuvem", "balao", "yawAdd", "sent", "kL", "kR", "mL", "mR", "taco", "recuo", "porta", "fxk", "gole", "pL", "pR"];
 const ARR = ["aL", "aR", "lL", "lR", "olhar"];
 const DISC = ["olhos", "boca", "sob", "item", "balaoT", "bolas", "solta", "fx", "gestoL", "gestoR"];
 // Cabeça modelada numa esfera de raio R e achatada pela escala do grupo (cabeça um pouco maior: traço de desenho animado)
-const CAB_ESC = [0.47, 0.565, 0.52], ESTICA = CAB_ESC[1] / CAB_ESC[0] * 0.98;
-const BR_A = 0.29, BR_B = 0.325;   // braço e antebraço (até o ponto de pegada)
+const CAB_ESC = [0.47 * 1.4, 0.565 * 1.4, 0.52 * 1.4], ESTICA = CAB_ESC[1] / CAB_ESC[0] * 0.98;
+const BR_A = 0.29, BR_B = 0.325, ESC_MAO = 1.1;   // braço e antebraço (até o ponto de pegada)
 
 // gira uma geometria e a coloca no lugar antes de juntar
 function assado(geo, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = null) {
@@ -47,7 +47,7 @@ function formaCabeca(geo, R) {
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i); const n = v.clone().divideScalar(R);
     const baixo = cl(-n.y), cima = cl(n.y);
-    const sx = 1 - 0.2 * Math.pow(baixo, 1.6) + 0.03 * (1 - Math.abs(n.y));
+    const sx = 1 - 0.11 * Math.pow(baixo, 1.6) + 0.045 * (1 - Math.abs(n.y)) * (n.y < 0 ? 1.4 : 1);
     const sz = 1 - 0.1 * Math.pow(baixo, 2) * (n.z < 0 ? 1.4 : 0.6) - 0.04 * cima * (n.z < 0 ? 1 : 0);
     const sy = 1 + 0.04 * baixo;
     p.setXYZ(i, v.x * sx, v.y * sy, v.z * sz + (n.z > 0 ? 0.035 * R * Math.pow(baixo, 2) * n.z : 0));
@@ -60,7 +60,7 @@ class Boneco {
     const ap = this.ap = lerAp(aparencia);
     this.molas = {};   // cabelo que balança (rabo de cavalo)
     this.cor = cor || "#2457F5";
-    const camisa = this.camisa = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.86 });
+    const camisa = this.camisa = new THREE.MeshPhysicalMaterial({ color: this.cor, roughness: 0.8, sheen: 0.22, sheenRoughness: 0.75, sheenColor: new THREE.Color("#E6ECFF") });
     const gola = this.gola = new THREE.MeshStandardMaterial({ color: this.cor, roughness: 0.8 });
     const branco = this.branco = new THREE.MeshStandardMaterial({ color: "#F4F6FA", roughness: 0.7 });
     // terno (cor fixa, grafite), xadrez e havaiana (estampas desenhadas na cor do perfil)
@@ -70,11 +70,12 @@ class Boneco {
     const xadrez = this.xadrez = new THREE.MeshStandardMaterial({ map: this.texX.t, roughness: 0.92 });
     const havai = this.havai = new THREE.MeshStandardMaterial({ map: this.texH.t, roughness: 0.72 });
     this.estampasCor = this.cor; this.desenharEstampas(this.cor);
-    const pele = this.pele = new THREE.MeshStandardMaterial({ color: AP.p[ap.p], roughness: 0.55, emissive: "#4A1D0C", emissiveIntensity: 0.16 });
+    // pele macia (brilho aveludado nas bordas, como nas animações 3D) e tecidos com sheen
+    const pele = this.pele = new THREE.MeshPhysicalMaterial({ color: AP.p[ap.p], roughness: 0.5, emissive: "#4A1D0C", emissiveIntensity: 0.15, sheen: 0.18, sheenRoughness: 0.55, sheenColor: new THREE.Color("#FFC9B0") });
     const peleSom = this.peleSom = new THREE.MeshStandardMaterial({ color: AP.p[ap.p], roughness: 0.6, emissive: "#4A1D0C", emissiveIntensity: 0.1 });
-    const cab = this.cab = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.5, metalness: 0.05, vertexColors: true });
+    const cab = this.cab = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.64, vertexColors: true });   // fosco: cor fiel em qualquer luz
     const cabRaspado = this.cabRaspado = new THREE.MeshStandardMaterial({ color: AP.c[ap.c], roughness: 0.95 });
-    const calca = this.calca = new THREE.MeshStandardMaterial({ color: AP.l[ap.l], roughness: 0.88 });
+    const calca = this.calca = new THREE.MeshPhysicalMaterial({ color: AP.l[ap.l], roughness: 0.84, sheen: 0.18, sheenRoughness: 0.75, sheenColor: new THREE.Color("#B8C4DA") });
     const sap = this.sapMat = new THREE.MeshStandardMaterial({ color: AP.s[ap.s], roughness: 0.45 });
     const sola = this.solaMat = new THREE.MeshStandardMaterial({ color: "#F4F6F8", roughness: 0.55 });
     const meia = M("#F8FAFC", { r: 0.9 });
@@ -91,7 +92,7 @@ class Boneco {
     /* tronco */
     const perfil = new THREE.SplineCurve([[0.0, -0.03], [0.138, -0.01], [0.142, 0.08], [0.146, 0.15], [0.162, 0.25], [0.176, 0.34], [0.182, 0.41], [0.172, 0.462], [0.135, 0.505], [0.074, 0.536], [0.0, 0.55]].map((q) => new THREE.Vector2(q[0], q[1]))).getPoints(48);
     this.torso = G(mesh(new THREE.LatheGeometry(perfil, 48), camisa, spine, 0, 0, 0, { s: [1.06, 1, 0.74] }));
-    this.barriga = G(esf(spine, camisa, 0.12, 0, 0.13, 0, { s: [1.05, 1.0, 0.82], seg: 28, seg2: 18 }), 1); this.barriga.visible = false;
+    this.barriga = G(esf(spine, camisa, 0.155, 0, 0.16, 0, { s: [0.98, 1.05, 0.8], seg: 36, seg2: 24 }), 1); this.barriga.visible = false;
     // detalhes de cada roupa
     const R = this.roupas = [];
     const vest = (fn) => { const g = new THREE.Group(); spine.add(g); fn(g); g.visible = false; R.push(g); return g; };
@@ -188,16 +189,18 @@ class Boneco {
     /* pescoço e cabeça */
     const neck = this.neck = new THREE.Group(); neck.position.y = 0.52; spine.add(neck);
     cil(neck, pele, 0.05, 0.056, 0.12, 0, 0.03, 0.004, { seg: 20 });
-    const head = this.head = new THREE.Group(); head.position.set(0, 0.05, 0.01); head.scale.set(...CAB_ESC); neck.add(head);
+    const head = this.head = new THREE.Group(); head.position.set(0, 0.045, 0.014); head.scale.set(...CAB_ESC); neck.add(head);
     const hc = 0.2, Rc = 0.24; this.hc = hc; this.R = Rc;
     mesh(formaCabeca(new THREE.SphereGeometry(Rc, 56, 40), Rc), pele, head, 0, hc, 0);
+    // orelhas grandes e macias, com a concha por dentro
     for (const s of [-1, 1]) {
-      esf(head, pele, 0.058, s * (Rc - 0.004), hc - 0.01, -0.012, { s: [0.5, 1.05, 0.85], seg: 16, seg2: 12 });
-      esf(head, peleSom, 0.032, s * (Rc + 0.016), hc - 0.012, -0.006, { s: [0.3, 0.8, 0.5], seg: 12, seg2: 10 });
+      esf(head, pele, 0.074, s * (Rc - 0.006), hc - 0.014, -0.014, { s: [0.46, 1.0, 0.78], seg: 24, seg2: 16 });
+      esf(head, peleSom, 0.042, s * (Rc + 0.018), hc - 0.014, -0.004, { s: [0.32, 0.78, 0.52], seg: 16, seg2: 12 });
+      mesh(new THREE.TorusGeometry(0.046, 0.011, 10, 24, PI * 1.3), pele, head, s * (Rc + 0.02), hc - 0.012, -0.008, { ry: s * PI / 2, rz: -PI * 0.15, s: [1, 1.25, 1] });
     }
-    esf(head, pele, 0.02, 0, hc - 0.008, Rc - 0.004, { s: [0.7, 1.8, 0.85], seg: 14, seg2: 10 });
-    esf(head, pele, 0.026, 0, hc - 0.046, Rc + 0.003, { s: [1.05, 0.9, 1.0], seg: 18, seg2: 12 });   // nariz arredondado
-    for (const s of [-1, 1]) esf(head, pele, 0.014, s * 0.024, hc - 0.054, Rc - 0.007, { s: [1, 0.8, 1], seg: 12, seg2: 8 });
+    // nariz: um botão redondo, pequeno, como nos bonecos 3D de animação
+    esf(head, pele, 0.031, 0, hc - 0.042, Rc - 0.004, { s: [1.18, 0.9, 0.95], seg: 24, seg2: 16 });
+    this.montarOlhos(head, hc, Rc);
     // rosto pintado em canvas sobre um pedaço de esfera
     this.rosto = tela(512, 384); this.rosto.g.scale(2, 2);
     const fg = formaCabeca(new THREE.SphereGeometry(Rc + 0.003, 48, 28, PI / 2 - 0.9, 1.8, 0.85, 1.3), Rc + 0.003);
@@ -224,7 +227,7 @@ class Boneco {
       const ombroPele = G(esf(sh, this.pele, 0.051, 0, -0.004, 0, { seg: 20, seg2: 14 }));
       const bainhaC = G(mesh(new THREE.TorusGeometry(0.055, 0.008, 8, 24), camisa, sh, 0, -0.188, 0, { rx: PI / 2 }));
       const punho = G(cil(el, camisa, 0.045, 0.045, 0.03, 0, -0.24, 0, { seg: 22 }));
-      const hand = new THREE.Group(); hand.position.y = -0.27; el.add(hand);
+      const hand = new THREE.Group(); hand.position.y = -0.27; hand.scale.setScalar(ESC_MAO); el.add(hand);   // mãos mais cheias, estilo animação
       // mão: dorso e palma arredondados, nós dos dedos, cinco dedos de duas falanges
       esf(hand, this.pele, 0.033, 0, -0.006, 0, { s: [0.72, 0.75, 1.05], seg: 16, seg2: 12 });
       esf(hand, this.pele, 0.046, 0, -0.052, 0, { s: [0.38, 1.0, 0.92], seg: 22, seg2: 16 });
@@ -232,16 +235,16 @@ class Boneco {
       const lista = this.dedos[nome];
       [[-0.028, 0.035], [-0.0095, 0.043], [0.0095, 0.041], [0.028, 0.033]].forEach(([z, len]) => {
         const p1 = new THREE.Group(); p1.position.set(0, -0.092, z); hand.add(p1);
-        caps(p1, this.pele, 0.0112, len, 0, -len / 2 - 0.003, 0);
+        caps(p1, this.pele, 0.0128, len, 0, -len / 2 - 0.003, 0);
         const p2 = new THREE.Group(); p2.position.y = -len - 0.006; p1.add(p2);
-        caps(p2, this.pele, 0.0102, len * 0.8, 0, -len * 0.4 - 0.002, 0);
+        caps(p2, this.pele, 0.0118, len * 0.8, 0, -len * 0.4 - 0.002, 0);
         lista.push({ p1, p2 });
       });
       const t1 = new THREE.Group(); t1.position.set(-lado * 0.012, -0.03, 0.034); t1.rotation.set(0.4, 0, lado * 0.5); hand.add(t1);
       esf(t1, this.pele, 0.016, 0, -0.006, 0, { s: [0.9, 1.3, 0.9], seg: 10, seg2: 8 });
-      caps(t1, this.pele, 0.013, 0.032, 0, -0.022, 0);
+      caps(t1, this.pele, 0.0148, 0.032, 0, -0.022, 0);
       const t2 = new THREE.Group(); t2.position.y = -0.047; t1.add(t2);
-      caps(t2, this.pele, 0.0115, 0.027, 0, -0.016, 0);
+      caps(t2, this.pele, 0.0132, 0.027, 0, -0.016, 0);
       lista.push({ p1: t1, p2: t2, polegar: true });
       return { sh, el, hand, lado, pele, ombro, ombroPele, mangaC, bainhaC, mangaL, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
     };
@@ -260,11 +263,15 @@ class Boneco {
       const bermuda = G(mesh(new THREE.TorusGeometry(0.064, 0.011, 8, 22), calca, kn, 0, -0.02, 0, { rx: PI / 2 }));
       const barra = G(mesh(new THREE.TorusGeometry(0.05, 0.0095, 8, 20), calca, kn, 0, -0.355, 0, { rx: PI / 2 }));
       const meiaM = cil(ft, meia, 0.036, 0.039, 0.07, 0, 0.012, 0, { seg: 16 });
-      // tênis: cabedal arredondado, bico, sola oval e cadarço
-      esf(ft, sap, 0.058, 0, -0.026, 0.032, { s: [0.88, 0.62, 1.72], seg: 24, seg2: 16 });
-      esf(ft, sap, 0.045, 0, -0.008, -0.02, { s: [0.95, 0.95, 1.0], seg: 18, seg2: 12 });
-      mesh(new THREE.CylinderGeometry(0.058, 0.056, 0.024, 28), sola, ft, 0, -0.064, 0.04, { s: [0.92, 1, 1.82] });
-      for (let i = 0; i < 3; i++) bloco(ft, M("#E9EDF2", { r: 0.7 }), [-0.02, 0, -0.004], [0.02, 0.006, 0.004], 0.002).position.set(0, 0.004 - i * 0.008, 0.03 + i * 0.022);
+      // tênis grande e fofo: cabedal arredondado, bico, sola alta com faixa, língua, gola acolchoada e cadarço
+      const tn = new THREE.Group(); tn.scale.setScalar(1.22); tn.position.y = 0.0167; ft.add(tn);
+      esf(tn, sap, 0.058, 0, -0.026, 0.032, { s: [0.9, 0.66, 1.74], seg: 28, seg2: 18 });
+      esf(tn, sap, 0.046, 0, -0.008, -0.02, { s: [0.98, 0.98, 1.02], seg: 22, seg2: 14 });
+      mesh(new THREE.TorusGeometry(0.036, 0.011, 10, 24), sap, tn, 0, 0.008, -0.012, { rx: PI / 2 + 0.25 });
+      esf(tn, M("#F1F4F8", { r: 0.6 }), 0.024, 0, 0.002, 0.024, { s: [0.95, 0.45, 1.4], seg: 14, seg2: 10 });
+      mesh(new THREE.CylinderGeometry(0.06, 0.058, 0.03, 32), sola, tn, 0, -0.062, 0.04, { s: [0.95, 1, 1.82] });
+      mesh(new THREE.TorusGeometry(0.06, 0.0045, 6, 32), M("#94A3B8", { r: 0.5 }), tn, 0, -0.054, 0.04, { rx: PI / 2, s: [0.96, 1.83, 1] });
+      for (let i = 0; i < 3; i++) bloco(tn, M("#E9EDF2", { r: 0.7 }), [-0.02, 0, -0.004], [0.02, 0.006, 0.004], 0.002).position.set(0, 0.006 - i * 0.008, 0.034 + i * 0.02);
       return { hp, kn, ft, peleP, calcaL, bermudaM, bermuda, barra, meiaM };
     };
     this.PL = perna(-1); this.PR = perna(1);
@@ -298,7 +305,7 @@ class Boneco {
       for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const thv = Math.acos(cl(v.y / (R + h), -1, 1)); const phv = Math.atan2(v.x, v.z); const lim = limite(phv) + ext; if (thv > lim) { const q = S(lim, phv, h).sub(C); p.setXYZ(i, q.x, q.y, q.z); } }
       g.computeVertexNormals(); assado(g, 0, hc, 0); return comCor(g, 0.7);
     };
-    const mechaNa = (pts, r0, r1, o = {}) => mechaGeo(pts, r0, r1, { ref: (p) => nrm(p), ...o });
+    const mechaNa = (pts, r0, r1, o = {}) => mechaGeo(pts, r0 * 1.3, r1 * 1.5, { ref: (p) => nrm(p), ...o });   // mechas grossas: cabelo esculpido
     // caminho sobre a cabeça de (th0,ph0) até (th1,ph1), subindo do couro (h0) até (h1)
     const trilha = (th0, ph0, th1, ph1, h0, h1, n = 7, bojo = 0.012) => { const r = []; for (let i = 0; i <= n; i++) { const t = i / n; r.push(S(lerp(th0, th1, t), lerp(ph0, ph1, t), lerp(h0, h1, t) + bojo * Math.sin(PI * t))); } return r; };
     const jit = (i, a) => (ruido(i * 3.7 + a) - 0.5);
@@ -439,10 +446,70 @@ class Boneco {
     g = new THREE.Group(); for (const s of [-1, 1]) caps(g, barba, 0.012, 0.05, s * 0.03, hc - 0.076, R - 0.01, { rz: PI / 2 + s * 0.35, s: [1, 1, 0.7] }); b.push(g);
     b.forEach((x) => { if (x) { x.visible = false; head.add(x); } });
   }
+  /* --- olhos 3D: globo brilhante, íris grande que segue o olhar, brilho fixo, pálpebras que piscam e
+     apertam no sorriso, e sobrancelhas esculpidas que sobem, descem e inclinam com a emoção --- */
+  montarOlhos(head, hc, R) {
+    const rO = 0.044, ang = 0.39, yO = hc + 0.004;
+    const escl = new THREE.MeshPhysicalMaterial({ color: "#FBFAF7", roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.08 });
+    const iris = this.irisMat = new THREE.MeshPhysicalMaterial({ color: "#3A2214", roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.05 });
+    const pupila = new THREE.MeshPhysicalMaterial({ color: "#070403", roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05 });
+    const brilho = new THREE.MeshBasicMaterial({ color: "#FFFFFF", toneMapped: false });
+    const linha = this.cilioMat = new THREE.MeshStandardMaterial({ color: "#24140C", roughness: 0.6 });
+    const sob = this.sobMat = new THREE.MeshStandardMaterial({ color: "#2A1A10", roughness: 0.75 });
+    const capa = (r, a) => { const g = new THREE.SphereGeometry(r, 28, 10, 0, TAU, 0, a); g.rotateX(PI / 2); return g; };
+    this.olhos3d = [];
+    for (const s of [-1, 1]) {
+      // encaixe: no plano do rosto, virado para fora (um pouco para o lado)
+      const base = new THREE.Group(); const x = Math.sin(ang) * R * s, z = Math.cos(ang) * R;
+      base.position.set(x * 0.94, yO, z - rO * 0.52); base.rotation.set(0, s * ang * 0.8, 0); head.add(base);
+      const globo = new THREE.Group(); base.add(globo);
+      mesh(new THREE.SphereGeometry(rO, 28, 20), escl, globo, 0, 0, 0, { cast: false });
+      mesh(capa(rO * 1.004, 0.84), iris, globo, 0, 0, 0, { cast: false });
+      mesh(capa(rO * 1.008, 0.44), pupila, globo, 0, 0, 0, { cast: false });
+      // brilhos: grande em cima, pequeno embaixo (ficam parados quando o olho gira, como a luz refletida)
+      const b1 = esf(base, brilho, rO * 0.17, -rO * 0.26, rO * 0.3, rO * 0.94, { seg: 10, seg2: 8, cast: false });
+      const b2 = esf(base, brilho, rO * 0.075, rO * 0.27, -rO * 0.24, rO * 0.97, { seg: 8, seg2: 6, cast: false });
+      // pálpebras: meias esferas de pele um pouco maiores que o globo, com a linha dos cílios na borda
+      const lidG = (cima) => {
+        const g = new THREE.Group(); base.add(g);
+        const geo = new THREE.SphereGeometry(rO * 1.07, 28, 12, 0, TAU, cima ? 0 : PI / 2, PI / 2);
+        mesh(geo, this.pele, g, 0, 0, 0, { cast: false });
+        const borda = mesh(new THREE.TorusGeometry(rO * 1.075, cima ? rO * 0.085 : rO * 0.045, 8, 28, PI), cima ? linha : this.peleSom, g, 0, 0, 0, { cast: false });
+        borda.rotation.x = PI / 2;
+        return g;
+      };
+      const sup = lidG(true), inf = lidG(false);
+      // sobrancelha: cápsula achatada e curvada, presa à testa
+      const sg = new THREE.Group(); const xs = Math.sin(ang * 0.95) * R * s;
+      sg.position.set(xs, hc + 0.066, Math.cos(ang * 0.95) * R * 0.985); sg.rotation.set(-0.25, s * ang * 0.85, 0); head.add(sg);
+      // arco: mais grossa perto do nariz, afina e desce na ponta de fora, e acompanha a curva da testa
+      const cg = new THREE.CapsuleGeometry(0.0135, 0.064, 6, 14); cg.rotateZ(PI / 2);
+      const pa = cg.attributes.position; for (let i = 0; i < pa.count; i++) { const vx = pa.getX(i), u = vx / 0.045, fora = cl(0.5 + 0.5 * u * s); const gros = lerp(1.12, 0.62, fora);
+        pa.setY(i, pa.getY(i) * gros + 0.011 * (1 - u * u) - 0.006 * fora * fora); pa.setZ(i, pa.getZ(i) * 0.55 * gros - 0.75 * vx * vx); }
+      cg.computeVertexNormals();
+      const sm = mesh(cg, sob, sg, 0, 0, 0.004, { cast: false });
+      this.olhos3d.push({ s, base, globo, sup, inf, sg, sm, b1, b2, y0: sg.position.y });
+    }
+  }
+  // ab: abertura (0 fechado, 1 normal, até 1.25 arregalado); feliz: aperta de baixo; ox/oy: olhar
+  posarOlhos(F, ab, feliz) {
+    if (!this.olhos3d) return;
+    const fecha = 1 - cl(ab, 0, 1), arr = Math.max(0, ab - 1);
+    for (const o of this.olhos3d) {
+      o.globo.rotation.set(cl(F.oy || 0, -1.2, 1.2) * 0.32, cl(F.ox || 0, -1.2, 1.2) * 0.42, 0);
+      // de cima: aberto ≈ −0,95 rad, fechado ≈ +1,45 (passa da metade do olho e cobre tudo)
+      o.sup.rotation.x = lerp(-0.92 - arr * 0.9, 1.45, fecha) + feliz * 0.12;
+      o.inf.rotation.x = lerp(0.98, 0.3, feliz) - fecha * 0.75 + (F.dentroS < 0 ? F.dentroS * 0.2 : 0);
+      const vis = fecha < 0.85; o.b1.visible = o.b2.visible = vis;
+      const assim = (F.sobeAssim || 0) * (o.s > 0 ? 1 : -1);
+      o.sg.position.y = o.y0 + (F.sobeS || 0) * 0.026 + Math.max(0, F.dentroS || 0) * 0.008 + assim * 0.012 - feliz * 0.004 - fecha * 0.006;
+      o.sm.rotation.z = -o.s * ((F.dentroS || 0) * 0.42 - feliz * 0.08) + assim * 0.12;
+    }
+  }
   montarOculos(head, hc, R) {
     const g = this.oculos = new THREE.Group(); const aro = M("#1F2937", { r: 0.35, m: 0.3 });
     this.lente = new THREE.MeshStandardMaterial({ color: "#0B1220", roughness: 0.15, metalness: 0.4, transparent: true, opacity: 0.85 });
-    const ex = 0.104, ey = hc + 0.005, ez = R + 0.03;
+    const ex = 0.1, ey = hc + 0.005, ez = R + 0.045;
     for (const s of [-1, 1]) {
       mesh(new THREE.TorusGeometry(0.056, 0.007, 8, 28), aro, g, s * ex, ey, ez, { ry: s * 0.18 });
       const l = mesh(new THREE.CircleGeometry(0.054, 24), this.lente, g, s * ex, ey, ez - 0.002, { ry: s * 0.18, cast: false }); l.name = "lente";
@@ -493,7 +560,7 @@ class Boneco {
   setAparencia(v, acessorio) {
     const ap = this.ap = lerAp(v);
     this.pele.color.set(AP.p[ap.p]); this.peleSom.color.set(misturaCor(AP.p[ap.p], "#7A3B22", 0.12));
-    this.cab.color.set(AP.c[ap.c]); this.barbaMat.color.set(misturaCor(AP.c[ap.c], AP.p[ap.p], 0.12)); this.cabRaspado.color.set(misturaCor(AP.c[ap.c], AP.p[ap.p], 0.22));
+    this.cab.color.set(AP.c[ap.c]); if (this.sobMat) this.sobMat.color.set(misturaCor(AP.c[ap.c], "#000000", 0.28)); this.barbaMat.color.set(misturaCor(AP.c[ap.c], AP.p[ap.p], 0.12)); this.cabRaspado.color.set(misturaCor(AP.c[ap.c], AP.p[ap.p], 0.22));
     this.calca.color.set(AP.l[ap.l]); this.sapMat.color.set(AP.s[ap.s]); this.solaMat.color.set(ap.s === 1 ? "#1F2937" : "#F4F6F8");
     const chapeu = this.chapeus[acessorio] ? acessorio : "";
     this.chapeuAtual = chapeu; this.corte(ap.k);
@@ -510,11 +577,11 @@ class Boneco {
     for (const { m, s, k } of this.gir) { const f = 1 + (g - 1) * k; m.scale.set(s.x * f, s.y, s.z * f); }
     for (const v of this.roupas) v.scale.set(g, 1, g);   // golas e peças do peito acompanham a largura do tronco
     if (this.gTubos !== g) { this.gTubos = g; for (const t of this.tubos) { const old = t.m.geometry; t.m.geometry = this.geoTubo(t, g); if (old) old.dispose(); } }
-    this.barriga.visible = ap.w >= 3; this.barriga.position.z = (g - 1) * 0.16;
+    this.barriga.visible = ap.w >= 3; this.barriga.position.z = (g / CORPO[2] - 1) * 0.1;
     this.L.sh.position.x = -0.19 * (1 + (g - 1) * 0.6); this.R.sh.position.x = 0.19 * (1 + (g - 1) * 0.6);
     this.PL.hp.position.x = -0.094 * (1 + (g - 1) * 0.5); this.PR.hp.position.x = 0.094 * (1 + (g - 1) * 0.5);
-    this.fivela.position.z = 0.113 * (1 + (g - 1) * 0.9);
-    this.estampaPlano.position.z = 0.126 * (1 + (g - 1) * 0.75);
+    this.fivela.position.z = 0.118 * g + 0.002;
+    this.estampaPlano.position.z = 0.1265 * g + 0.004;   // acompanha a frente do tronco
     this.setRoupa(ap.r, ap.e);
     this.rostoKey = "";
   }
@@ -582,7 +649,7 @@ class Boneco {
   ik(B, alvo, peso, qMao) {
     const sh = B.sh; const sp = this.spine;
     const t = sp.worldToLocal(alvo.clone());
-    if (qMao) { const qs = sp.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(qMao); t.sub(this.gp.clone().applyQuaternion(qs)); }
+    if (qMao) { const qs = sp.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(qMao); t.sub(this.gp.clone().multiplyScalar(ESC_MAO).applyQuaternion(qs)); }
     t.sub(sh.position);
     const a = BR_A, b = qMao ? BR_B - 0.055 : BR_B; let d = t.length(); d = cl(d, Math.abs(a - b) + 0.02, a + b - 0.002);
     const cosE = cl((a * a + b * b - d * d) / (2 * a * b), -1, 1); const flex = PI - Math.acos(cosE);
@@ -634,7 +701,7 @@ class Boneco {
       this.root.updateMatrixWorld(true);
       const qr = this.root.getWorldQuaternion(new THREE.Quaternion()); const e = this.esc || 1;
       const boca = this.head.localToWorld(V(0, this.hc - 0.075, 0.228));
-      const alvo = boca.add(V(0.07 * e, -0.1 * e + 0.05 * e * gole, 0.085 * e).applyQuaternion(qr));
+      const alvo = boca.add(V(0.07 * e, -0.075 * e + 0.05 * e * gole, 0.07 * e).applyQuaternion(qr));
       this.ik(this.R, alvo, suave(gole), null);
     }
     // pegada das mãos por objeto
@@ -719,7 +786,8 @@ class Boneco {
     const loc = T - pis.t; let bl = 0;
     if (loc < 0.16) bl = Math.sin((loc / 0.16) * PI); else if (pis.dup && loc > 0.24 && loc < 0.4) bl = Math.sin(((loc - 0.24) / 0.16) * PI);
     const q = (v, n = 20) => Math.round((v || 0) * n);
-    const key = ["sorr", "abre", "larg", "redondo", "assim", "dentes", "lingua", "morde", "olho", "feliz", "fecha", "sobeS", "dentroS", "sobeAssim", "boch", "ox", "oy"].map((k) => q(F[k])).join(",") + "|" + q(bl, 8) + "|" + (F.lagrima > 0.05 ? Math.floor(((T * 0.6) % 1) * 24) : -1);
+    const key = ["sorr", "abre", "larg", "redondo", "assim", "dentes", "lingua", "morde", "boch"].map((k) => q(F[k])).join(",") + "|" + (F.lagrima > 0.05 ? Math.floor(((T * 0.6) % 1) * 24) : -1);
+    { const fe = cl(Math.max(F.fecha || 0, bl * 0.98)); this.posarOlhos(F, cl((F.olho ?? 1) * (1 - fe), 0, 1.25), cl(F.feliz)); }
     if (key === this.rostoKey) return; this.rostoKey = key;
     const { g, t } = this.rosto;
     g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 512, 384); g.restore();
@@ -730,50 +798,11 @@ class Boneco {
     const somb = escura ? "rgba(20,8,4,.2)" : "rgba(120,60,35,.12)";
     g.lineCap = "round"; g.lineJoin = "round";
     const sorr = cl(F.sorr, -1, 1), abre = cl(F.abre), feliz = cl(F.feliz), fecha = cl(Math.max(F.fecha || 0, bl * 0.98));
-    for (const s of [-1, 1]) { const gr = g.createRadialGradient(cx + s * dx, ey - 2, 4, cx + s * dx, ey - 2, 32); gr.addColorStop(0, somb); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * dx, ey - 2, 32, 22, 0, 0, TAU); g.fill(); }
+
     // bochechas: coram e sobem quando ele sorri
     const bo = 0.16 + 0.84 * cl(F.boch), sobeB = Math.max(0, sorr) * 6;
     for (const s of [-1, 1]) { const y = 140 - sobeB; const gr = g.createRadialGradient(cx + s * 60, y, 1, cx + s * 60, y, 25); gr.addColorStop(0, `rgba(235,95,95,${0.42 * bo})`); gr.addColorStop(1, "rgba(235,95,95,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(cx + s * 60, y, 25, 14, 0, 0, TAU); g.fill(); }
-    // sobrancelhas: altura, ângulo (dentro/fora) e assimetria
-    const by = ey - 30;
-    for (const s of [-1, 1]) {
-      const assim = (F.sobeAssim || 0) * (s > 0 ? 1 : -1);
-      const yi = by - (F.sobeS || 0) * 9 - (F.dentroS || 0) * 8 - assim * 5, yo = by - (F.sobeS || 0) * 8 + (F.dentroS || 0) * 4 - 2 - assim * 6 - feliz * 2;
-      const xi = cx + s * 16, xo = cx + s * (dx + 25), ym = Math.min(yi, yo) - 5;
-      g.fillStyle = misturaCor(cabelo, "#000000", 0.3); g.beginPath(); g.moveTo(xi, yi + 2); g.quadraticCurveTo((xi + xo) / 2, ym - 2, xo, yo + 1); g.quadraticCurveTo((xi + xo) / 2, ym + 5, xi, yi + 9); g.closePath(); g.fill();
-    }
-    // olhos: pálpebra de cima (abertura), de baixo (sobe no sorriso), íris que segue o olhar
-    const ew = 23.5, eh = 17;
-    const ab = cl((F.olho ?? 1) * (1 - fecha), 0, 1.25);
-    for (const s of [-1, 1]) {
-      const x = cx + s * dx;
-      const cima = eh * 1.22 * ab, baixo = Math.max(eh * (1.05 - 0.85 * feliz) * Math.min(ab, 1), 0);
-      const yb = ey + feliz * 4;
-      const contorno = () => { g.beginPath(); g.moveTo(x - ew, yb + 1); g.bezierCurveTo(x - ew * 0.6, yb - cima, x + ew * 0.5, yb - cima * 1.04, x + ew, yb - 1); g.bezierCurveTo(x + ew * 0.55, yb + baixo - feliz * 9, x - ew * 0.55, yb + baixo - feliz * 9, x - ew, yb + 1); g.closePath(); };
-      if (cima > 1.2 && cima + baixo - feliz * 9 > 2.5) {
-        g.save(); contorno(); g.clip();
-        g.fillStyle = "#FBF8F4"; g.fillRect(x - ew - 2, yb - eh * 1.6, ew * 2 + 4, eh * 3.2);
-        const ix = x + (F.ox || 0) * 4.8, iy = yb + (F.oy || 0) * 3.2 + 1, rI = 13 * (1 - 0.05 * Math.max(0, ab - 1) * 4);
-        const ir = g.createRadialGradient(ix, iy - 2, 1, ix, iy, rI); ir.addColorStop(0, "#8A5530"); ir.addColorStop(0.6, "#55301A"); ir.addColorStop(1, "#22120A");
-        g.fillStyle = ir; g.beginPath(); g.arc(ix, iy, rI, 0, TAU); g.fill();
-        g.fillStyle = "#0B0604"; g.beginPath(); g.arc(ix, iy, 6 - 1.2 * Math.max(0, ab - 1) * 4, 0, TAU); g.fill();
-        g.fillStyle = "rgba(255,255,255,.97)"; g.beginPath(); g.arc(ix - 4, iy - 4.6, 3.8, 0, TAU); g.fill();
-        g.fillStyle = "rgba(255,255,255,.75)"; g.beginPath(); g.arc(ix + 3.6, iy + 3.4, 1.5, 0, TAU); g.fill();
-        g.fillStyle = "rgba(0,0,0,.16)"; g.fillRect(x - ew - 2, yb - cima - 2, ew * 2 + 4, 7);
-        g.restore();
-        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yb + 1); g.bezierCurveTo(x - ew * 0.6, yb - cima, x + ew * 0.5, yb - cima * 1.04, x + ew, yb - 1); g.stroke();
-        g.lineWidth = 2.4; g.beginPath(); g.moveTo(x + s * ew * 0.9, yb - 2); g.lineTo(x + s * (ew + 5), yb - 6.5); g.stroke();
-        if (feliz > 0.25) { g.strokeStyle = escura ? `rgba(10,4,2,${0.25 * feliz})` : `rgba(150,75,50,${0.3 * feliz})`; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - 11, yb + 12); g.quadraticCurveTo(x, yb + 16, x + 11, yb + 12); g.stroke(); }
-      } else {
-        // fechado: arco para cima quando sorri, para baixo quando dorme ou pisca
-        const cv = feliz > 0.4 ? -7 * feliz : 6;
-        g.strokeStyle = tom; g.lineWidth = 3.6; g.beginPath(); g.moveTo(x - ew, yb + 1); g.quadraticCurveTo(x, yb + cv, x + ew, yb); g.stroke();
-        if (feliz <= 0.4) { g.lineWidth = 1.8; for (const a of [-0.7, -0.15, 0.4, 0.85]) { const bx = x + a * ew; g.beginPath(); g.moveTo(bx, yb + 4.5 - Math.abs(a) * 2); g.lineTo(bx + s * 1.2, yb + 8.5 - Math.abs(a) * 2); g.stroke(); } }
-      }
-    }
-    // narinas
-    g.fillStyle = escura ? "rgba(10,4,2,.35)" : "rgba(120,55,35,.28)";
-    for (const s of [-1, 1]) { g.beginPath(); g.ellipse(cx + s * 6.5, 141, 3.2, 1.8, s * 0.35, 0, TAU); g.fill(); }
+    // olhos e sobrancelhas são 3D (posarOlhos); aqui ficam bochechas, boca e lágrima
     const red = cl(F.redondo);
     // vincos do sorriso
     if (sorr > 0.45 && red < 0.5) { const av = (sorr - 0.45) * 2 * (1 - red * 2); g.strokeStyle = escura ? `rgba(10,4,2,${0.3 * av})` : `rgba(140,70,50,${0.34 * av})`; g.lineWidth = 1.8; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * 22, 141); g.quadraticCurveTo(cx + s * 34, 152, cx + s * 31, 166); g.stroke(); } }
