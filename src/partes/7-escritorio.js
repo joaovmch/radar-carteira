@@ -44,7 +44,7 @@
     else { w = suave(t); a = mao[0].clone().lerp(jogo[0], w); c = mao[1].clone().lerp(jogo[1], w); }
     // durante a troca, o taco passa por cima da mesa (nunca por dentro)
     if (t > 0 && t < 1) { const sobe = Math.sin(PI * w) * 0.25; a.y += sobe; c.y += sobe; }
-    return { butt: a, tip: c, ax, apoioBridge: this.pto("sinuca", tb.tip[0], 0.8, tb.tip[1]).addScaledVector(ax, 0.26).setY(0.835) };
+    return { butt: a, tip: c, ax, apoioBridge: this.pto("sinuca", tb.tip[0], 0.8, tb.tip[1]).addScaledVector(ax, 0.26).setY(0.795), dedos: ax.clone().negate().setY(-0.15) };
   }
   aplicarTaco(p) {
     const T = this.tacoPontas(p); const taco = this.itens.taco; taco.visible = true;
@@ -54,10 +54,10 @@
     // mão direita no cabo: em pé segura alto, na tacada segura atrás
     const g = lerp(0.98, 0.5, cl(t)); const pg = T.butt.clone().addScaledVector(dir, g);
     p.ikR = [pg.x, pg.y, pg.z]; p.kR = Math.max(p.kR || 0, k);
-    if (t > 0.02) { const br = T.apoioBridge; p.ikL = [br.x, br.y, br.z]; p.kL = Math.max(p.kL || 0, cl(t)); }
+    if (t > 0.02) { const br = T.apoioBridge; p.ikL = [br.x, br.y, br.z]; p.kL = Math.max(p.kL || 0, cl(t)); p.oriL = [T.dedos.x, T.dedos.y, T.dedos.z]; }
     p.item = t > 0.5 ? "tacoShot" : t > -0.5 ? "tacoV" : p.item;
   }
-  teclado() { return { L: this.pto("mesa", 6.62, 0.83, 0.64), R: this.pto("mesa", 6.97, 0.83, 0.64) }; }
+  teclado() { return { L: this.pto("mesa", 6.62, 0.822, 0.645), R: this.pto("mesa", 6.97, 0.822, 0.645) }; }
   mundo(o) { return o.getWorldPosition(new THREE.Vector3()); }
   alvoCao() { return this.mundo(this.cao.cab).add(V(0, 0.05, 0)); }
   alvoArcade() { return this.arcMao.map((o) => this.mundo(o)); }
@@ -226,7 +226,8 @@
       this.sujo = false;
       // qualidade adaptativa: se o aparelho não acompanha, baixa a resolução aos poucos (nunca abaixo de 1×)
       this.ms = this.ms == null ? 16 : this.ms * 0.95 + Math.min(dtr * 1000, 100) * 0.05;
-      if (this.ms > 30 && this.pr > 1 && agora - (this.tPr || 0) > 3000) { this.tPr = agora; this.pr = Math.max(1, this.pr - 0.25); this.renderer.setPixelRatio(this.pr); this.redimensionar(); }
+      if (this.ms > 26 && this.ao && !window.__ofComAO && agora - (this.tPr || 0) > 3000) { this.tPr = agora; this.ao = false; this.ms = 18; }
+      else if (this.ms > 30 && this.pr > 1 && agora - (this.tPr || 0) > 3000) { this.tPr = agora; this.pr = Math.max(1, this.pr - 0.25); this.renderer.setPixelRatio(this.pr); this.redimensionar(); }
     } else this.tAnt = performance.now();
     this.raf = requestAnimationFrame(this.laco);
   }
@@ -422,7 +423,7 @@
     const k = window.__ofT != null ? 1 : 1 - Math.exp(-dt * 4);
     this.camAtual.pos.lerp(c.pos, k); this.camAtual.alvo.lerp(c.alvo, k); this.camAtual.fov = lerp(this.camAtual.fov, c.fov, k);
     this.cam.position.copy(this.camAtual.pos); this.cam.lookAt(this.camAtual.alvo); if (Math.abs(this.cam.fov - this.camAtual.fov) > 0.01) { this.cam.fov = this.camAtual.fov; this.cam.updateProjectionMatrix(); }
-    this.renderer.render(this.scene, this.cam);
+    if (this.ao && this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.cam);
   }
   /* ----- objetos de mão: cada um tem um lugar (casa) e passa para a mão no instante do toque ----- */
   get prop() {
@@ -464,7 +465,16 @@
     if (h === "joga") { const m = mao("R"); const k = cl(fxk); m.pos.y += 0.02 + 4 * k * (1 - k) * 0.55; return { pos: m.pos, quat: qy.clone().multiply(rx(k * 6 * PI)), vis: true }; }
     if (h === "cofrinho") { const m = mao("R"); const sl = this.alvoPorco(); const k = fase(tl, 0.9, 1.15); return { pos: m.pos.lerp(sl, k), quat: qy, vis: k < 1 }; }
     const lado = h === "L" ? "L" : "R";
-    if (n === "xicara") return naMao(lado, [0, -0.045, 0.06], rx(-(p.gole || 0) * 1.25));
+    if (n === "xicara") {
+      // a alça passa por dentro dos dedos e o corpo da xícara fica do lado da palma, sempre em pé
+      const m = mao(lado); const palma = V(lado === "R" ? -1 : 1, 0, 0).applyQuaternion(m.quat).setY(0);
+      if (palma.lengthSq() < 1e-4) palma.set(Math.cos(yaw), 0, -Math.sin(yaw)).multiplyScalar(lado === "R" ? -1 : 1); palma.normalize();
+      const qYaw = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.atan2(palma.z, -palma.x));
+      const rosto = this.mundo(b.head).sub(m.pos).setY(0); const eixo = new THREE.Vector3().crossVectors(V(0, 1, 0), rosto.lengthSq() > 1e-4 ? rosto.normalize() : V(Math.sin(yaw), 0, Math.cos(yaw)));
+      const quat = new THREE.Quaternion().setFromAxisAngle(eixo.normalize(), suave(p.gole || 0) * 1.75).multiply(qYaw);
+      const alca = V(0.053, 0.05, 0).applyQuaternion(quat);
+      return { pos: m.pos.clone().sub(alca), quat, vis: true };
+    }
     if (n === "celular") return naMao(lado, [0, 0.035, 0.03], ry(PI).multiply(rx(-0.45)));
     if (n === "dardo") return naMao(lado, [0, -0.01, 0.03], rx(-PI / 2 + 0.25));
     if (n === "aljava") return naMao(lado, [0, -0.01, 0.035], rx(-PI / 2 + 0.3));

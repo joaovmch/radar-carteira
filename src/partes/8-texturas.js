@@ -173,6 +173,7 @@
   redimensionar() {
     const w = this.el.clientWidth || 600; const h = Math.round(cl(w < 640 ? w * 0.82 : w * 0.6, 300, 660));
     this.renderer.setSize(w, h, false); this.renderer.domElement.style.width = "100%"; this.renderer.domElement.style.height = h + "px";
+    if (this.composer) { this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(w, h); }
     this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); this.sujo = true;
   }
   // acha distância e centro para a sala inteira caber na tela

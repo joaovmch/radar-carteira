@@ -5,6 +5,10 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 /* ---------- utilidades ---------- */
 const PI = Math.PI, TAU = PI * 2;
@@ -113,4 +117,47 @@ function comCor(geo, c = 0.85) {
 function juntar(lista) {
   const gs = lista.map((g) => { if (!g.index) { const n = g.attributes.position.count; g.setIndex([...Array(n).keys()]); } ["uv", "uv1", "uv2"].forEach((k) => g.attributes[k] && g.deleteAttribute(k)); return g; });
   return mergeGeometries(gs, false);
+}
+
+/* ---------- materiais com textura feita no navegador (madeira, tecido, parede) ---------- */
+const texCache = {};
+function texturaCinza(nome, w, h, desenho, rep = [1, 1]) {
+  const k = nome + rep.join("x");
+  if (texCache[k]) return texCache[k];
+  const T = tela(w, h); desenho(T.g, w, h); T.t.wrapS = T.t.wrapT = THREE.RepeatWrapping; T.t.repeat.set(...rep); T.t.anisotropy = 8;
+  texCache[k] = T.t; return T.t;
+}
+let semente = 11; const rnd = () => { semente = (semente * 16807) % 2147483647; return semente / 2147483647; };
+// veios de madeira em tons de cinza (a cor vem do material)
+const desenhaMadeira = (g, w, h) => {
+  g.fillStyle = "#EDEDED"; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 70; i++) { const y = rnd() * h, a = 0.04 + rnd() * 0.1; g.strokeStyle = `rgba(60,40,20,${a})`; g.lineWidth = 0.6 + rnd() * 2.4; g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= w; x += 16) g.lineTo(x, y + Math.sin(x * 0.02 + i) * 3 + (rnd() - 0.5) * 1.2); g.stroke(); }
+  for (let i = 0; i < 6; i++) { const x = rnd() * w, y = rnd() * h; const gr = g.createRadialGradient(x, y, 0, x, y, 10 + rnd() * 10); gr.addColorStop(0, "rgba(70,45,25,.22)"); gr.addColorStop(1, "rgba(70,45,25,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(x, y, 24, 7, 0, 0, TAU); g.fill(); }
+};
+// trama de tecido
+const desenhaTecido = (g, w, h) => {
+  g.fillStyle = "#E6E6E6"; g.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 2) { g.fillStyle = `rgba(0,0,0,${0.035 + (y % 4 ? 0.02 : 0)})`; g.fillRect(0, y, w, 1); }
+  for (let x = 0; x < w; x += 2) { g.fillStyle = `rgba(255,255,255,${0.05 + (x % 4 ? 0.03 : 0)})`; g.fillRect(x, 0, 1, h); }
+  for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.05})`; g.fillRect(rnd() * w, rnd() * h, 2, 2); }
+};
+const MAD = (cor, o = {}) => { const k = "mad" + cor + JSON.stringify(o); if (matCache.has(k)) return matCache.get(k); const m = new THREE.MeshStandardMaterial({ color: cor, roughness: o.r ?? 0.55, metalness: 0, map: texturaCinza("madeira", 256, 256, desenhaMadeira, o.rep || [1, 1]) }); matCache.set(k, m); return m; };
+const TEC = (cor, o = {}) => { const k = "tec" + cor + JSON.stringify(o); if (matCache.has(k)) return matCache.get(k); const c = new THREE.Color(cor); const m = new THREE.MeshPhysicalMaterial({ color: cor, roughness: o.r ?? 0.92, sheen: 0.7, sheenRoughness: 0.45, sheenColor: c.clone().lerp(new THREE.Color("#FFFFFF"), 0.35), map: texturaCinza("tecido", 128, 128, desenhaTecido, o.rep || [3, 3]) }); matCache.set(k, m); return m; };
+// sombra de contato macia (o "chão escurecido" que deixa o móvel apoiado de verdade)
+let texContato = null;
+function sombraContato(par, cx, cz, hx, hz, r = 0, forca = 0.42) {
+  if (!texContato) { const T = tela(128, 128); const g = T.g; g.shadowColor = "#000"; g.shadowBlur = 20; g.shadowOffsetX = 300; g.fillStyle = "#000"; rr(g, 26 - 300, 26, 76, 76, 14); g.fill(); texContato = T.t; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texContato, color: "#000000", transparent: true, opacity: forca, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
+  m.rotation.set(-PI / 2, 0, r); m.position.set(cx, 0.003, cz); m.scale.set((hx * 2 + 0.12) * 1.68, (hz * 2 + 0.12) * 1.68, 1); m.renderOrder = 1; m.receiveShadow = false; m.castShadow = false;
+  par.add(m); return m;
+}
+// parede: reboco com leve granulado
+const desenhaParede = (g, w, h) => { g.fillStyle = "#F2F2F2"; g.fillRect(0, 0, w, h); for (let i = 0; i < 5000; i++) { const v = rnd(); g.fillStyle = v > 0.5 ? `rgba(255,255,255,${(v - 0.5) * 0.12})` : `rgba(0,0,0,${v * 0.05})`; g.fillRect(rnd() * w, rnd() * h, 1.5, 1.5); } };
+const PAR = (cor) => { const k = "par" + cor; if (matCache.has(k)) return matCache.get(k); const m = new THREE.MeshStandardMaterial({ color: cor, roughness: 0.92, map: texturaCinza("parede", 256, 256, desenhaParede, [4, 2]) }); matCache.set(k, m); return m; };
+// faixa escura que some (cantos e encontro parede-chão): oclusão de ambiente barata
+let texFaixa = null;
+function faixaAO(par, w, h, pos, rot, forca = 0.22) {
+  if (!texFaixa) { const T = tela(4, 64); const gr = T.g.createLinearGradient(0, 0, 0, 64); gr.addColorStop(0, "rgba(0,0,0,1)"); gr.addColorStop(0.35, "rgba(0,0,0,.45)"); gr.addColorStop(1, "rgba(0,0,0,0)"); T.g.fillStyle = gr; T.g.fillRect(0, 0, 4, 64); texFaixa = T.t; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texFaixa, color: "#000000", transparent: true, opacity: forca, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.position.copy(pos); m.rotation.copy(rot); m.renderOrder = 1; par.add(m); return m;
 }

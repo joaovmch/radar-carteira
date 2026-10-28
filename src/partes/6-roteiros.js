@@ -53,11 +53,11 @@ const partida = (dur, vibras) => F(dur, (k, tl, T) => {
 }, { tv: "jogo", props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) });
 const pegaControle = (e) => F(1.6, (k, tl, T) => {
   const a = jan(tl, 0, 1.15, 0.4); const c = e.casaDe("controle").pos;
-  const r = mistura(sofaSent(T), jogando(T, 0), suave(fase(tl, 0.75, 1.6))); r.ikR = [c.x, c.y + 0.03, c.z]; r.kR = a; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
+  const r = mistura(sofaSent(T), jogando(T, 0), suave(fase(tl, 0.75, 1.6))); r.ikR = [c.x, c.y + 0.035, c.z]; r.kR = a; r.oriR = "baixo"; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
 }, { props: { controle: (k, tl) => tl < 0.6 ? "casa" : "LR" } });
 const largaControle = (e) => F(1.5, (k, tl, T) => {
   const a = jan(tl, 0.15, 1.5, 0.4); const c = e.casaDe("controle").pos;
-  const r = mistura(jogando(T, 0), sofaSent(T), suave(fase(tl, 0, 0.6))); r.ikR = [c.x, c.y + 0.03, c.z]; r.kR = a; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
+  const r = mistura(jogando(T, 0), sofaSent(T), suave(fase(tl, 0, 0.6))); r.ikR = [c.x, c.y + 0.035, c.z]; r.kR = a; r.oriR = "baixo"; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
 }, { props: { controle: (k, tl) => tl < 0.8 ? "LR" : "casa" } });
 const pegaTaco = () => F(1.5, (k, tl, T) => emPe(T, { taco: lerp(-1, 0, suave(fase(tl, 0.2, 1.2))), lean: 0.12 * jan(tl, 0, 1.5, 0.4), boca: "leve" }), { bolas: "ini" });
 const largaTaco = () => F(1.6, (k, tl, T) => emPe(T, { taco: lerp(0, -1, suave(fase(tl, 0.3, 1.3))), lean: 0.15 * jan(tl, 0, 1.6, 0.4) }), { bolas: "ini" });
@@ -130,7 +130,7 @@ const ROTEIROS = {
       const tE = Math.max(0, Math.sin(T * 14)) * 0.025, tD = Math.max(0, Math.sin(T * 14 + 2.2)) * 0.025;
       const kb = e.teclado(); const dx = Math.sin(T * 3.1) * 0.03;
       return sentado(T, 0.6, { lean: 0.22 + 0.14 * perto * entra, nod: 0.08 + 0.06 * Math.sin(tl * 1.7) - 0.1 * perto, hz: 0.02,
-        ikL: [kb.L.x + dx, kb.L.y + tE, kb.L.z], kL: entra, ikR: [kb.R.x - dx, kb.R.y + tD, kb.R.z], kR: entra * (1 - coca),
+        ikL: [kb.L.x + dx, kb.L.y + tE, kb.L.z], kL: entra, ikR: [kb.R.x - dx, kb.R.y + tD, kb.R.z], kR: entra * (1 - coca), oriL: "baixo", oriR: "baixo",
         aR: [lerp(0.6, 2.3, coca), lerp(-0.08, 0.6, coca), lerp(1.0, 2.4 + 0.15 * Math.sin(T * 16), coca)], item: entra > 0.3 ? "tecla" : "",
         olhar: [0.3 * Math.sin(tl * 2), -0.6] });
     }, { mon: "foco", foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22) });
@@ -172,7 +172,7 @@ const ITEM_ANIM = {
     passos: (e) => [
       F(1.4, (k, tl, T) => emPe(T, { nod: 0.35, olhar: [0, 1.2], boca: "sorriso", boch: 0.3 }), { fx: "caoVem" }),
       F(5.2, (k, tl, T) => { const a = jan(tl, 0, 5.2, 0.7); const c = e.alvoCao(); const s = Math.sin(tl * 5) * 0.06;
-        return agachado(T, a, { ikR: [c.x + s, c.y + 0.1, c.z], kR: a, nod: 0.3 * a, boca: "sorriso", olhos: tl > 2 ? "F" : "A", boch: 0.5, olhar: [0, 1] }); }, { fx: "caoCarinho" }),
+        return agachado(T, a, { ikR: [c.x + s, c.y + 0.13, c.z], kR: a, oriR: "baixo", gestoR: "carinho", nod: 0.3 * a, boca: "sorriso", olhos: tl > 2 ? "F" : "A", boch: 0.5, olhar: [0, 1] }); }, { fx: "caoCarinho" }),
       F(1.2, (k, tl, T) => emPe(T, { ...vibra(tl, 1.2) }), { fx: "caoCarinho" }),
     ] },
   aquario: { humores: ["preocupado", "tranquilo", "feliz", "euforico"], ic: "fish",
@@ -180,21 +180,21 @@ const ITEM_ANIM = {
     passos: (e) => [
       F(1.0, (k, tl, T) => emPe(T, { nod: 0.2, olhar: [0, 0.6] })),
       F(4.6, (k, tl, T) => { const a = jan(tl, 0, 4.6, 0.6); const t = e.pto("aquario", 0.35, 1.38, 6.835); const sh = Math.sin(T * 18) * 0.02 * fase(tl, 1, 1.4) * (1 - fase(tl, 3.4, 3.8));
-        return emPe(T, { ikR: [t.x + sh, t.y, t.z], kR: a, lean: 0.12 * a, nod: 0.3 * a, mR: 0.3 + 0.4 * Math.abs(Math.sin(T * 12)) * a, boca: "sorriso", olhar: [0, 1] }); }, { fx: "racao" }),
+        return emPe(T, { ikR: [t.x + sh, t.y, t.z], kR: a, oriR: "baixo", lean: 0.12 * a, nod: 0.3 * a, mR: 0.3 + 0.4 * Math.abs(Math.sin(T * 12)) * a, boca: "sorriso", olhar: [0, 1] }); }, { fx: "racao" }),
       F(1.6, (k, tl, T) => emPe(T, { boca: "sorriso", olhos: "F", boch: 0.5, nod: 0.1 })),
     ] },
   fliperama: { humores: ["tranquilo", "feliz", "euforico"], ic: "joystick",
     lugar: (e) => e.lugar("fliperama", [5.29, 1.42, PI]),
     passos: (e) => [
       F(7.0, (k, tl, T) => { const a = jan(tl, 0, 7.0, 0.6); const [l, r] = e.alvoArcade(); const bt = Math.max(0, Math.sin(T * 13)) * 0.02;
-        return emPe(T, { ikL: [l.x, l.y, l.z], kL: a, ikR: [r.x, r.y - bt, r.z], kR: a, lean: 0.1 * a, nod: -0.05 + 0.04 * Math.sin(T * 6), side: 0.03 * Math.sin(T * 3), boca: "foco", olhar: [0, -0.3], mL: 0.9 * a }); }, { fx: "arcade" }),
+        return emPe(T, { ikL: [l.x, l.y, l.z], kL: a, ikR: [r.x, r.y - bt, r.z], kR: a, oriL: "baixo", oriR: "baixo", lean: 0.1 * a, nod: -0.05 + 0.04 * Math.sin(T * 6), side: 0.03 * Math.sin(T * 3), boca: "foco", olhar: [0, -0.3], mL: 0.9 * a }); }, { fx: "arcade" }),
       F(1.8, (k, tl, T) => { const up = jan(tl, 0, 1.8, 0.3); return emPe(T, { aL: [2.8 * up, 0.4, 0.3], aR: [2.8 * up, 0.4, 0.3], dy: 0.1 * Math.abs(Math.sin(tl * 7)) * up, boca: "aberta", olhos: "F", boch: 0.8 }); }),
     ] },
   touro: { humores: ["tranquilo", "feliz", "euforico"], ic: "cow",
     lugar: (e) => { const c = e.alvoTouro(); const p = e.lugar("touro", [5.4, 6.75]); return [p[0], p[1], yawPara(p, [c.x, c.z])]; },
     passos: (e) => [
       F(3.6, (k, tl, T) => { const a = jan(tl, 0, 3.6, 0.6); const c = e.alvoTouro(); const s = Math.sin(tl * 6) * 0.05;
-        return emPe(T, { ikR: [c.x + s, c.y + 0.04, c.z + s * 0.5], kR: a, lean: 0.18 * a, boca: "sorriso", olhos: tl > 1.5 ? "F" : "A", boch: 0.45 }); }),
+        return emPe(T, { ikR: [c.x + s, c.y + 0.06, c.z + s * 0.5], kR: a, oriR: "baixo", gestoR: "carinho", lean: 0.18 * a, boca: "sorriso", olhos: tl > 1.5 ? "F" : "A", boch: 0.45 }); }),
       F(2.0, (k, tl, T) => emPe(T, { ...vibra(tl, 2.0) })),
     ] },
   cofre: { humores: ["preocupado", "tranquilo", "feliz", "euforico"], ic: "vault",
@@ -218,7 +218,7 @@ const ITEM_ANIM = {
     passos: (e) => [
       // tira uma moeda do bolso
       F(1.3, (k, tl, T) => { const bl = e.bolso("R"); const a = jan(tl, 0, 0.95, 0.3); return emPe(T, { ikR: [bl.x, bl.y, bl.z], kR: a, aR: [0.5, -0.1, 1.3], nod: 0.25, olhar: [0, 1] }); }, { props: { moeda: (k, tl) => tl < 0.55 ? "casa" : "R" } }),
-      F(1.9, (k, tl, T) => { const a = jan(tl, 0, 1.9, 0.4); const p = e.alvoPorco(); return emPe(T, { ikR: [p.x, p.y + 0.1, p.z], kR: a, aR: [0.5, -0.1, 1.3], lean: 0.25 * a, nod: 0.35, olhar: [0, 1], boca: "sorriso" }); }, { fx: "porco", props: { moeda: (k, tl) => tl < 0.9 ? "R" : tl < 1.15 ? "cofrinho" : "casa" } }),
+      F(1.9, (k, tl, T) => { const a = jan(tl, 0, 1.9, 0.4); const p = e.alvoPorco(); return emPe(T, { ikR: [p.x, p.y + 0.1, p.z], kR: a, oriR: "baixo", aR: [0.5, -0.1, 1.3], lean: 0.25 * a, nod: 0.35, olhar: [0, 1], boca: "sorriso" }); }, { fx: "porco", props: { moeda: (k, tl) => tl < 0.9 ? "R" : tl < 1.15 ? "cofrinho" : "casa" } }),
       F(1.4, (k, tl, T) => emPe(T, { ...vibra(tl, 1.4) })),
     ] },
   neon: { humores: ["tranquilo", "feliz", "euforico"], ic: "currency-btc",

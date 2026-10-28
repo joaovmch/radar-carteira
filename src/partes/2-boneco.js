@@ -146,61 +146,64 @@ class Boneco {
     this.montarBarba(head, hc, Rc);
     this.montarOculos(head, hc, Rc);
     this.montarChapeus(head, hc, Rc);
-    /* braços: ombro, manga (curta ou comprida), antebraço e mão de cinco dedos */
-    this.dedos = { L: [], R: [] };
+    /* braços: pele e mangas são tubos contínuos presos a dois ossos (ombro e cotovelo), que dobram
+       suaves na junta em vez de cilindros soltos com uma bola no meio */
+    this.dedos = { L: [], R: [] }; this.tubos = [];
+    const tubo = (par, mat, perfil, juntaY, ossos, o = {}) => { const m = new THREE.SkinnedMesh(new THREE.BufferGeometry(), mat); m.frustumCulled = false; m.castShadow = true; par.add(m); this.tubos.push({ m, perfil, juntaY, ossos, kz: o.kz ?? 1, k: o.k ?? 1, aberto: !!o.aberto, banda: o.banda ?? 0.055 }); return m; };
     const braco = (lado, nome) => {
       const sh = new THREE.Group(); sh.position.set(0.19 * lado, 0.437, 0); spine.add(sh);
-      const ombro = G(esf(sh, camisa, 0.058, 0, -0.008, 0, { seg: 24, seg2: 18 }));
-      const ombroPele = G(esf(sh, pele, 0.05, 0, -0.012, 0, { seg: 20, seg2: 14 }));
-      G(cil(sh, pele, 0.046, 0.041, BR_A, 0, -BR_A / 2, 0, { seg: 20 }));
-      const mangaC = G(cil(sh, camisa, 0.058, 0.053, 0.19, 0, -0.095, 0, { seg: 24 }));
-      const bainhaC = G(mesh(new THREE.TorusGeometry(0.054, 0.009, 8, 24), camisa, sh, 0, -0.19, 0, { rx: PI / 2 }));
-      const mangaL = G(cil(sh, camisa, 0.058, 0.05, BR_A + 0.02, 0, -BR_A / 2 + 0.01, 0, { seg: 24 }));
       const el = new THREE.Group(); el.position.y = -BR_A; sh.add(el);
-      const cot = G(esf(el, pele, 0.041, 0, 0, 0, { seg: 18, seg2: 12 }));
-      const cotM = G(esf(el, camisa, 0.05, 0, 0, 0, { seg: 18, seg2: 12 }));
-      G(cil(el, pele, 0.041, 0.031, 0.25, 0, -0.135, 0, { seg: 20 }));
-      const antM = G(cil(el, camisa, 0.05, 0.042, 0.24, 0, -0.12, 0, { seg: 22 }));
-      const punho = G(cil(el, camisa, 0.043, 0.043, 0.03, 0, -0.245, 0, { seg: 22 }));
+      const o0 = new THREE.Bone(), o1 = new THREE.Bone(); sh.add(o0); el.add(o1);
+      // perfil [y, raio]: ombro, bíceps, acima do cotovelo, cotovelo, antebraço, punho
+      const pele = tubo(sh, this.pele, [[0.045, 0.0], [0.035, 0.032], [0.0, 0.05], [-0.1, 0.048], [-0.2, 0.043], [-0.29, 0.039], [-0.35, 0.043], [-0.47, 0.034], [-0.545, 0.029], [-0.562, 0.0]], -BR_A, [o0, o1]);
+      const mangaC = tubo(sh, camisa, [[0.06, 0.0], [0.05, 0.04], [0.02, 0.062], [-0.06, 0.06], [-0.19, 0.055]], -BR_A, [o0, o1], { aberto: true });
+      const mangaL = tubo(sh, camisa, [[0.06, 0.0], [0.05, 0.04], [0.02, 0.062], [-0.1, 0.058], [-0.22, 0.052], [-0.29, 0.05], [-0.36, 0.051], [-0.5, 0.044], [-0.535, 0.043]], -BR_A, [o0, o1], { aberto: true });
+      const ombro = G(esf(sh, camisa, 0.06, 0, 0.0, 0, { seg: 24, seg2: 18, s: [1, 0.9, 1] }));
+      const ombroPele = G(esf(sh, this.pele, 0.051, 0, -0.004, 0, { seg: 20, seg2: 14 }));
+      const bainhaC = G(mesh(new THREE.TorusGeometry(0.055, 0.008, 8, 24), camisa, sh, 0, -0.188, 0, { rx: PI / 2 }));
+      const punho = G(cil(el, camisa, 0.045, 0.045, 0.03, 0, -0.24, 0, { seg: 22 }));
       const hand = new THREE.Group(); hand.position.y = -0.27; el.add(hand);
-      esf(hand, pele, 0.034, 0, -0.004, 0, { s: [0.75, 0.7, 1.1], seg: 14, seg2: 10 });
-      bloco(hand, pele, [-0.016, -0.094, -0.04], [0.016, -0.008, 0.04], 0.014);
+      // mão: dorso e palma arredondados, nós dos dedos, cinco dedos de duas falanges
+      esf(hand, this.pele, 0.033, 0, -0.006, 0, { s: [0.72, 0.75, 1.05], seg: 16, seg2: 12 });
+      esf(hand, this.pele, 0.046, 0, -0.052, 0, { s: [0.38, 1.0, 0.92], seg: 22, seg2: 16 });
+      for (const z of [-0.027, -0.009, 0.009, 0.027]) esf(hand, this.pele, 0.0118, 0, -0.09, z, { s: [1.05, 0.9, 1], seg: 10, seg2: 8 });
       const lista = this.dedos[nome];
-      [[-0.028, 0.036], [-0.0095, 0.043], [0.0095, 0.041], [0.028, 0.033]].forEach(([z, len]) => {
+      [[-0.028, 0.035], [-0.0095, 0.043], [0.0095, 0.041], [0.028, 0.033]].forEach(([z, len]) => {
         const p1 = new THREE.Group(); p1.position.set(0, -0.092, z); hand.add(p1);
-        caps(p1, pele, 0.0108, len, 0, -len / 2 - 0.004, 0);
+        caps(p1, this.pele, 0.0112, len, 0, -len / 2 - 0.003, 0);
         const p2 = new THREE.Group(); p2.position.y = -len - 0.006; p1.add(p2);
-        caps(p2, pele, 0.0098, len * 0.8, 0, -len * 0.4 - 0.002, 0);
+        caps(p2, this.pele, 0.0102, len * 0.8, 0, -len * 0.4 - 0.002, 0);
         lista.push({ p1, p2 });
       });
-      const t1 = new THREE.Group(); t1.position.set(-lado * 0.013, -0.028, 0.036); t1.rotation.set(0.4, 0, lado * 0.5); hand.add(t1);
-      caps(t1, pele, 0.0125, 0.034, 0, -0.022, 0);
-      const t2 = new THREE.Group(); t2.position.y = -0.048; t1.add(t2);
-      caps(t2, pele, 0.0112, 0.028, 0, -0.016, 0);
+      const t1 = new THREE.Group(); t1.position.set(-lado * 0.012, -0.03, 0.034); t1.rotation.set(0.4, 0, lado * 0.5); hand.add(t1);
+      esf(t1, this.pele, 0.016, 0, -0.006, 0, { s: [0.9, 1.3, 0.9], seg: 10, seg2: 8 });
+      caps(t1, this.pele, 0.013, 0.032, 0, -0.022, 0);
+      const t2 = new THREE.Group(); t2.position.y = -0.047; t1.add(t2);
+      caps(t2, this.pele, 0.0115, 0.027, 0, -0.016, 0);
       lista.push({ p1: t1, p2: t2, polegar: true });
-      return { sh, el, hand, lado, ombro, ombroPele, mangaC, bainhaC, mangaL, cot, cotM, antM, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
+      return { sh, el, hand, lado, pele, ombro, ombroPele, mangaC, bainhaC, mangaL, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
     };
     this.L = braco(-1, "L"); this.R = braco(1, "R");
     this.curL = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 }; this.curR = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 };
-    /* pernas: coxa, joelho, canela (calça ou bermuda), meia e tênis */
+    /* pernas: perna e calça contínuas do quadril ao tornozelo (ossos no quadril e no joelho), tênis arredondado */
     const perna = (lado) => {
       const hp = new THREE.Group(); hp.position.set(0.094 * lado, -0.01, 0); hips.add(hp);
-      G(esf(hp, calca, 0.086, 0, -0.02, 0, { seg: 20, seg2: 14 }));
-      G(cil(hp, calca, 0.082, 0.06, 0.42, 0, -0.21, 0, { seg: 24 }));
       const kn = new THREE.Group(); kn.position.y = -0.42; hp.add(kn);
-      const joelhoC = G(esf(kn, calca, 0.06, 0, 0, 0.004, { seg: 18, seg2: 12 }));
-      const joelhoP = G(esf(kn, pele, 0.05, 0, -0.03, 0.006, { seg: 18, seg2: 12 }));
-      const bermuda = G(mesh(new THREE.TorusGeometry(0.062, 0.012, 8, 22), calca, kn, 0, -0.03, 0, { rx: PI / 2 }));
-      const canC = G(cil(kn, calca, 0.059, 0.047, 0.38, 0, -0.19, 0, { seg: 24 }));
-      const canP = G(cil(kn, pele, 0.046, 0.036, 0.38, 0, -0.19, 0, { seg: 20 }));
-      const barra = G(mesh(new THREE.TorusGeometry(0.049, 0.01, 8, 20), calca, kn, 0, -0.372, 0, { rx: PI / 2 }));
       const ft = new THREE.Group(); ft.position.y = -0.4; kn.add(ft);
-      const meiaM = cil(ft, meia, 0.038, 0.041, 0.07, 0, 0.012, 0, { seg: 16 });
-      bloco(ft, sap, [-0.05, -0.054, -0.072], [0.05, 0.022, 0.1], 0.032);
-      esf(ft, sap, 0.052, 0, -0.028, 0.1, { s: [1, 0.66, 1.2], seg: 18, seg2: 12 });
-      bloco(ft, sola, [-0.052, -0.078, -0.075], [0.052, -0.05, 0.164], 0.013);
-      bloco(ft, M("#E9EDF2", { r: 0.7 }), [-0.022, 0.012, -0.012], [0.022, 0.026, 0.072], 0.006, { rx: -0.25 });
-      return { hp, kn, ft, joelhoC, joelhoP, bermuda, canC, canP, barra, meiaM };
+      const o0 = new THREE.Bone(), o1 = new THREE.Bone(); hp.add(o0); kn.add(o1);
+      G(esf(hp, calca, 0.088, 0, -0.02, 0, { seg: 22, seg2: 16 }));
+      const peleP = tubo(hp, this.pele, [[-0.3, 0.0], [-0.32, 0.05], [-0.42, 0.048], [-0.52, 0.05], [-0.62, 0.045], [-0.78, 0.035], [-0.8, 0.0]], -0.42, [o0, o1]);
+      const calcaL = tubo(hp, calca, [[0.04, 0.0], [0.03, 0.06], [0.0, 0.088], [-0.08, 0.084], [-0.3, 0.068], [-0.42, 0.06], [-0.52, 0.06], [-0.7, 0.05], [-0.775, 0.05]], -0.42, [o0, o1], { aberto: true, kz: 1.04 });
+      const bermudaM = tubo(hp, calca, [[0.04, 0.0], [0.03, 0.06], [0.0, 0.09], [-0.08, 0.086], [-0.3, 0.072], [-0.44, 0.064]], -0.42, [o0, o1], { aberto: true, kz: 1.04 });
+      const bermuda = G(mesh(new THREE.TorusGeometry(0.064, 0.011, 8, 22), calca, kn, 0, -0.02, 0, { rx: PI / 2 }));
+      const barra = G(mesh(new THREE.TorusGeometry(0.05, 0.0095, 8, 20), calca, kn, 0, -0.355, 0, { rx: PI / 2 }));
+      const meiaM = cil(ft, meia, 0.036, 0.039, 0.07, 0, 0.012, 0, { seg: 16 });
+      // tênis: cabedal arredondado, bico, sola oval e cadarço
+      esf(ft, sap, 0.058, 0, -0.026, 0.032, { s: [0.88, 0.62, 1.72], seg: 24, seg2: 16 });
+      esf(ft, sap, 0.045, 0, -0.008, -0.02, { s: [0.95, 0.95, 1.0], seg: 18, seg2: 12 });
+      mesh(new THREE.CylinderGeometry(0.058, 0.056, 0.024, 28), sola, ft, 0, -0.064, 0.04, { s: [0.92, 1, 1.82] });
+      for (let i = 0; i < 3; i++) bloco(ft, M("#E9EDF2", { r: 0.7 }), [-0.02, 0, -0.004], [0.02, 0.006, 0.004], 0.002).position.set(0, 0.004 - i * 0.008, 0.03 + i * 0.022);
+      return { hp, kn, ft, peleP, calcaL, bermudaM, bermuda, barra, meiaM };
     };
     this.PL = perna(-1); this.PR = perna(1);
     sombra(root, true, false);
@@ -212,6 +215,9 @@ class Boneco {
     this.gp = new THREE.Vector3(0, -0.06, 0);
     this.pDy = 0; this.pNod = 0; this.pT = null; this.pYaw = null;
     this.esc = 1;
+    // ossos dos tubos: liga na pose de descanso (braços e pernas retos)
+    root.updateMatrixWorld(true);
+    for (const t of this.tubos) { t.m.geometry = this.geoTubo(t, 1); t.esq = new THREE.Skeleton(t.ossos); t.m.bind(t.esq, t.m.matrixWorld); }
     this.setAparencia(aparencia, acessorio);
   }
 
@@ -402,6 +408,24 @@ class Boneco {
     h.a_cartola = g;
     Object.values(h).forEach((x) => { x.visible = false; head.add(x); });
   }
+  // tubo de raio variável ao longo de -Y (perfil [y, raio]); peso de pele vai do osso de cima para o de baixo perto da junta
+  geoTubo(t, g) {
+    const pts = t.perfil, n = 30, rad = 22, f = 1 + (g - 1) * t.k;
+    const curva = new THREE.SplineCurve(pts.map(([y, r]) => new THREE.Vector2(r, y))); const amostra = curva.getPoints(n);
+    const pos = [], idx = [], si = [], sw = [];
+    for (let i = 0; i <= n; i++) {
+      const { x: r0, y } = amostra[i]; const r = Math.max(0, r0) * f;
+      const w1 = suave((t.juntaY + t.banda - y) / (2 * t.banda));
+      for (let j = 0; j <= rad; j++) { const a = (j / rad) * TAU; pos.push(Math.sin(a) * r, y, Math.cos(a) * r * t.kz); si.push(0, 1, 0, 0); sw.push(1 - w1, w1, 0, 0); }
+    }
+    for (let i = 0; i < n; i++) for (let j = 0; j < rad; j++) { const a = i * (rad + 1) + j, b = a + rad + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx);
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(sw, 4));
+    geo.computeVertexNormals();
+    if (t.aberto) geo.setAttribute("normal", geo.getAttribute("normal"));
+    return geo;
+  }
   setAparencia(v, acessorio) {
     const ap = this.ap = lerAp(v);
     this.pele.color.set(AP.p[ap.p]); this.peleSom.color.set(misturaCor(AP.p[ap.p], "#7A3B22", 0.12));
@@ -420,6 +444,7 @@ class Boneco {
     this.esc = ALTURA[ap.a]; this.root.scale.setScalar(this.esc);
     const g = CORPO[ap.w]; this.fGir = g;
     for (const { m, s, k } of this.gir) { const f = 1 + (g - 1) * k; m.scale.set(s.x * f, s.y, s.z * f); }
+    if (this.gTubos !== g) { this.gTubos = g; for (const t of this.tubos) { const old = t.m.geometry; t.m.geometry = this.geoTubo(t, g); if (old) old.dispose(); } }
     this.barriga.visible = ap.w >= 3; this.barriga.position.z = (g - 1) * 0.16;
     this.L.sh.position.x = -0.19 * (1 + (g - 1) * 0.6); this.R.sh.position.x = 0.19 * (1 + (g - 1) * 0.6);
     this.PL.hp.position.x = -0.094 * (1 + (g - 1) * 0.5); this.PR.hp.position.x = 0.094 * (1 + (g - 1) * 0.5);
@@ -431,15 +456,16 @@ class Boneco {
   setRoupa(r, e) {
     this.roupas.forEach((g, i) => { g.visible = i === r; });
     const longa = r === 2 || r === 3 || r === 4, regata = r === 5, social = r === 3;
+    const mt = social ? this.branco : this.camisa;
     for (const B of [this.L, this.R]) {
-      B.mangaC.visible = B.bainhaC.visible = !longa && !regata; B.mangaL.visible = B.cotM.visible = B.antM.visible = B.punho.visible = longa;
-      B.ombro.visible = !regata; B.ombroPele.visible = regata; B.cot.visible = !longa;
-      const mt = social ? this.branco : this.camisa; for (const k of ["ombro", "mangaC", "bainhaC", "mangaL", "cotM", "antM", "punho"]) B[k].material = mt;
+      B.mangaC.visible = B.bainhaC.visible = !longa && !regata; B.mangaL.visible = B.punho.visible = longa;
+      B.ombro.visible = !regata; B.ombroPele.visible = regata;
+      for (const k of ["ombro", "mangaC", "bainhaC", "mangaL", "punho"]) B[k].material = mt;
     }
-    this.torso.material = social ? this.branco : this.camisa; this.barriga.material = this.torso.material;
+    this.torso.material = mt; this.barriga.material = mt;
     this.estampaPlano.visible = this.temIcone && !social && r !== 4;
     const bermuda = e === 1;
-    for (const P of [this.PL, this.PR]) { P.joelhoC.visible = P.canC.visible = P.barra.visible = !bermuda; P.joelhoP.visible = P.canP.visible = P.bermuda.visible = bermuda; P.meiaM.scale.y = bermuda ? 1.8 : 1; P.meiaM.position.y = bermuda ? 0.04 : 0.012; }
+    for (const P of [this.PL, this.PR]) { P.calcaL.visible = P.barra.visible = !bermuda; P.bermudaM.visible = P.bermuda.visible = P.peleP.visible = bermuda; P.meiaM.scale.y = bermuda ? 1.8 : 1; P.meiaM.position.y = bermuda ? 0.04 : 0.012; }
   }
   setCor(cor) {
     const c = cor || "#2457F5"; this.cor = c; this.camisa.color.set(c);
@@ -453,10 +479,22 @@ class Boneco {
     this.temIcone = ok; this.estampaPlano.visible = ok && this.ap.r !== 3 && this.ap.r !== 4; t.needsUpdate = true;
   }
   // IK de dois ossos: põe a mão (ponto de pegada) no alvo em coordenadas do mundo
-  ik(B, alvo, peso) {
+  // palma para baixo com os dedos na direção f (ou para a frente do corpo), levemente inclinados para baixo
+  oriMao(lado, ori) {
+    if (!ori) return null;
+    let f; if (ori === "baixo") { const y = this.root.rotation.y; f = V(Math.sin(y), -0.3, Math.cos(y)); } else if (Array.isArray(ori) && ori.length === 4) return new THREE.Quaternion(...ori); else f = V(...ori);
+    f.normalize();
+    const X = V(0, lado === "R" ? 1 : -1, 0);   // palma (−X na direita, +X na esquerda) virada para baixo
+    const Y = f.clone().negate().addScaledVector(X, f.dot(X)).normalize(); const Z = new THREE.Vector3().crossVectors(X, Y);
+    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+  }
+  // qMao (opcional): orientação da mão no mundo; aí o alvo do braço é o punho, para os dedos caírem no ponto certo
+  ik(B, alvo, peso, qMao) {
     const sh = B.sh; const sp = this.spine;
-    const t = sp.worldToLocal(alvo.clone()).sub(sh.position);
-    const a = BR_A, b = BR_B; let d = t.length(); d = cl(d, Math.abs(a - b) + 0.02, a + b - 0.002);
+    const t = sp.worldToLocal(alvo.clone());
+    if (qMao) { const qs = sp.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(qMao); t.sub(this.gp.clone().applyQuaternion(qs)); }
+    t.sub(sh.position);
+    const a = BR_A, b = qMao ? BR_B - 0.055 : BR_B; let d = t.length(); d = cl(d, Math.abs(a - b) + 0.02, a + b - 0.002);
     const cosE = cl((a * a + b * b - d * d) / (2 * a * b), -1, 1); const flex = PI - Math.acos(cosE);
     // posição da mão e do cotovelo com o braço reto para baixo e o cotovelo dobrado
     const v0 = V(0, -a - b * Math.cos(flex), b * Math.sin(flex)); const e0 = V(0, -1, 0);
@@ -494,10 +532,20 @@ class Boneco {
     this.PL.hp.rotation.x = -p.lL[0]; this.PL.kn.rotation.x = p.lL[1]; this.PL.ft.rotation.x = p.lL[0] - p.lL[1] + (p.pL || 0);
     this.PR.hp.rotation.x = -p.lR[0]; this.PR.kn.rotation.x = p.lR[1]; this.PR.ft.rotation.x = p.lR[0] - p.lR[1] + (p.pR || 0);
     // braços que buscam um ponto (teclado, taco, objetos)
+    const qL = p.kL > 0.001 && p.ikL ? this.oriMao("L", p.oriL) : null, qR = p.kR > 0.001 && p.ikR ? this.oriMao("R", p.oriR) : null;
     if ((p.kL > 0.001 && p.ikL) || (p.kR > 0.001 && p.ikR)) {
       this.root.updateMatrixWorld(true);
-      if (p.kL > 0.001 && p.ikL) this.ik(this.L, V(...p.ikL), cl(p.kL));
-      if (p.kR > 0.001 && p.ikR) this.ik(this.R, V(...p.ikR), cl(p.kR));
+      if (p.kL > 0.001 && p.ikL) this.ik(this.L, V(...p.ikL), cl(p.kL), qL);
+      if (p.kR > 0.001 && p.ikR) this.ik(this.R, V(...p.ikR), cl(p.kR), qR);
+    }
+    // gole: a mão direita leva a borda da xícara até a boca (a alça fica do lado de fora do rosto)
+    const gole = cl(p.gole || 0);
+    if (gole > 0.01 && !(p.kR > 0.001 && p.ikR)) {
+      this.root.updateMatrixWorld(true);
+      const qr = this.root.getWorldQuaternion(new THREE.Quaternion()); const e = this.esc || 1;
+      const boca = this.head.localToWorld(V(0, this.hc - 0.075, 0.228));
+      const alvo = boca.add(V(0.07 * e, -0.1 * e + 0.05 * e * gole, 0.085 * e).applyQuaternion(qr));
+      this.ik(this.R, alvo, suave(gole), null);
     }
     // pegada das mãos por objeto
     const pg = {
@@ -520,6 +568,12 @@ class Boneco {
       });
       // punho vivo: um giro leve quando a mão está solta
       if (!g.preso) { B.hand.rotation.x += 0.05 * Math.sin(T * 0.9 + lado); B.hand.rotation.z += 0.04 * Math.sin(T * 0.7 + lado * 2); }
+    }
+    // mão orientada no mundo (palma para baixo em cima de uma superfície, por exemplo)
+    for (const [B, q, k] of [[this.L, qL, p.kL], [this.R, qR, p.kR]]) {
+      if (!q) continue; B.el.updateMatrixWorld(true);
+      const alvoQ = B.el.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(q);
+      B.hand.quaternion.slerp(alvoQ, cl(k));
     }
     // cabelo: molas amortecidas movidas pelo sobe e desce, pelo aceno de cabeça e pelos giros
     if (dt > 0 && this.pT !== null) {

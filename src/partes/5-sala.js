@@ -36,6 +36,7 @@ class Escritorio {
     this.notas = []; this.hist = []; this.feed = []; this.flash = {}; this.fx = [];
     this.moveis = {}; this.fixos = []; this.nav = new Nav();
     this.construir();
+    this.prepararAO();
     this.boneco = new Boneco(d.cor, d.icone, d.boneco, d.acessorio); sc.add(this.boneco.root); sc.add(this.boneco.blob);
     this.cao = new Cao(); sc.add(this.cao.g);
     this.filtro = new Filtro(); this.vida = new Vida();
@@ -50,6 +51,26 @@ class Escritorio {
     this.laco = this.laco.bind(this); this.raf = requestAnimationFrame(this.laco);
   }
 
+  /* ----- oclusão de ambiente (cantos, encontros e debaixo dos móveis escurecem): só em computador,
+     em meia resolução, e desligada sozinha se o aparelho não acompanhar ----- */
+  prepararAO() {
+    const fraco = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || (navigator.hardwareConcurrency || 4) < 4 || window.__ofSemAO;
+    if (fraco && !window.__ofComAO) return;
+    try {
+      const r = this.renderer; const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
+      const c = this.composer = new EffectComposer(r, rt);
+      c.addPass(new RenderPass(this.scene, this.cam));
+      const ao = this.aoPass = new GTAOPass(this.scene, this.cam, 4, 4);
+      ao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.3, thickness: 2.2, scale: 1.45, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+      // telas, adesivos, vidros, halos e sombras falsas não entram no cálculo (evita manchas pretas)
+      ao._overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { if (!o.visible) return; const mt = o.material; if (o.isPoints || o.isLine || o.isSprite || o.isInstancedMesh || (o.isMesh && mt && (mt.transparent || mt.isMeshBasicMaterial || mt.isShadowMaterial))) { o.visible = false; cache.push(o); } }); };
+      ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      ao.blendIntensity = 1;
+      const ss = ao.setSize.bind(ao); ao.setSize = (w, h) => ss(Math.max(2, w * 0.5 | 0), Math.max(2, h * 0.5 | 0));
+      c.addPass(ao); c.addPass(new OutputPass());
+      this.ao = true;
+    } catch (err) { console.warn("Oclusão de ambiente indisponível:", err); this.composer = null; this.ao = false; }
+  }
   /* ----- móveis que podem ser arrastados ----- */
   // id, pivô [x, z] e caixas {c, h, r} nas coordenadas originais; o conteúdo é montado nas coordenadas originais
   movel(id, P, caixas, o = {}) {
@@ -136,17 +157,19 @@ class Escritorio {
     this.hemi = new THREE.HemisphereLight("#E3EBFF", "#B08A64", 0.9); sc.add(this.hemi);
     const k = this.key = new THREE.DirectionalLight("#FFF4E3", 1.8);
     k.position.set(11, 12, 11); k.target.position.set(4, 0, 3.5); sc.add(k, k.target);
-    k.castShadow = true; k.shadow.mapSize.set(2048, 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 4;
+    k.castShadow = true; k.shadow.mapSize.set(2048, 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 6; k.shadow.blurSamples = 12;
     Object.assign(k.shadow.camera, { left: -7.5, right: 7.5, top: 7, bottom: -7, near: 2, far: 40 });
     this.fill = new THREE.DirectionalLight("#CFE0FF", 0.35); this.fill.position.set(-4, 6, 8); sc.add(this.fill);
+    // contraluz frio: separa o boneco e os móveis do fundo
+    this.rim = new THREE.DirectionalLight("#B9CCFF", 0.55); this.rim.position.set(-6, 5, -6); this.rim.target.position.set(4, 0, 4); sc.add(this.rim, this.rim.target);
 
     // chão e paredes (casa de bonecas)
     const piso = tela(1024, 1024); this.desenharPiso(piso);
     piso.t.wrapS = piso.t.wrapT = THREE.RepeatWrapping; piso.t.repeat.set(W / 4.5, D / 4.5);
-    this.chao = mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: piso.t, roughness: 0.55, metalness: 0 }), sc, W / 2, 0, D / 2, { rx: -PI / 2, cast: false });
+    this.chao = mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: piso.t, roughness: 0.42, metalness: 0 }), sc, W / 2, 0, D / 2, { rx: -PI / 2, cast: false });
     bloco(sc, M("#8A5A34", { r: 0.8 }), [-T_PAR, -0.22, -T_PAR], [W + 0.05, -0.001, D + 0.05], 0.02, { cast: false });
     bloco(sc, M("#E6E3DD", { r: 0.9 }), [-T_PAR - 0.06, -0.3, -T_PAR - 0.06], [W + 0.11, -0.2, D + 0.11], 0.04, { cast: false });
-    const pFundo = M("#EEF1F6", { r: 0.95 }), pEsq = M("#E5E9F1", { r: 0.95 }), topo = M("#C9D1DD", { r: 0.9 });
+    const pFundo = PAR("#EEF1F6"), pEsq = PAR("#E5E9F1"), topo = M("#C9D1DD", { r: 0.9 });
     bloco(sc, pFundo, [-T_PAR, 0, -T_PAR], [W, H, 0], 0.005);
     const JZ0 = 0.95, JZ1 = 2.65, JY0 = 0.92, JY1 = 2.38;
     bloco(sc, pEsq, [-T_PAR, 0, 0], [0, H, JZ0], 0.005); bloco(sc, pEsq, [-T_PAR, 0, JZ1], [0, H, D], 0.005);
@@ -181,10 +204,10 @@ class Escritorio {
       mesh(new RoundedBoxGeometry(3.3, 0.016, 5.0, 2, 0.007), new THREE.MeshStandardMaterial({ map: tp.t, roughness: 1 }), g, 3.35, 0.009, 3.85, { cast: false }); }
 
     // painel ripado + TV + rack (presos na parede)
-    const ripa = M("#9A6B43", { r: 0.7 }), ripaE = M("#7A5233", { r: 0.8 });
+    const ripa = MAD("#9A6B43", { r: 0.62, rep: [0.3, 2] }), ripaE = MAD("#6E4A2E", { r: 0.8 });
     bloco(sc, ripaE, [1.6, 0, 0], [4.8, H, 0.025], 0.002, { cast: false });
     for (let x = 1.62; x < 4.78; x += 0.1) bloco(sc, ripa, [x, 0.1, 0.02], [x + 0.06, H - 0.02, 0.05], 0.008, { cast: false });
-    const rack = M("#3F3A36", { r: 0.6 }), madeira = M("#B07A4C", { r: 0.6 });
+    const rack = M("#3F3A36", { r: 0.5 }), madeira = MAD("#B07A4C", { r: 0.5 });
     bloco(sc, rack, [1.95, 0.12, 0.05], [4.45, 0.52, 0.48], 0.02);
     bloco(sc, madeira, [1.97, 0.18, 0.47], [3.18, 0.48, 0.49], 0.01); bloco(sc, madeira, [3.22, 0.18, 0.47], [4.43, 0.48, 0.49], 0.01);
     for (const x of [2.05, 4.35]) for (const z of [0.12, 0.42]) cil(sc, M("#111827"), 0.015, 0.015, 0.12, x, 0.06, z);
@@ -198,7 +221,7 @@ class Escritorio {
 
     // mesa de centro
     { const g = this.movel("centro", [3.21, 1.72], [box(3.21, 1.72, 0.6, 0.29)], { nome: "Mesa de centro" });
-      const mc = M("#C89A6B", { r: 0.55 });
+      const mc = MAD("#C89A6B", { r: 0.45 });
       bloco(g, mc, [2.62, 0.36, 1.45], [3.8, 0.42, 2.0], 0.03);
       bloco(g, M("#E7D6C3"), [2.7, 0.08, 1.52], [3.72, 0.11, 1.93], 0.01);
       for (const x of [2.68, 3.74]) for (const z of [1.5, 1.95]) cil(g, M("#3F3A36"), 0.02, 0.02, 0.36, x, 0.18, z);
@@ -207,7 +230,7 @@ class Escritorio {
 
     // sofá (de frente para a TV)
     { const g = this.movel("sofa", [3.2, 3.05], [box(3.2, 3.05, 1.24, 0.47)], { nome: "Sofá" });
-      const sf = M("#0F766E", { r: 0.95 }), sf2 = M("#14857B", { r: 0.95 }), alm = M("#2BB3A3", { r: 1 });
+      const sf = TEC("#0F766E"), sf2 = TEC("#14857B"), alm = TEC("#2BB3A3", { rep: [2, 2] });
       bloco(g, sf, [2.0, 0.08, 2.6], [4.4, 0.42, 3.5], 0.06);
       bloco(g, sf, [2.0, 0.08, 3.22], [4.4, 0.98, 3.52], 0.08);
       bloco(g, sf2, [1.96, 0.08, 2.58], [2.2, 0.66, 3.52], 0.07); bloco(g, sf2, [4.2, 0.08, 2.58], [4.44, 0.66, 3.52], 0.07);
@@ -219,7 +242,7 @@ class Escritorio {
     // poltrona perto da janela
     { const g = this.movel("poltrona", [0.92, 3.2], [box(0.92, 3.2, 0.5, 0.44, PI / 4)], { nome: "Poltrona" });
       const pol = new THREE.Group(); pol.position.set(0.92, 0, 3.2); pol.rotation.y = PI / 4; g.add(pol);
-      const pc = M("#B45309", { r: 0.95 }), pc2 = M("#D97706", { r: 0.95 });
+      const pc = TEC("#B45309"), pc2 = TEC("#D97706");
       bloco(pol, pc, [-0.42, 0.1, -0.36], [0.42, 0.4, 0.4], 0.06); bloco(pol, pc, [-0.42, 0.1, -0.44], [0.42, 1.05, -0.2], 0.08, { rx: 0.1 });
       bloco(pol, pc2, [-0.5, 0.1, -0.4], [-0.32, 0.62, 0.4], 0.07); bloco(pol, pc2, [0.32, 0.1, -0.4], [0.5, 0.62, 0.4], 0.07);
       bloco(pol, M("#F59E0B", { r: 1 }), [-0.32, 0.38, -0.25], [0.32, 0.5, 0.38], 0.05);
@@ -239,7 +262,7 @@ class Escritorio {
       bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.4], [0.585, 0.82, 4.88], 0.004); bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.92], [0.585, 0.82, 5.4], 0.004);
       const cf = new THREE.Group(); cf.position.set(0.24, 0.92, 4.9); g.add(cf);
       bloco(cf, M("#111827", { r: 0.3, m: 0.3 }), [-0.14, 0, -0.14], [0.14, 0.38, 0.14], 0.03); bloco(cf, M("#D1D5DB", { r: 0.25, m: 0.8 }), [-0.04, 0.24, -0.13], [0.2, 0.34, 0.13], 0.02);
-      cil(cf, M("#FFFFFF", { r: 0.3 }), 0.035, 0.03, 0.08, 0.14, 0.04, 0);
+      bloco(cf, M("#374151", { r: 0.4, m: 0.5 }), [0.06, 0.0, -0.05], [0.2, 0.012, 0.05], 0.004);   // grade da máquina
       this.vapor = []; for (let i = 0; i < 4; i++) { const v = brilho("#FFFFFF", 0.1, 0.0); v.material.blending = THREE.NormalBlending; v.position.set(0.38, 1.0, 4.9); g.add(v); this.vapor.push(v); }
       for (let i = 0; i < 3; i++) cil(g, M(["#F43F5E", "#FACC15", "#38BDF8"][i]), 0.035, 0.03, 0.08, 0.38, 0.96, 5.2 + i * 0.09); }
     // quadro
@@ -250,7 +273,7 @@ class Escritorio {
     // escrivaninha com PC e cadeira
     { const g = this.movel("mesa", [6.8, 0.6], [box(6.8, 0.42, 1.06, 0.41), box(6.8, 1.22, 0.3, 0.3)], { nome: "Escrivaninha" });
       this.mesaG = g;
-      const tampo = M("#9C6B45", { r: 0.5 }), metal = M("#1F2937", { r: 0.4, m: 0.6 });
+      const tampo = MAD("#9C6B45", { r: 0.42, rep: [2, 1] }), metal = M("#1F2937", { r: 0.4, m: 0.6 });
       bloco(g, tampo, [5.75, 0.72, 0.02], [7.85, 0.77, 0.82], 0.02);
       for (const x of [5.82, 7.78]) { bloco(g, metal, [x - 0.03, 0, 0.08], [x + 0.03, 0.72, 0.14], 0.01); bloco(g, metal, [x - 0.03, 0, 0.7], [x + 0.03, 0.72, 0.76], 0.01); bloco(g, metal, [x - 0.03, 0.02, 0.08], [x + 0.03, 0.06, 0.76], 0.01); }
       bloco(g, M("#F1F5F9", { r: 0.5 }), [7.25, 0.18, 0.06], [7.7, 0.7, 0.62], 0.02); bloco(g, M("#CBD5E1"), [7.27, 0.42, 0.62], [7.68, 0.44, 0.63], 0.003);
@@ -297,11 +320,11 @@ class Escritorio {
     // mesa de sinuca + luz pendente
     { const sin = this.sinuca = { x0: 5.7, x1: 8.1, z0: 3.75, z1: 5.05, y: 0.8 };
       const g = this.movel("sinuca", [6.9, 4.4], [box(6.9, 4.4, 1.2, 0.65)], { nome: "Mesa de sinuca" }); this.sinucaG = g;
-      const madE = M("#5B3A1E", { r: 0.5 }), feltro = M("#15803D", { r: 0.95 });
+      const madE = MAD("#5B3A1E", { r: 0.45 }), feltro = TEC("#15803D", { r: 0.98, rep: [6, 4] });
       bloco(g, madE, [sin.x0 + 0.15, 0.12, sin.z0 + 0.15], [sin.x1 - 0.15, 0.72, sin.z1 - 0.15], 0.04);
       for (const x of [sin.x0 + 0.2, sin.x1 - 0.2]) for (const z of [sin.z0 + 0.2, sin.z1 - 0.2]) bloco(g, madE, [x - 0.07, 0, z - 0.07], [x + 0.07, 0.3, z + 0.07], 0.03);
       bloco(g, feltro, [sin.x0 + 0.08, 0.7, sin.z0 + 0.08], [sin.x1 - 0.08, 0.78, sin.z1 - 0.08], 0.01);
-      const borda = M("#7C4A21", { r: 0.45 });
+      const borda = MAD("#7C4A21", { r: 0.35, rep: [3, 1] });
       bloco(g, borda, [sin.x0, 0.68, sin.z0], [sin.x1, 0.84, sin.z0 + 0.1], 0.025); bloco(g, borda, [sin.x0, 0.68, sin.z1 - 0.1], [sin.x1, 0.84, sin.z1], 0.025);
       bloco(g, borda, [sin.x0, 0.68, sin.z0], [sin.x0 + 0.1, 0.84, sin.z1], 0.025); bloco(g, borda, [sin.x1 - 0.1, 0.68, sin.z0], [sin.x1, 0.84, sin.z1], 0.025);
       const pkt = M("#0B0B0B", { r: 0.9 });
@@ -445,6 +468,12 @@ class Escritorio {
     nv.visible = false; sc.add(nv);
     this.balao = tela(128, 128); this.balaoT = "";
     this.balaoS = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.balao.t, transparent: true, depthWrite: false })); this.balaoS.visible = false; sc.add(this.balaoS);
+    // sombras de contato embaixo de cada móvel e cantos escurecidos (dá peso e profundidade)
+    for (const id in this.moveis) { const m = this.moveis[id]; if (m.piso) continue; for (const bx of m.caixas) sombraContato(m.inner, bx.c[0], bx.c[1], bx.h[0], bx.h[1], bx.r || 0, id.startsWith("planta") ? 0.3 : 0.42); }
+    sombraContato(sc, 3.2, 0.27, 1.25, 0.24, 0, 0.35);
+    faixaAO(sc, W, 0.55, V(W / 2, 0.004, 0.27), new THREE.Euler(-PI / 2, 0, 0), 0.2); faixaAO(sc, D, 0.55, V(0.27, 0.004, D / 2), new THREE.Euler(-PI / 2, 0, PI / 2), 0.2);
+    faixaAO(sc, W, 0.5, V(W / 2, 0.25, 0.003), new THREE.Euler(0, 0, PI), 0.16); faixaAO(sc, D, 0.5, V(0.003, 0.25, D / 2), new THREE.Euler(0, PI / 2, PI), 0.16);
+    faixaAO(sc, 0.45, H, V(0.22, H / 2, 0.003), new THREE.Euler(0, 0, -PI / 2), 0.18); faixaAO(sc, 0.45, H, V(0.003, H / 2, 0.22), new THREE.Euler(0, PI / 2, PI / 2), 0.18);
     // contorno dos móveis no modo de edição
     const ct = tela(128, 128); ct.g.strokeStyle = "#FFFFFF"; ct.g.lineWidth = 7; rr(ct.g, 6, 6, 116, 116, 16); ct.g.stroke(); ct.g.fillStyle = "rgba(255,255,255,.14)"; ct.g.fill();
     this.contornoTex = ct.t;

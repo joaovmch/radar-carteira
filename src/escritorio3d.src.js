@@ -6,6 +6,10 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 /* ---------- utilidades ---------- */
 const PI = Math.PI, TAU = PI * 2;
@@ -114,6 +118,49 @@ function comCor(geo, c = 0.85) {
 function juntar(lista) {
   const gs = lista.map((g) => { if (!g.index) { const n = g.attributes.position.count; g.setIndex([...Array(n).keys()]); } ["uv", "uv1", "uv2"].forEach((k) => g.attributes[k] && g.deleteAttribute(k)); return g; });
   return mergeGeometries(gs, false);
+}
+
+/* ---------- materiais com textura feita no navegador (madeira, tecido, parede) ---------- */
+const texCache = {};
+function texturaCinza(nome, w, h, desenho, rep = [1, 1]) {
+  const k = nome + rep.join("x");
+  if (texCache[k]) return texCache[k];
+  const T = tela(w, h); desenho(T.g, w, h); T.t.wrapS = T.t.wrapT = THREE.RepeatWrapping; T.t.repeat.set(...rep); T.t.anisotropy = 8;
+  texCache[k] = T.t; return T.t;
+}
+let semente = 11; const rnd = () => { semente = (semente * 16807) % 2147483647; return semente / 2147483647; };
+// veios de madeira em tons de cinza (a cor vem do material)
+const desenhaMadeira = (g, w, h) => {
+  g.fillStyle = "#EDEDED"; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 70; i++) { const y = rnd() * h, a = 0.04 + rnd() * 0.1; g.strokeStyle = `rgba(60,40,20,${a})`; g.lineWidth = 0.6 + rnd() * 2.4; g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= w; x += 16) g.lineTo(x, y + Math.sin(x * 0.02 + i) * 3 + (rnd() - 0.5) * 1.2); g.stroke(); }
+  for (let i = 0; i < 6; i++) { const x = rnd() * w, y = rnd() * h; const gr = g.createRadialGradient(x, y, 0, x, y, 10 + rnd() * 10); gr.addColorStop(0, "rgba(70,45,25,.22)"); gr.addColorStop(1, "rgba(70,45,25,0)"); g.fillStyle = gr; g.beginPath(); g.ellipse(x, y, 24, 7, 0, 0, TAU); g.fill(); }
+};
+// trama de tecido
+const desenhaTecido = (g, w, h) => {
+  g.fillStyle = "#E6E6E6"; g.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 2) { g.fillStyle = `rgba(0,0,0,${0.035 + (y % 4 ? 0.02 : 0)})`; g.fillRect(0, y, w, 1); }
+  for (let x = 0; x < w; x += 2) { g.fillStyle = `rgba(255,255,255,${0.05 + (x % 4 ? 0.03 : 0)})`; g.fillRect(x, 0, 1, h); }
+  for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.05})`; g.fillRect(rnd() * w, rnd() * h, 2, 2); }
+};
+const MAD = (cor, o = {}) => { const k = "mad" + cor + JSON.stringify(o); if (matCache.has(k)) return matCache.get(k); const m = new THREE.MeshStandardMaterial({ color: cor, roughness: o.r ?? 0.55, metalness: 0, map: texturaCinza("madeira", 256, 256, desenhaMadeira, o.rep || [1, 1]) }); matCache.set(k, m); return m; };
+const TEC = (cor, o = {}) => { const k = "tec" + cor + JSON.stringify(o); if (matCache.has(k)) return matCache.get(k); const c = new THREE.Color(cor); const m = new THREE.MeshPhysicalMaterial({ color: cor, roughness: o.r ?? 0.92, sheen: 0.7, sheenRoughness: 0.45, sheenColor: c.clone().lerp(new THREE.Color("#FFFFFF"), 0.35), map: texturaCinza("tecido", 128, 128, desenhaTecido, o.rep || [3, 3]) }); matCache.set(k, m); return m; };
+// sombra de contato macia (o "chão escurecido" que deixa o móvel apoiado de verdade)
+let texContato = null;
+function sombraContato(par, cx, cz, hx, hz, r = 0, forca = 0.42) {
+  if (!texContato) { const T = tela(128, 128); const g = T.g; g.shadowColor = "#000"; g.shadowBlur = 20; g.shadowOffsetX = 300; g.fillStyle = "#000"; rr(g, 26 - 300, 26, 76, 76, 14); g.fill(); texContato = T.t; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texContato, color: "#000000", transparent: true, opacity: forca, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
+  m.rotation.set(-PI / 2, 0, r); m.position.set(cx, 0.003, cz); m.scale.set((hx * 2 + 0.12) * 1.68, (hz * 2 + 0.12) * 1.68, 1); m.renderOrder = 1; m.receiveShadow = false; m.castShadow = false;
+  par.add(m); return m;
+}
+// parede: reboco com leve granulado
+const desenhaParede = (g, w, h) => { g.fillStyle = "#F2F2F2"; g.fillRect(0, 0, w, h); for (let i = 0; i < 5000; i++) { const v = rnd(); g.fillStyle = v > 0.5 ? `rgba(255,255,255,${(v - 0.5) * 0.12})` : `rgba(0,0,0,${v * 0.05})`; g.fillRect(rnd() * w, rnd() * h, 1.5, 1.5); } };
+const PAR = (cor) => { const k = "par" + cor; if (matCache.has(k)) return matCache.get(k); const m = new THREE.MeshStandardMaterial({ color: cor, roughness: 0.92, map: texturaCinza("parede", 256, 256, desenhaParede, [4, 2]) }); matCache.set(k, m); return m; };
+// faixa escura que some (cantos e encontro parede-chão): oclusão de ambiente barata
+let texFaixa = null;
+function faixaAO(par, w, h, pos, rot, forca = 0.22) {
+  if (!texFaixa) { const T = tela(4, 64); const gr = T.g.createLinearGradient(0, 0, 0, 64); gr.addColorStop(0, "rgba(0,0,0,1)"); gr.addColorStop(0.35, "rgba(0,0,0,.45)"); gr.addColorStop(1, "rgba(0,0,0,0)"); T.g.fillStyle = gr; T.g.fillRect(0, 0, 4, 64); texFaixa = T.t; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texFaixa, color: "#000000", transparent: true, opacity: forca, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.position.copy(pos); m.rotation.copy(rot); m.renderOrder = 1; par.add(m); return m;
 }
 
 /* ---------- humores e luz ---------- */
@@ -263,61 +310,64 @@ class Boneco {
     this.montarBarba(head, hc, Rc);
     this.montarOculos(head, hc, Rc);
     this.montarChapeus(head, hc, Rc);
-    /* braços: ombro, manga (curta ou comprida), antebraço e mão de cinco dedos */
-    this.dedos = { L: [], R: [] };
+    /* braços: pele e mangas são tubos contínuos presos a dois ossos (ombro e cotovelo), que dobram
+       suaves na junta em vez de cilindros soltos com uma bola no meio */
+    this.dedos = { L: [], R: [] }; this.tubos = [];
+    const tubo = (par, mat, perfil, juntaY, ossos, o = {}) => { const m = new THREE.SkinnedMesh(new THREE.BufferGeometry(), mat); m.frustumCulled = false; m.castShadow = true; par.add(m); this.tubos.push({ m, perfil, juntaY, ossos, kz: o.kz ?? 1, k: o.k ?? 1, aberto: !!o.aberto, banda: o.banda ?? 0.055 }); return m; };
     const braco = (lado, nome) => {
       const sh = new THREE.Group(); sh.position.set(0.19 * lado, 0.437, 0); spine.add(sh);
-      const ombro = G(esf(sh, camisa, 0.058, 0, -0.008, 0, { seg: 24, seg2: 18 }));
-      const ombroPele = G(esf(sh, pele, 0.05, 0, -0.012, 0, { seg: 20, seg2: 14 }));
-      G(cil(sh, pele, 0.046, 0.041, BR_A, 0, -BR_A / 2, 0, { seg: 20 }));
-      const mangaC = G(cil(sh, camisa, 0.058, 0.053, 0.19, 0, -0.095, 0, { seg: 24 }));
-      const bainhaC = G(mesh(new THREE.TorusGeometry(0.054, 0.009, 8, 24), camisa, sh, 0, -0.19, 0, { rx: PI / 2 }));
-      const mangaL = G(cil(sh, camisa, 0.058, 0.05, BR_A + 0.02, 0, -BR_A / 2 + 0.01, 0, { seg: 24 }));
       const el = new THREE.Group(); el.position.y = -BR_A; sh.add(el);
-      const cot = G(esf(el, pele, 0.041, 0, 0, 0, { seg: 18, seg2: 12 }));
-      const cotM = G(esf(el, camisa, 0.05, 0, 0, 0, { seg: 18, seg2: 12 }));
-      G(cil(el, pele, 0.041, 0.031, 0.25, 0, -0.135, 0, { seg: 20 }));
-      const antM = G(cil(el, camisa, 0.05, 0.042, 0.24, 0, -0.12, 0, { seg: 22 }));
-      const punho = G(cil(el, camisa, 0.043, 0.043, 0.03, 0, -0.245, 0, { seg: 22 }));
+      const o0 = new THREE.Bone(), o1 = new THREE.Bone(); sh.add(o0); el.add(o1);
+      // perfil [y, raio]: ombro, bíceps, acima do cotovelo, cotovelo, antebraço, punho
+      const pele = tubo(sh, this.pele, [[0.045, 0.0], [0.035, 0.032], [0.0, 0.05], [-0.1, 0.048], [-0.2, 0.043], [-0.29, 0.039], [-0.35, 0.043], [-0.47, 0.034], [-0.545, 0.029], [-0.562, 0.0]], -BR_A, [o0, o1]);
+      const mangaC = tubo(sh, camisa, [[0.06, 0.0], [0.05, 0.04], [0.02, 0.062], [-0.06, 0.06], [-0.19, 0.055]], -BR_A, [o0, o1], { aberto: true });
+      const mangaL = tubo(sh, camisa, [[0.06, 0.0], [0.05, 0.04], [0.02, 0.062], [-0.1, 0.058], [-0.22, 0.052], [-0.29, 0.05], [-0.36, 0.051], [-0.5, 0.044], [-0.535, 0.043]], -BR_A, [o0, o1], { aberto: true });
+      const ombro = G(esf(sh, camisa, 0.06, 0, 0.0, 0, { seg: 24, seg2: 18, s: [1, 0.9, 1] }));
+      const ombroPele = G(esf(sh, this.pele, 0.051, 0, -0.004, 0, { seg: 20, seg2: 14 }));
+      const bainhaC = G(mesh(new THREE.TorusGeometry(0.055, 0.008, 8, 24), camisa, sh, 0, -0.188, 0, { rx: PI / 2 }));
+      const punho = G(cil(el, camisa, 0.045, 0.045, 0.03, 0, -0.24, 0, { seg: 22 }));
       const hand = new THREE.Group(); hand.position.y = -0.27; el.add(hand);
-      esf(hand, pele, 0.034, 0, -0.004, 0, { s: [0.75, 0.7, 1.1], seg: 14, seg2: 10 });
-      bloco(hand, pele, [-0.016, -0.094, -0.04], [0.016, -0.008, 0.04], 0.014);
+      // mão: dorso e palma arredondados, nós dos dedos, cinco dedos de duas falanges
+      esf(hand, this.pele, 0.033, 0, -0.006, 0, { s: [0.72, 0.75, 1.05], seg: 16, seg2: 12 });
+      esf(hand, this.pele, 0.046, 0, -0.052, 0, { s: [0.38, 1.0, 0.92], seg: 22, seg2: 16 });
+      for (const z of [-0.027, -0.009, 0.009, 0.027]) esf(hand, this.pele, 0.0118, 0, -0.09, z, { s: [1.05, 0.9, 1], seg: 10, seg2: 8 });
       const lista = this.dedos[nome];
-      [[-0.028, 0.036], [-0.0095, 0.043], [0.0095, 0.041], [0.028, 0.033]].forEach(([z, len]) => {
+      [[-0.028, 0.035], [-0.0095, 0.043], [0.0095, 0.041], [0.028, 0.033]].forEach(([z, len]) => {
         const p1 = new THREE.Group(); p1.position.set(0, -0.092, z); hand.add(p1);
-        caps(p1, pele, 0.0108, len, 0, -len / 2 - 0.004, 0);
+        caps(p1, this.pele, 0.0112, len, 0, -len / 2 - 0.003, 0);
         const p2 = new THREE.Group(); p2.position.y = -len - 0.006; p1.add(p2);
-        caps(p2, pele, 0.0098, len * 0.8, 0, -len * 0.4 - 0.002, 0);
+        caps(p2, this.pele, 0.0102, len * 0.8, 0, -len * 0.4 - 0.002, 0);
         lista.push({ p1, p2 });
       });
-      const t1 = new THREE.Group(); t1.position.set(-lado * 0.013, -0.028, 0.036); t1.rotation.set(0.4, 0, lado * 0.5); hand.add(t1);
-      caps(t1, pele, 0.0125, 0.034, 0, -0.022, 0);
-      const t2 = new THREE.Group(); t2.position.y = -0.048; t1.add(t2);
-      caps(t2, pele, 0.0112, 0.028, 0, -0.016, 0);
+      const t1 = new THREE.Group(); t1.position.set(-lado * 0.012, -0.03, 0.034); t1.rotation.set(0.4, 0, lado * 0.5); hand.add(t1);
+      esf(t1, this.pele, 0.016, 0, -0.006, 0, { s: [0.9, 1.3, 0.9], seg: 10, seg2: 8 });
+      caps(t1, this.pele, 0.013, 0.032, 0, -0.022, 0);
+      const t2 = new THREE.Group(); t2.position.y = -0.047; t1.add(t2);
+      caps(t2, this.pele, 0.0115, 0.027, 0, -0.016, 0);
       lista.push({ p1: t1, p2: t2, polegar: true });
-      return { sh, el, hand, lado, ombro, ombroPele, mangaC, bainhaC, mangaL, cot, cotM, antM, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
+      return { sh, el, hand, lado, pele, ombro, ombroPele, mangaC, bainhaC, mangaL, punho, qFK: new THREE.Quaternion(), qIK: new THREE.Quaternion() };
     };
     this.L = braco(-1, "L"); this.R = braco(1, "R");
     this.curL = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 }; this.curR = { c: [0.5, 0.42, 0.34, 0.26, 0.25], s: 0.05 };
-    /* pernas: coxa, joelho, canela (calça ou bermuda), meia e tênis */
+    /* pernas: perna e calça contínuas do quadril ao tornozelo (ossos no quadril e no joelho), tênis arredondado */
     const perna = (lado) => {
       const hp = new THREE.Group(); hp.position.set(0.094 * lado, -0.01, 0); hips.add(hp);
-      G(esf(hp, calca, 0.086, 0, -0.02, 0, { seg: 20, seg2: 14 }));
-      G(cil(hp, calca, 0.082, 0.06, 0.42, 0, -0.21, 0, { seg: 24 }));
       const kn = new THREE.Group(); kn.position.y = -0.42; hp.add(kn);
-      const joelhoC = G(esf(kn, calca, 0.06, 0, 0, 0.004, { seg: 18, seg2: 12 }));
-      const joelhoP = G(esf(kn, pele, 0.05, 0, -0.03, 0.006, { seg: 18, seg2: 12 }));
-      const bermuda = G(mesh(new THREE.TorusGeometry(0.062, 0.012, 8, 22), calca, kn, 0, -0.03, 0, { rx: PI / 2 }));
-      const canC = G(cil(kn, calca, 0.059, 0.047, 0.38, 0, -0.19, 0, { seg: 24 }));
-      const canP = G(cil(kn, pele, 0.046, 0.036, 0.38, 0, -0.19, 0, { seg: 20 }));
-      const barra = G(mesh(new THREE.TorusGeometry(0.049, 0.01, 8, 20), calca, kn, 0, -0.372, 0, { rx: PI / 2 }));
       const ft = new THREE.Group(); ft.position.y = -0.4; kn.add(ft);
-      const meiaM = cil(ft, meia, 0.038, 0.041, 0.07, 0, 0.012, 0, { seg: 16 });
-      bloco(ft, sap, [-0.05, -0.054, -0.072], [0.05, 0.022, 0.1], 0.032);
-      esf(ft, sap, 0.052, 0, -0.028, 0.1, { s: [1, 0.66, 1.2], seg: 18, seg2: 12 });
-      bloco(ft, sola, [-0.052, -0.078, -0.075], [0.052, -0.05, 0.164], 0.013);
-      bloco(ft, M("#E9EDF2", { r: 0.7 }), [-0.022, 0.012, -0.012], [0.022, 0.026, 0.072], 0.006, { rx: -0.25 });
-      return { hp, kn, ft, joelhoC, joelhoP, bermuda, canC, canP, barra, meiaM };
+      const o0 = new THREE.Bone(), o1 = new THREE.Bone(); hp.add(o0); kn.add(o1);
+      G(esf(hp, calca, 0.088, 0, -0.02, 0, { seg: 22, seg2: 16 }));
+      const peleP = tubo(hp, this.pele, [[-0.3, 0.0], [-0.32, 0.05], [-0.42, 0.048], [-0.52, 0.05], [-0.62, 0.045], [-0.78, 0.035], [-0.8, 0.0]], -0.42, [o0, o1]);
+      const calcaL = tubo(hp, calca, [[0.04, 0.0], [0.03, 0.06], [0.0, 0.088], [-0.08, 0.084], [-0.3, 0.068], [-0.42, 0.06], [-0.52, 0.06], [-0.7, 0.05], [-0.775, 0.05]], -0.42, [o0, o1], { aberto: true, kz: 1.04 });
+      const bermudaM = tubo(hp, calca, [[0.04, 0.0], [0.03, 0.06], [0.0, 0.09], [-0.08, 0.086], [-0.3, 0.072], [-0.44, 0.064]], -0.42, [o0, o1], { aberto: true, kz: 1.04 });
+      const bermuda = G(mesh(new THREE.TorusGeometry(0.064, 0.011, 8, 22), calca, kn, 0, -0.02, 0, { rx: PI / 2 }));
+      const barra = G(mesh(new THREE.TorusGeometry(0.05, 0.0095, 8, 20), calca, kn, 0, -0.355, 0, { rx: PI / 2 }));
+      const meiaM = cil(ft, meia, 0.036, 0.039, 0.07, 0, 0.012, 0, { seg: 16 });
+      // tênis: cabedal arredondado, bico, sola oval e cadarço
+      esf(ft, sap, 0.058, 0, -0.026, 0.032, { s: [0.88, 0.62, 1.72], seg: 24, seg2: 16 });
+      esf(ft, sap, 0.045, 0, -0.008, -0.02, { s: [0.95, 0.95, 1.0], seg: 18, seg2: 12 });
+      mesh(new THREE.CylinderGeometry(0.058, 0.056, 0.024, 28), sola, ft, 0, -0.064, 0.04, { s: [0.92, 1, 1.82] });
+      for (let i = 0; i < 3; i++) bloco(ft, M("#E9EDF2", { r: 0.7 }), [-0.02, 0, -0.004], [0.02, 0.006, 0.004], 0.002).position.set(0, 0.004 - i * 0.008, 0.03 + i * 0.022);
+      return { hp, kn, ft, peleP, calcaL, bermudaM, bermuda, barra, meiaM };
     };
     this.PL = perna(-1); this.PR = perna(1);
     sombra(root, true, false);
@@ -329,6 +379,9 @@ class Boneco {
     this.gp = new THREE.Vector3(0, -0.06, 0);
     this.pDy = 0; this.pNod = 0; this.pT = null; this.pYaw = null;
     this.esc = 1;
+    // ossos dos tubos: liga na pose de descanso (braços e pernas retos)
+    root.updateMatrixWorld(true);
+    for (const t of this.tubos) { t.m.geometry = this.geoTubo(t, 1); t.esq = new THREE.Skeleton(t.ossos); t.m.bind(t.esq, t.m.matrixWorld); }
     this.setAparencia(aparencia, acessorio);
   }
 
@@ -519,6 +572,24 @@ class Boneco {
     h.a_cartola = g;
     Object.values(h).forEach((x) => { x.visible = false; head.add(x); });
   }
+  // tubo de raio variável ao longo de -Y (perfil [y, raio]); peso de pele vai do osso de cima para o de baixo perto da junta
+  geoTubo(t, g) {
+    const pts = t.perfil, n = 30, rad = 22, f = 1 + (g - 1) * t.k;
+    const curva = new THREE.SplineCurve(pts.map(([y, r]) => new THREE.Vector2(r, y))); const amostra = curva.getPoints(n);
+    const pos = [], idx = [], si = [], sw = [];
+    for (let i = 0; i <= n; i++) {
+      const { x: r0, y } = amostra[i]; const r = Math.max(0, r0) * f;
+      const w1 = suave((t.juntaY + t.banda - y) / (2 * t.banda));
+      for (let j = 0; j <= rad; j++) { const a = (j / rad) * TAU; pos.push(Math.sin(a) * r, y, Math.cos(a) * r * t.kz); si.push(0, 1, 0, 0); sw.push(1 - w1, w1, 0, 0); }
+    }
+    for (let i = 0; i < n; i++) for (let j = 0; j < rad; j++) { const a = i * (rad + 1) + j, b = a + rad + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx);
+    geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(sw, 4));
+    geo.computeVertexNormals();
+    if (t.aberto) geo.setAttribute("normal", geo.getAttribute("normal"));
+    return geo;
+  }
   setAparencia(v, acessorio) {
     const ap = this.ap = lerAp(v);
     this.pele.color.set(AP.p[ap.p]); this.peleSom.color.set(misturaCor(AP.p[ap.p], "#7A3B22", 0.12));
@@ -537,6 +608,7 @@ class Boneco {
     this.esc = ALTURA[ap.a]; this.root.scale.setScalar(this.esc);
     const g = CORPO[ap.w]; this.fGir = g;
     for (const { m, s, k } of this.gir) { const f = 1 + (g - 1) * k; m.scale.set(s.x * f, s.y, s.z * f); }
+    if (this.gTubos !== g) { this.gTubos = g; for (const t of this.tubos) { const old = t.m.geometry; t.m.geometry = this.geoTubo(t, g); if (old) old.dispose(); } }
     this.barriga.visible = ap.w >= 3; this.barriga.position.z = (g - 1) * 0.16;
     this.L.sh.position.x = -0.19 * (1 + (g - 1) * 0.6); this.R.sh.position.x = 0.19 * (1 + (g - 1) * 0.6);
     this.PL.hp.position.x = -0.094 * (1 + (g - 1) * 0.5); this.PR.hp.position.x = 0.094 * (1 + (g - 1) * 0.5);
@@ -548,15 +620,16 @@ class Boneco {
   setRoupa(r, e) {
     this.roupas.forEach((g, i) => { g.visible = i === r; });
     const longa = r === 2 || r === 3 || r === 4, regata = r === 5, social = r === 3;
+    const mt = social ? this.branco : this.camisa;
     for (const B of [this.L, this.R]) {
-      B.mangaC.visible = B.bainhaC.visible = !longa && !regata; B.mangaL.visible = B.cotM.visible = B.antM.visible = B.punho.visible = longa;
-      B.ombro.visible = !regata; B.ombroPele.visible = regata; B.cot.visible = !longa;
-      const mt = social ? this.branco : this.camisa; for (const k of ["ombro", "mangaC", "bainhaC", "mangaL", "cotM", "antM", "punho"]) B[k].material = mt;
+      B.mangaC.visible = B.bainhaC.visible = !longa && !regata; B.mangaL.visible = B.punho.visible = longa;
+      B.ombro.visible = !regata; B.ombroPele.visible = regata;
+      for (const k of ["ombro", "mangaC", "bainhaC", "mangaL", "punho"]) B[k].material = mt;
     }
-    this.torso.material = social ? this.branco : this.camisa; this.barriga.material = this.torso.material;
+    this.torso.material = mt; this.barriga.material = mt;
     this.estampaPlano.visible = this.temIcone && !social && r !== 4;
     const bermuda = e === 1;
-    for (const P of [this.PL, this.PR]) { P.joelhoC.visible = P.canC.visible = P.barra.visible = !bermuda; P.joelhoP.visible = P.canP.visible = P.bermuda.visible = bermuda; P.meiaM.scale.y = bermuda ? 1.8 : 1; P.meiaM.position.y = bermuda ? 0.04 : 0.012; }
+    for (const P of [this.PL, this.PR]) { P.calcaL.visible = P.barra.visible = !bermuda; P.bermudaM.visible = P.bermuda.visible = P.peleP.visible = bermuda; P.meiaM.scale.y = bermuda ? 1.8 : 1; P.meiaM.position.y = bermuda ? 0.04 : 0.012; }
   }
   setCor(cor) {
     const c = cor || "#2457F5"; this.cor = c; this.camisa.color.set(c);
@@ -570,10 +643,22 @@ class Boneco {
     this.temIcone = ok; this.estampaPlano.visible = ok && this.ap.r !== 3 && this.ap.r !== 4; t.needsUpdate = true;
   }
   // IK de dois ossos: põe a mão (ponto de pegada) no alvo em coordenadas do mundo
-  ik(B, alvo, peso) {
+  // palma para baixo com os dedos na direção f (ou para a frente do corpo), levemente inclinados para baixo
+  oriMao(lado, ori) {
+    if (!ori) return null;
+    let f; if (ori === "baixo") { const y = this.root.rotation.y; f = V(Math.sin(y), -0.3, Math.cos(y)); } else if (Array.isArray(ori) && ori.length === 4) return new THREE.Quaternion(...ori); else f = V(...ori);
+    f.normalize();
+    const X = V(0, lado === "R" ? 1 : -1, 0);   // palma (−X na direita, +X na esquerda) virada para baixo
+    const Y = f.clone().negate().addScaledVector(X, f.dot(X)).normalize(); const Z = new THREE.Vector3().crossVectors(X, Y);
+    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+  }
+  // qMao (opcional): orientação da mão no mundo; aí o alvo do braço é o punho, para os dedos caírem no ponto certo
+  ik(B, alvo, peso, qMao) {
     const sh = B.sh; const sp = this.spine;
-    const t = sp.worldToLocal(alvo.clone()).sub(sh.position);
-    const a = BR_A, b = BR_B; let d = t.length(); d = cl(d, Math.abs(a - b) + 0.02, a + b - 0.002);
+    const t = sp.worldToLocal(alvo.clone());
+    if (qMao) { const qs = sp.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(qMao); t.sub(this.gp.clone().applyQuaternion(qs)); }
+    t.sub(sh.position);
+    const a = BR_A, b = qMao ? BR_B - 0.055 : BR_B; let d = t.length(); d = cl(d, Math.abs(a - b) + 0.02, a + b - 0.002);
     const cosE = cl((a * a + b * b - d * d) / (2 * a * b), -1, 1); const flex = PI - Math.acos(cosE);
     // posição da mão e do cotovelo com o braço reto para baixo e o cotovelo dobrado
     const v0 = V(0, -a - b * Math.cos(flex), b * Math.sin(flex)); const e0 = V(0, -1, 0);
@@ -611,10 +696,20 @@ class Boneco {
     this.PL.hp.rotation.x = -p.lL[0]; this.PL.kn.rotation.x = p.lL[1]; this.PL.ft.rotation.x = p.lL[0] - p.lL[1] + (p.pL || 0);
     this.PR.hp.rotation.x = -p.lR[0]; this.PR.kn.rotation.x = p.lR[1]; this.PR.ft.rotation.x = p.lR[0] - p.lR[1] + (p.pR || 0);
     // braços que buscam um ponto (teclado, taco, objetos)
+    const qL = p.kL > 0.001 && p.ikL ? this.oriMao("L", p.oriL) : null, qR = p.kR > 0.001 && p.ikR ? this.oriMao("R", p.oriR) : null;
     if ((p.kL > 0.001 && p.ikL) || (p.kR > 0.001 && p.ikR)) {
       this.root.updateMatrixWorld(true);
-      if (p.kL > 0.001 && p.ikL) this.ik(this.L, V(...p.ikL), cl(p.kL));
-      if (p.kR > 0.001 && p.ikR) this.ik(this.R, V(...p.ikR), cl(p.kR));
+      if (p.kL > 0.001 && p.ikL) this.ik(this.L, V(...p.ikL), cl(p.kL), qL);
+      if (p.kR > 0.001 && p.ikR) this.ik(this.R, V(...p.ikR), cl(p.kR), qR);
+    }
+    // gole: a mão direita leva a borda da xícara até a boca (a alça fica do lado de fora do rosto)
+    const gole = cl(p.gole || 0);
+    if (gole > 0.01 && !(p.kR > 0.001 && p.ikR)) {
+      this.root.updateMatrixWorld(true);
+      const qr = this.root.getWorldQuaternion(new THREE.Quaternion()); const e = this.esc || 1;
+      const boca = this.head.localToWorld(V(0, this.hc - 0.075, 0.228));
+      const alvo = boca.add(V(0.07 * e, -0.1 * e + 0.05 * e * gole, 0.085 * e).applyQuaternion(qr));
+      this.ik(this.R, alvo, suave(gole), null);
     }
     // pegada das mãos por objeto
     const pg = {
@@ -637,6 +732,12 @@ class Boneco {
       });
       // punho vivo: um giro leve quando a mão está solta
       if (!g.preso) { B.hand.rotation.x += 0.05 * Math.sin(T * 0.9 + lado); B.hand.rotation.z += 0.04 * Math.sin(T * 0.7 + lado * 2); }
+    }
+    // mão orientada no mundo (palma para baixo em cima de uma superfície, por exemplo)
+    for (const [B, q, k] of [[this.L, qL, p.kL], [this.R, qR, p.kR]]) {
+      if (!q) continue; B.el.updateMatrixWorld(true);
+      const alvoQ = B.el.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(q);
+      B.hand.quaternion.slerp(alvoQ, cl(k));
     }
     // cabelo: molas amortecidas movidas pelo sobe e desce, pelo aceno de cabeça e pelos giros
     if (dt > 0 && this.pT !== null) {
@@ -1269,11 +1370,11 @@ const partida = (dur, vibras) => F(dur, (k, tl, T) => {
 }, { tv: "jogo", props: { controle: "LR" }, foco: () => V(3.2, 1.45, 0.12) });
 const pegaControle = (e) => F(1.6, (k, tl, T) => {
   const a = jan(tl, 0, 1.15, 0.4); const c = e.casaDe("controle").pos;
-  const r = mistura(sofaSent(T), jogando(T, 0), suave(fase(tl, 0.75, 1.6))); r.ikR = [c.x, c.y + 0.03, c.z]; r.kR = a; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
+  const r = mistura(sofaSent(T), jogando(T, 0), suave(fase(tl, 0.75, 1.6))); r.ikR = [c.x, c.y + 0.035, c.z]; r.kR = a; r.oriR = "baixo"; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
 }, { props: { controle: (k, tl) => tl < 0.6 ? "casa" : "LR" } });
 const largaControle = (e) => F(1.5, (k, tl, T) => {
   const a = jan(tl, 0.15, 1.5, 0.4); const c = e.casaDe("controle").pos;
-  const r = mistura(jogando(T, 0), sofaSent(T), suave(fase(tl, 0, 0.6))); r.ikR = [c.x, c.y + 0.03, c.z]; r.kR = a; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
+  const r = mistura(jogando(T, 0), sofaSent(T), suave(fase(tl, 0, 0.6))); r.ikR = [c.x, c.y + 0.035, c.z]; r.kR = a; r.oriR = "baixo"; r.lean += 0.12 * a; r.turn += 0.4 * a; r.olhar = [0.8 * a, 0.8 * a]; return r;
 }, { props: { controle: (k, tl) => tl < 0.8 ? "LR" : "casa" } });
 const pegaTaco = () => F(1.5, (k, tl, T) => emPe(T, { taco: lerp(-1, 0, suave(fase(tl, 0.2, 1.2))), lean: 0.12 * jan(tl, 0, 1.5, 0.4), boca: "leve" }), { bolas: "ini" });
 const largaTaco = () => F(1.6, (k, tl, T) => emPe(T, { taco: lerp(0, -1, suave(fase(tl, 0.3, 1.3))), lean: 0.15 * jan(tl, 0, 1.6, 0.4) }), { bolas: "ini" });
@@ -1346,7 +1447,7 @@ const ROTEIROS = {
       const tE = Math.max(0, Math.sin(T * 14)) * 0.025, tD = Math.max(0, Math.sin(T * 14 + 2.2)) * 0.025;
       const kb = e.teclado(); const dx = Math.sin(T * 3.1) * 0.03;
       return sentado(T, 0.6, { lean: 0.22 + 0.14 * perto * entra, nod: 0.08 + 0.06 * Math.sin(tl * 1.7) - 0.1 * perto, hz: 0.02,
-        ikL: [kb.L.x + dx, kb.L.y + tE, kb.L.z], kL: entra, ikR: [kb.R.x - dx, kb.R.y + tD, kb.R.z], kR: entra * (1 - coca),
+        ikL: [kb.L.x + dx, kb.L.y + tE, kb.L.z], kL: entra, ikR: [kb.R.x - dx, kb.R.y + tD, kb.R.z], kR: entra * (1 - coca), oriL: "baixo", oriR: "baixo",
         aR: [lerp(0.6, 2.3, coca), lerp(-0.08, 0.6, coca), lerp(1.0, 2.4 + 0.15 * Math.sin(T * 16), coca)], item: entra > 0.3 ? "tecla" : "",
         olhar: [0.3 * Math.sin(tl * 2), -0.6] });
     }, { mon: "foco", foco: (e) => e.pto("mesa", 6.8, 1.14, 0.22) });
@@ -1388,7 +1489,7 @@ const ITEM_ANIM = {
     passos: (e) => [
       F(1.4, (k, tl, T) => emPe(T, { nod: 0.35, olhar: [0, 1.2], boca: "sorriso", boch: 0.3 }), { fx: "caoVem" }),
       F(5.2, (k, tl, T) => { const a = jan(tl, 0, 5.2, 0.7); const c = e.alvoCao(); const s = Math.sin(tl * 5) * 0.06;
-        return agachado(T, a, { ikR: [c.x + s, c.y + 0.1, c.z], kR: a, nod: 0.3 * a, boca: "sorriso", olhos: tl > 2 ? "F" : "A", boch: 0.5, olhar: [0, 1] }); }, { fx: "caoCarinho" }),
+        return agachado(T, a, { ikR: [c.x + s, c.y + 0.13, c.z], kR: a, oriR: "baixo", gestoR: "carinho", nod: 0.3 * a, boca: "sorriso", olhos: tl > 2 ? "F" : "A", boch: 0.5, olhar: [0, 1] }); }, { fx: "caoCarinho" }),
       F(1.2, (k, tl, T) => emPe(T, { ...vibra(tl, 1.2) }), { fx: "caoCarinho" }),
     ] },
   aquario: { humores: ["preocupado", "tranquilo", "feliz", "euforico"], ic: "fish",
@@ -1396,21 +1497,21 @@ const ITEM_ANIM = {
     passos: (e) => [
       F(1.0, (k, tl, T) => emPe(T, { nod: 0.2, olhar: [0, 0.6] })),
       F(4.6, (k, tl, T) => { const a = jan(tl, 0, 4.6, 0.6); const t = e.pto("aquario", 0.35, 1.38, 6.835); const sh = Math.sin(T * 18) * 0.02 * fase(tl, 1, 1.4) * (1 - fase(tl, 3.4, 3.8));
-        return emPe(T, { ikR: [t.x + sh, t.y, t.z], kR: a, lean: 0.12 * a, nod: 0.3 * a, mR: 0.3 + 0.4 * Math.abs(Math.sin(T * 12)) * a, boca: "sorriso", olhar: [0, 1] }); }, { fx: "racao" }),
+        return emPe(T, { ikR: [t.x + sh, t.y, t.z], kR: a, oriR: "baixo", lean: 0.12 * a, nod: 0.3 * a, mR: 0.3 + 0.4 * Math.abs(Math.sin(T * 12)) * a, boca: "sorriso", olhar: [0, 1] }); }, { fx: "racao" }),
       F(1.6, (k, tl, T) => emPe(T, { boca: "sorriso", olhos: "F", boch: 0.5, nod: 0.1 })),
     ] },
   fliperama: { humores: ["tranquilo", "feliz", "euforico"], ic: "joystick",
     lugar: (e) => e.lugar("fliperama", [5.29, 1.42, PI]),
     passos: (e) => [
       F(7.0, (k, tl, T) => { const a = jan(tl, 0, 7.0, 0.6); const [l, r] = e.alvoArcade(); const bt = Math.max(0, Math.sin(T * 13)) * 0.02;
-        return emPe(T, { ikL: [l.x, l.y, l.z], kL: a, ikR: [r.x, r.y - bt, r.z], kR: a, lean: 0.1 * a, nod: -0.05 + 0.04 * Math.sin(T * 6), side: 0.03 * Math.sin(T * 3), boca: "foco", olhar: [0, -0.3], mL: 0.9 * a }); }, { fx: "arcade" }),
+        return emPe(T, { ikL: [l.x, l.y, l.z], kL: a, ikR: [r.x, r.y - bt, r.z], kR: a, oriL: "baixo", oriR: "baixo", lean: 0.1 * a, nod: -0.05 + 0.04 * Math.sin(T * 6), side: 0.03 * Math.sin(T * 3), boca: "foco", olhar: [0, -0.3], mL: 0.9 * a }); }, { fx: "arcade" }),
       F(1.8, (k, tl, T) => { const up = jan(tl, 0, 1.8, 0.3); return emPe(T, { aL: [2.8 * up, 0.4, 0.3], aR: [2.8 * up, 0.4, 0.3], dy: 0.1 * Math.abs(Math.sin(tl * 7)) * up, boca: "aberta", olhos: "F", boch: 0.8 }); }),
     ] },
   touro: { humores: ["tranquilo", "feliz", "euforico"], ic: "cow",
     lugar: (e) => { const c = e.alvoTouro(); const p = e.lugar("touro", [5.4, 6.75]); return [p[0], p[1], yawPara(p, [c.x, c.z])]; },
     passos: (e) => [
       F(3.6, (k, tl, T) => { const a = jan(tl, 0, 3.6, 0.6); const c = e.alvoTouro(); const s = Math.sin(tl * 6) * 0.05;
-        return emPe(T, { ikR: [c.x + s, c.y + 0.04, c.z + s * 0.5], kR: a, lean: 0.18 * a, boca: "sorriso", olhos: tl > 1.5 ? "F" : "A", boch: 0.45 }); }),
+        return emPe(T, { ikR: [c.x + s, c.y + 0.06, c.z + s * 0.5], kR: a, oriR: "baixo", gestoR: "carinho", lean: 0.18 * a, boca: "sorriso", olhos: tl > 1.5 ? "F" : "A", boch: 0.45 }); }),
       F(2.0, (k, tl, T) => emPe(T, { ...vibra(tl, 2.0) })),
     ] },
   cofre: { humores: ["preocupado", "tranquilo", "feliz", "euforico"], ic: "vault",
@@ -1434,7 +1535,7 @@ const ITEM_ANIM = {
     passos: (e) => [
       // tira uma moeda do bolso
       F(1.3, (k, tl, T) => { const bl = e.bolso("R"); const a = jan(tl, 0, 0.95, 0.3); return emPe(T, { ikR: [bl.x, bl.y, bl.z], kR: a, aR: [0.5, -0.1, 1.3], nod: 0.25, olhar: [0, 1] }); }, { props: { moeda: (k, tl) => tl < 0.55 ? "casa" : "R" } }),
-      F(1.9, (k, tl, T) => { const a = jan(tl, 0, 1.9, 0.4); const p = e.alvoPorco(); return emPe(T, { ikR: [p.x, p.y + 0.1, p.z], kR: a, aR: [0.5, -0.1, 1.3], lean: 0.25 * a, nod: 0.35, olhar: [0, 1], boca: "sorriso" }); }, { fx: "porco", props: { moeda: (k, tl) => tl < 0.9 ? "R" : tl < 1.15 ? "cofrinho" : "casa" } }),
+      F(1.9, (k, tl, T) => { const a = jan(tl, 0, 1.9, 0.4); const p = e.alvoPorco(); return emPe(T, { ikR: [p.x, p.y + 0.1, p.z], kR: a, oriR: "baixo", aR: [0.5, -0.1, 1.3], lean: 0.25 * a, nod: 0.35, olhar: [0, 1], boca: "sorriso" }); }, { fx: "porco", props: { moeda: (k, tl) => tl < 0.9 ? "R" : tl < 1.15 ? "cofrinho" : "casa" } }),
       F(1.4, (k, tl, T) => emPe(T, { ...vibra(tl, 1.4) })),
     ] },
   neon: { humores: ["tranquilo", "feliz", "euforico"], ic: "currency-btc",
@@ -1510,6 +1611,7 @@ class Escritorio {
     this.notas = []; this.hist = []; this.feed = []; this.flash = {}; this.fx = [];
     this.moveis = {}; this.fixos = []; this.nav = new Nav();
     this.construir();
+    this.prepararAO();
     this.boneco = new Boneco(d.cor, d.icone, d.boneco, d.acessorio); sc.add(this.boneco.root); sc.add(this.boneco.blob);
     this.cao = new Cao(); sc.add(this.cao.g);
     this.filtro = new Filtro(); this.vida = new Vida();
@@ -1524,6 +1626,26 @@ class Escritorio {
     this.laco = this.laco.bind(this); this.raf = requestAnimationFrame(this.laco);
   }
 
+  /* ----- oclusão de ambiente (cantos, encontros e debaixo dos móveis escurecem): só em computador,
+     em meia resolução, e desligada sozinha se o aparelho não acompanhar ----- */
+  prepararAO() {
+    const fraco = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || (navigator.hardwareConcurrency || 4) < 4 || window.__ofSemAO;
+    if (fraco && !window.__ofComAO) return;
+    try {
+      const r = this.renderer; const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
+      const c = this.composer = new EffectComposer(r, rt);
+      c.addPass(new RenderPass(this.scene, this.cam));
+      const ao = this.aoPass = new GTAOPass(this.scene, this.cam, 4, 4);
+      ao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.3, thickness: 2.2, scale: 1.45, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+      // telas, adesivos, vidros, halos e sombras falsas não entram no cálculo (evita manchas pretas)
+      ao._overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { if (!o.visible) return; const mt = o.material; if (o.isPoints || o.isLine || o.isSprite || o.isInstancedMesh || (o.isMesh && mt && (mt.transparent || mt.isMeshBasicMaterial || mt.isShadowMaterial))) { o.visible = false; cache.push(o); } }); };
+      ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      ao.blendIntensity = 1;
+      const ss = ao.setSize.bind(ao); ao.setSize = (w, h) => ss(Math.max(2, w * 0.5 | 0), Math.max(2, h * 0.5 | 0));
+      c.addPass(ao); c.addPass(new OutputPass());
+      this.ao = true;
+    } catch (err) { console.warn("Oclusão de ambiente indisponível:", err); this.composer = null; this.ao = false; }
+  }
   /* ----- móveis que podem ser arrastados ----- */
   // id, pivô [x, z] e caixas {c, h, r} nas coordenadas originais; o conteúdo é montado nas coordenadas originais
   movel(id, P, caixas, o = {}) {
@@ -1610,17 +1732,19 @@ class Escritorio {
     this.hemi = new THREE.HemisphereLight("#E3EBFF", "#B08A64", 0.9); sc.add(this.hemi);
     const k = this.key = new THREE.DirectionalLight("#FFF4E3", 1.8);
     k.position.set(11, 12, 11); k.target.position.set(4, 0, 3.5); sc.add(k, k.target);
-    k.castShadow = true; k.shadow.mapSize.set(2048, 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 4;
+    k.castShadow = true; k.shadow.mapSize.set(2048, 2048); k.shadow.bias = -0.0004; k.shadow.normalBias = 0.025; k.shadow.radius = 6; k.shadow.blurSamples = 12;
     Object.assign(k.shadow.camera, { left: -7.5, right: 7.5, top: 7, bottom: -7, near: 2, far: 40 });
     this.fill = new THREE.DirectionalLight("#CFE0FF", 0.35); this.fill.position.set(-4, 6, 8); sc.add(this.fill);
+    // contraluz frio: separa o boneco e os móveis do fundo
+    this.rim = new THREE.DirectionalLight("#B9CCFF", 0.55); this.rim.position.set(-6, 5, -6); this.rim.target.position.set(4, 0, 4); sc.add(this.rim, this.rim.target);
 
     // chão e paredes (casa de bonecas)
     const piso = tela(1024, 1024); this.desenharPiso(piso);
     piso.t.wrapS = piso.t.wrapT = THREE.RepeatWrapping; piso.t.repeat.set(W / 4.5, D / 4.5);
-    this.chao = mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: piso.t, roughness: 0.55, metalness: 0 }), sc, W / 2, 0, D / 2, { rx: -PI / 2, cast: false });
+    this.chao = mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: piso.t, roughness: 0.42, metalness: 0 }), sc, W / 2, 0, D / 2, { rx: -PI / 2, cast: false });
     bloco(sc, M("#8A5A34", { r: 0.8 }), [-T_PAR, -0.22, -T_PAR], [W + 0.05, -0.001, D + 0.05], 0.02, { cast: false });
     bloco(sc, M("#E6E3DD", { r: 0.9 }), [-T_PAR - 0.06, -0.3, -T_PAR - 0.06], [W + 0.11, -0.2, D + 0.11], 0.04, { cast: false });
-    const pFundo = M("#EEF1F6", { r: 0.95 }), pEsq = M("#E5E9F1", { r: 0.95 }), topo = M("#C9D1DD", { r: 0.9 });
+    const pFundo = PAR("#EEF1F6"), pEsq = PAR("#E5E9F1"), topo = M("#C9D1DD", { r: 0.9 });
     bloco(sc, pFundo, [-T_PAR, 0, -T_PAR], [W, H, 0], 0.005);
     const JZ0 = 0.95, JZ1 = 2.65, JY0 = 0.92, JY1 = 2.38;
     bloco(sc, pEsq, [-T_PAR, 0, 0], [0, H, JZ0], 0.005); bloco(sc, pEsq, [-T_PAR, 0, JZ1], [0, H, D], 0.005);
@@ -1655,10 +1779,10 @@ class Escritorio {
       mesh(new RoundedBoxGeometry(3.3, 0.016, 5.0, 2, 0.007), new THREE.MeshStandardMaterial({ map: tp.t, roughness: 1 }), g, 3.35, 0.009, 3.85, { cast: false }); }
 
     // painel ripado + TV + rack (presos na parede)
-    const ripa = M("#9A6B43", { r: 0.7 }), ripaE = M("#7A5233", { r: 0.8 });
+    const ripa = MAD("#9A6B43", { r: 0.62, rep: [0.3, 2] }), ripaE = MAD("#6E4A2E", { r: 0.8 });
     bloco(sc, ripaE, [1.6, 0, 0], [4.8, H, 0.025], 0.002, { cast: false });
     for (let x = 1.62; x < 4.78; x += 0.1) bloco(sc, ripa, [x, 0.1, 0.02], [x + 0.06, H - 0.02, 0.05], 0.008, { cast: false });
-    const rack = M("#3F3A36", { r: 0.6 }), madeira = M("#B07A4C", { r: 0.6 });
+    const rack = M("#3F3A36", { r: 0.5 }), madeira = MAD("#B07A4C", { r: 0.5 });
     bloco(sc, rack, [1.95, 0.12, 0.05], [4.45, 0.52, 0.48], 0.02);
     bloco(sc, madeira, [1.97, 0.18, 0.47], [3.18, 0.48, 0.49], 0.01); bloco(sc, madeira, [3.22, 0.18, 0.47], [4.43, 0.48, 0.49], 0.01);
     for (const x of [2.05, 4.35]) for (const z of [0.12, 0.42]) cil(sc, M("#111827"), 0.015, 0.015, 0.12, x, 0.06, z);
@@ -1672,7 +1796,7 @@ class Escritorio {
 
     // mesa de centro
     { const g = this.movel("centro", [3.21, 1.72], [box(3.21, 1.72, 0.6, 0.29)], { nome: "Mesa de centro" });
-      const mc = M("#C89A6B", { r: 0.55 });
+      const mc = MAD("#C89A6B", { r: 0.45 });
       bloco(g, mc, [2.62, 0.36, 1.45], [3.8, 0.42, 2.0], 0.03);
       bloco(g, M("#E7D6C3"), [2.7, 0.08, 1.52], [3.72, 0.11, 1.93], 0.01);
       for (const x of [2.68, 3.74]) for (const z of [1.5, 1.95]) cil(g, M("#3F3A36"), 0.02, 0.02, 0.36, x, 0.18, z);
@@ -1681,7 +1805,7 @@ class Escritorio {
 
     // sofá (de frente para a TV)
     { const g = this.movel("sofa", [3.2, 3.05], [box(3.2, 3.05, 1.24, 0.47)], { nome: "Sofá" });
-      const sf = M("#0F766E", { r: 0.95 }), sf2 = M("#14857B", { r: 0.95 }), alm = M("#2BB3A3", { r: 1 });
+      const sf = TEC("#0F766E"), sf2 = TEC("#14857B"), alm = TEC("#2BB3A3", { rep: [2, 2] });
       bloco(g, sf, [2.0, 0.08, 2.6], [4.4, 0.42, 3.5], 0.06);
       bloco(g, sf, [2.0, 0.08, 3.22], [4.4, 0.98, 3.52], 0.08);
       bloco(g, sf2, [1.96, 0.08, 2.58], [2.2, 0.66, 3.52], 0.07); bloco(g, sf2, [4.2, 0.08, 2.58], [4.44, 0.66, 3.52], 0.07);
@@ -1693,7 +1817,7 @@ class Escritorio {
     // poltrona perto da janela
     { const g = this.movel("poltrona", [0.92, 3.2], [box(0.92, 3.2, 0.5, 0.44, PI / 4)], { nome: "Poltrona" });
       const pol = new THREE.Group(); pol.position.set(0.92, 0, 3.2); pol.rotation.y = PI / 4; g.add(pol);
-      const pc = M("#B45309", { r: 0.95 }), pc2 = M("#D97706", { r: 0.95 });
+      const pc = TEC("#B45309"), pc2 = TEC("#D97706");
       bloco(pol, pc, [-0.42, 0.1, -0.36], [0.42, 0.4, 0.4], 0.06); bloco(pol, pc, [-0.42, 0.1, -0.44], [0.42, 1.05, -0.2], 0.08, { rx: 0.1 });
       bloco(pol, pc2, [-0.5, 0.1, -0.4], [-0.32, 0.62, 0.4], 0.07); bloco(pol, pc2, [0.32, 0.1, -0.4], [0.5, 0.62, 0.4], 0.07);
       bloco(pol, M("#F59E0B", { r: 1 }), [-0.32, 0.38, -0.25], [0.32, 0.5, 0.38], 0.05);
@@ -1713,7 +1837,7 @@ class Escritorio {
       bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.4], [0.585, 0.82, 4.88], 0.004); bloco(g, M("#E2E8F0"), [0.57, 0.1, 4.92], [0.585, 0.82, 5.4], 0.004);
       const cf = new THREE.Group(); cf.position.set(0.24, 0.92, 4.9); g.add(cf);
       bloco(cf, M("#111827", { r: 0.3, m: 0.3 }), [-0.14, 0, -0.14], [0.14, 0.38, 0.14], 0.03); bloco(cf, M("#D1D5DB", { r: 0.25, m: 0.8 }), [-0.04, 0.24, -0.13], [0.2, 0.34, 0.13], 0.02);
-      cil(cf, M("#FFFFFF", { r: 0.3 }), 0.035, 0.03, 0.08, 0.14, 0.04, 0);
+      bloco(cf, M("#374151", { r: 0.4, m: 0.5 }), [0.06, 0.0, -0.05], [0.2, 0.012, 0.05], 0.004);   // grade da máquina
       this.vapor = []; for (let i = 0; i < 4; i++) { const v = brilho("#FFFFFF", 0.1, 0.0); v.material.blending = THREE.NormalBlending; v.position.set(0.38, 1.0, 4.9); g.add(v); this.vapor.push(v); }
       for (let i = 0; i < 3; i++) cil(g, M(["#F43F5E", "#FACC15", "#38BDF8"][i]), 0.035, 0.03, 0.08, 0.38, 0.96, 5.2 + i * 0.09); }
     // quadro
@@ -1724,7 +1848,7 @@ class Escritorio {
     // escrivaninha com PC e cadeira
     { const g = this.movel("mesa", [6.8, 0.6], [box(6.8, 0.42, 1.06, 0.41), box(6.8, 1.22, 0.3, 0.3)], { nome: "Escrivaninha" });
       this.mesaG = g;
-      const tampo = M("#9C6B45", { r: 0.5 }), metal = M("#1F2937", { r: 0.4, m: 0.6 });
+      const tampo = MAD("#9C6B45", { r: 0.42, rep: [2, 1] }), metal = M("#1F2937", { r: 0.4, m: 0.6 });
       bloco(g, tampo, [5.75, 0.72, 0.02], [7.85, 0.77, 0.82], 0.02);
       for (const x of [5.82, 7.78]) { bloco(g, metal, [x - 0.03, 0, 0.08], [x + 0.03, 0.72, 0.14], 0.01); bloco(g, metal, [x - 0.03, 0, 0.7], [x + 0.03, 0.72, 0.76], 0.01); bloco(g, metal, [x - 0.03, 0.02, 0.08], [x + 0.03, 0.06, 0.76], 0.01); }
       bloco(g, M("#F1F5F9", { r: 0.5 }), [7.25, 0.18, 0.06], [7.7, 0.7, 0.62], 0.02); bloco(g, M("#CBD5E1"), [7.27, 0.42, 0.62], [7.68, 0.44, 0.63], 0.003);
@@ -1771,11 +1895,11 @@ class Escritorio {
     // mesa de sinuca + luz pendente
     { const sin = this.sinuca = { x0: 5.7, x1: 8.1, z0: 3.75, z1: 5.05, y: 0.8 };
       const g = this.movel("sinuca", [6.9, 4.4], [box(6.9, 4.4, 1.2, 0.65)], { nome: "Mesa de sinuca" }); this.sinucaG = g;
-      const madE = M("#5B3A1E", { r: 0.5 }), feltro = M("#15803D", { r: 0.95 });
+      const madE = MAD("#5B3A1E", { r: 0.45 }), feltro = TEC("#15803D", { r: 0.98, rep: [6, 4] });
       bloco(g, madE, [sin.x0 + 0.15, 0.12, sin.z0 + 0.15], [sin.x1 - 0.15, 0.72, sin.z1 - 0.15], 0.04);
       for (const x of [sin.x0 + 0.2, sin.x1 - 0.2]) for (const z of [sin.z0 + 0.2, sin.z1 - 0.2]) bloco(g, madE, [x - 0.07, 0, z - 0.07], [x + 0.07, 0.3, z + 0.07], 0.03);
       bloco(g, feltro, [sin.x0 + 0.08, 0.7, sin.z0 + 0.08], [sin.x1 - 0.08, 0.78, sin.z1 - 0.08], 0.01);
-      const borda = M("#7C4A21", { r: 0.45 });
+      const borda = MAD("#7C4A21", { r: 0.35, rep: [3, 1] });
       bloco(g, borda, [sin.x0, 0.68, sin.z0], [sin.x1, 0.84, sin.z0 + 0.1], 0.025); bloco(g, borda, [sin.x0, 0.68, sin.z1 - 0.1], [sin.x1, 0.84, sin.z1], 0.025);
       bloco(g, borda, [sin.x0, 0.68, sin.z0], [sin.x0 + 0.1, 0.84, sin.z1], 0.025); bloco(g, borda, [sin.x1 - 0.1, 0.68, sin.z0], [sin.x1, 0.84, sin.z1], 0.025);
       const pkt = M("#0B0B0B", { r: 0.9 });
@@ -1919,6 +2043,12 @@ class Escritorio {
     nv.visible = false; sc.add(nv);
     this.balao = tela(128, 128); this.balaoT = "";
     this.balaoS = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.balao.t, transparent: true, depthWrite: false })); this.balaoS.visible = false; sc.add(this.balaoS);
+    // sombras de contato embaixo de cada móvel e cantos escurecidos (dá peso e profundidade)
+    for (const id in this.moveis) { const m = this.moveis[id]; if (m.piso) continue; for (const bx of m.caixas) sombraContato(m.inner, bx.c[0], bx.c[1], bx.h[0], bx.h[1], bx.r || 0, id.startsWith("planta") ? 0.3 : 0.42); }
+    sombraContato(sc, 3.2, 0.27, 1.25, 0.24, 0, 0.35);
+    faixaAO(sc, W, 0.55, V(W / 2, 0.004, 0.27), new THREE.Euler(-PI / 2, 0, 0), 0.2); faixaAO(sc, D, 0.55, V(0.27, 0.004, D / 2), new THREE.Euler(-PI / 2, 0, PI / 2), 0.2);
+    faixaAO(sc, W, 0.5, V(W / 2, 0.25, 0.003), new THREE.Euler(0, 0, PI), 0.16); faixaAO(sc, D, 0.5, V(0.003, 0.25, D / 2), new THREE.Euler(0, PI / 2, PI), 0.16);
+    faixaAO(sc, 0.45, H, V(0.22, H / 2, 0.003), new THREE.Euler(0, 0, -PI / 2), 0.18); faixaAO(sc, 0.45, H, V(0.003, H / 2, 0.22), new THREE.Euler(0, PI / 2, PI / 2), 0.18);
     // contorno dos móveis no modo de edição
     const ct = tela(128, 128); ct.g.strokeStyle = "#FFFFFF"; ct.g.lineWidth = 7; rr(ct.g, 6, 6, 116, 116, 16); ct.g.stroke(); ct.g.fillStyle = "rgba(255,255,255,.14)"; ct.g.fill();
     this.contornoTex = ct.t;
@@ -1999,7 +2129,7 @@ class Escritorio {
     else { w = suave(t); a = mao[0].clone().lerp(jogo[0], w); c = mao[1].clone().lerp(jogo[1], w); }
     // durante a troca, o taco passa por cima da mesa (nunca por dentro)
     if (t > 0 && t < 1) { const sobe = Math.sin(PI * w) * 0.25; a.y += sobe; c.y += sobe; }
-    return { butt: a, tip: c, ax, apoioBridge: this.pto("sinuca", tb.tip[0], 0.8, tb.tip[1]).addScaledVector(ax, 0.26).setY(0.835) };
+    return { butt: a, tip: c, ax, apoioBridge: this.pto("sinuca", tb.tip[0], 0.8, tb.tip[1]).addScaledVector(ax, 0.26).setY(0.795), dedos: ax.clone().negate().setY(-0.15) };
   }
   aplicarTaco(p) {
     const T = this.tacoPontas(p); const taco = this.itens.taco; taco.visible = true;
@@ -2009,10 +2139,10 @@ class Escritorio {
     // mão direita no cabo: em pé segura alto, na tacada segura atrás
     const g = lerp(0.98, 0.5, cl(t)); const pg = T.butt.clone().addScaledVector(dir, g);
     p.ikR = [pg.x, pg.y, pg.z]; p.kR = Math.max(p.kR || 0, k);
-    if (t > 0.02) { const br = T.apoioBridge; p.ikL = [br.x, br.y, br.z]; p.kL = Math.max(p.kL || 0, cl(t)); }
+    if (t > 0.02) { const br = T.apoioBridge; p.ikL = [br.x, br.y, br.z]; p.kL = Math.max(p.kL || 0, cl(t)); p.oriL = [T.dedos.x, T.dedos.y, T.dedos.z]; }
     p.item = t > 0.5 ? "tacoShot" : t > -0.5 ? "tacoV" : p.item;
   }
-  teclado() { return { L: this.pto("mesa", 6.62, 0.83, 0.64), R: this.pto("mesa", 6.97, 0.83, 0.64) }; }
+  teclado() { return { L: this.pto("mesa", 6.62, 0.822, 0.645), R: this.pto("mesa", 6.97, 0.822, 0.645) }; }
   mundo(o) { return o.getWorldPosition(new THREE.Vector3()); }
   alvoCao() { return this.mundo(this.cao.cab).add(V(0, 0.05, 0)); }
   alvoArcade() { return this.arcMao.map((o) => this.mundo(o)); }
@@ -2181,7 +2311,8 @@ class Escritorio {
       this.sujo = false;
       // qualidade adaptativa: se o aparelho não acompanha, baixa a resolução aos poucos (nunca abaixo de 1×)
       this.ms = this.ms == null ? 16 : this.ms * 0.95 + Math.min(dtr * 1000, 100) * 0.05;
-      if (this.ms > 30 && this.pr > 1 && agora - (this.tPr || 0) > 3000) { this.tPr = agora; this.pr = Math.max(1, this.pr - 0.25); this.renderer.setPixelRatio(this.pr); this.redimensionar(); }
+      if (this.ms > 26 && this.ao && !window.__ofComAO && agora - (this.tPr || 0) > 3000) { this.tPr = agora; this.ao = false; this.ms = 18; }
+      else if (this.ms > 30 && this.pr > 1 && agora - (this.tPr || 0) > 3000) { this.tPr = agora; this.pr = Math.max(1, this.pr - 0.25); this.renderer.setPixelRatio(this.pr); this.redimensionar(); }
     } else this.tAnt = performance.now();
     this.raf = requestAnimationFrame(this.laco);
   }
@@ -2377,7 +2508,7 @@ class Escritorio {
     const k = window.__ofT != null ? 1 : 1 - Math.exp(-dt * 4);
     this.camAtual.pos.lerp(c.pos, k); this.camAtual.alvo.lerp(c.alvo, k); this.camAtual.fov = lerp(this.camAtual.fov, c.fov, k);
     this.cam.position.copy(this.camAtual.pos); this.cam.lookAt(this.camAtual.alvo); if (Math.abs(this.cam.fov - this.camAtual.fov) > 0.01) { this.cam.fov = this.camAtual.fov; this.cam.updateProjectionMatrix(); }
-    this.renderer.render(this.scene, this.cam);
+    if (this.ao && this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.cam);
   }
   /* ----- objetos de mão: cada um tem um lugar (casa) e passa para a mão no instante do toque ----- */
   get prop() {
@@ -2419,7 +2550,16 @@ class Escritorio {
     if (h === "joga") { const m = mao("R"); const k = cl(fxk); m.pos.y += 0.02 + 4 * k * (1 - k) * 0.55; return { pos: m.pos, quat: qy.clone().multiply(rx(k * 6 * PI)), vis: true }; }
     if (h === "cofrinho") { const m = mao("R"); const sl = this.alvoPorco(); const k = fase(tl, 0.9, 1.15); return { pos: m.pos.lerp(sl, k), quat: qy, vis: k < 1 }; }
     const lado = h === "L" ? "L" : "R";
-    if (n === "xicara") return naMao(lado, [0, -0.045, 0.06], rx(-(p.gole || 0) * 1.25));
+    if (n === "xicara") {
+      // a alça passa por dentro dos dedos e o corpo da xícara fica do lado da palma, sempre em pé
+      const m = mao(lado); const palma = V(lado === "R" ? -1 : 1, 0, 0).applyQuaternion(m.quat).setY(0);
+      if (palma.lengthSq() < 1e-4) palma.set(Math.cos(yaw), 0, -Math.sin(yaw)).multiplyScalar(lado === "R" ? -1 : 1); palma.normalize();
+      const qYaw = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.atan2(palma.z, -palma.x));
+      const rosto = this.mundo(b.head).sub(m.pos).setY(0); const eixo = new THREE.Vector3().crossVectors(V(0, 1, 0), rosto.lengthSq() > 1e-4 ? rosto.normalize() : V(Math.sin(yaw), 0, Math.cos(yaw)));
+      const quat = new THREE.Quaternion().setFromAxisAngle(eixo.normalize(), suave(p.gole || 0) * 1.75).multiply(qYaw);
+      const alca = V(0.053, 0.05, 0).applyQuaternion(quat);
+      return { pos: m.pos.clone().sub(alca), quat, vis: true };
+    }
     if (n === "celular") return naMao(lado, [0, 0.035, 0.03], ry(PI).multiply(rx(-0.45)));
     if (n === "dardo") return naMao(lado, [0, -0.01, 0.03], rx(-PI / 2 + 0.25));
     if (n === "aljava") return naMao(lado, [0, -0.01, 0.035], rx(-PI / 2 + 0.3));
@@ -2632,6 +2772,7 @@ class Escritorio {
   redimensionar() {
     const w = this.el.clientWidth || 600; const h = Math.round(cl(w < 640 ? w * 0.82 : w * 0.6, 300, 660));
     this.renderer.setSize(w, h, false); this.renderer.domElement.style.width = "100%"; this.renderer.domElement.style.height = h + "px";
+    if (this.composer) { this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(w, h); }
     this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); this.sujo = true;
   }
   // acha distância e centro para a sala inteira caber na tela
