@@ -893,6 +893,9 @@
     const mov = rows.filter((r) => r.vdBRL != null && r.valor).map((r) => ({ r, imp: r.valor - r.valor / (1 + r.vdBRL / 100) }));
     const altas = mov.filter((x) => x.r.vdBRL > 0).sort((a, b) => b.r.vdBRL - a.r.vdBRL).slice(0, 3);
     const baixas = mov.filter((x) => x.r.vdBRL < 0).sort((a, b) => a.r.vdBRL - b.r.vdBRL).slice(0, 3);
+    // Soma só das perdas e só dos ganhos (a renda fixa conta como ganho): perdas + ganhos = variação do dia
+    let perdaT = 0, ganhoT = rfDia > 0 ? rfDia : 0, perdaN = 0, ganhoN = 0;
+    mov.forEach((x) => { if (x.imp < 0) { perdaT += x.imp; perdaN++; } else if (x.imp > 0) { ganhoT += x.imp; ganhoN++; } });
     const movHtml = (x) => `<button type="button" class="dia-mov" data-emp="${esc(x.r.t)}">${logoHtml(x.r.t)}<span class="tk">${esc(x.r.t)}</span><b class="${cls(x.r.vdBRL)}">${esc(pct(x.r.vdBRL))}</b><small class="${cls(x.imp)}">${esc(sinal(x.imp, brl))}${x.r.moeda === "USD" && x.r.valorNat != null && x.r.vd != null ? ` <span class="usd-d" title="Variação do ativo em dólar, sem o câmbio. Os valores em R$ ao lado já incluem a variação do dólar hoje.">${esc(sinal(x.r.valorNat - x.r.valorNat / (1 + x.r.vd / 100), (v) => "US$ " + num(v, v < 0.01 ? 4 : 2)))}</span>` : ""}</small></button>`;
     // O que pede atenção
     const at = [];
@@ -947,6 +950,7 @@
           <span class="label">${util ? "Hoje" : "Último pregão"}</span>
           <div class="dia-tit">Seu patrimônio ${dia >= 0 ? "sobe" : "cai"} <b class="${cls(dia)}">${esc(pct(pDia))}</b> <span class="${cls(dia)}">(${esc(sinal(dia, brl))})</span></div>
           <p class="hint" style="margin:4px 0 0">${comp.join(" · ")}${total ? ` · patrimônio de ${esc(brl(total))}` : ""}</p>
+          ${(perdaT || ganhoT) ? `<div class="dia-pg"><span class="pg down"><small>Perdas do dia</small><b>${perdaT ? esc(sinal(perdaT, brl)) : esc(brl(0))}</b><em>${perdaN ? perdaN + (perdaN === 1 ? " ativo" : " ativos") : "nenhum ativo"}</em></span><span class="pg up"><small>Ganhos do dia</small><b>${esc(sinal(ganhoT, brl))}</b><em>${ganhoN ? ganhoN + (ganhoN === 1 ? " ativo" : " ativos") : "nenhum ativo"}${rfDia > 0 ? " + renda fixa" : ""}</em></span></div>` : ""}
         </div>
         <div class="dia-ctx">${ctx.map((c) => `<span>${c}</span>`).join("")}</div>
       </div>
