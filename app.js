@@ -893,7 +893,7 @@
     const mov = rows.filter((r) => r.vdBRL != null && r.valor).map((r) => ({ r, imp: r.valor - r.valor / (1 + r.vdBRL / 100) }));
     const altas = mov.filter((x) => x.r.vdBRL > 0).sort((a, b) => b.r.vdBRL - a.r.vdBRL).slice(0, 3);
     const baixas = mov.filter((x) => x.r.vdBRL < 0).sort((a, b) => a.r.vdBRL - b.r.vdBRL).slice(0, 3);
-    const movHtml = (x) => `<button type="button" class="dia-mov" data-emp="${esc(x.r.t)}">${logoHtml(x.r.t)}<span class="tk">${esc(x.r.t)}</span><b class="${cls(x.r.vdBRL)}">${esc(pct(x.r.vdBRL))}</b><small class="${cls(x.imp)}">${esc(sinal(x.imp, brl))}</small></button>`;
+    const movHtml = (x) => `<button type="button" class="dia-mov" data-emp="${esc(x.r.t)}">${logoHtml(x.r.t)}<span class="tk">${esc(x.r.t)}</span><b class="${cls(x.r.vdBRL)}">${esc(pct(x.r.vdBRL))}</b><small class="${cls(x.imp)}">${esc(sinal(x.imp, brl))}${x.r.moeda === "USD" && x.r.valorNat != null && x.r.vd != null ? ` <span class="usd-d" title="Variação do ativo em dólar, sem o câmbio. Os valores em R$ ao lado já incluem a variação do dólar hoje.">${esc(sinal(x.r.valorNat - x.r.valorNat / (1 + x.r.vd / 100), (v) => "US$ " + num(v, v < 0.01 ? 4 : 2)))}</span>` : ""}</small></button>`;
     // O que pede atenção
     const at = [];
     const frase = (txt) => (txt || "").replace(/^(Os sinais estão favoráveis|Sem motivo forte para mexer|Alguns sinais pedem atenção|Vários sinais negativos ao mesmo tempo)\.\s*/, "").replace(/^Hoje [^.]*\.\s*/, "").split(". ")[0].replace(/\.$/, "").trim();
