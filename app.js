@@ -285,9 +285,9 @@
   }
   function parar() { vivoParar(); if (canal) { sb.removeChannel(canal); canal = null; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
   async function carregarCarteira() {
-    const { data, error } = await sb.from("carteira").select("id,ticker,qtd,pm").order("criado_em");
+    const { data, error } = await sb.from("carteira").select("id,ticker,qtd,pm,custo_brl").order("criado_em");
     if (error) { toast("Não foi possível carregar sua carteira. Recarregue a página."); return; }
-    S.carteira = (data || []).map((p) => ({ ...p, qtd: Number(p.qtd), pm: p.pm != null ? Number(p.pm) : null }));
+    S.carteira = (data || []).map((p) => ({ ...p, qtd: Number(p.qtd), pm: p.pm != null ? Number(p.pm) : null, custo_brl: p.custo_brl != null ? Number(p.custo_brl) : null }));
   }
   async function carregarCotacoes() {
     const cols = "ticker,nome,preco,var_dia,volume,setor,setor_macro,valor_mercado_mi,classe,moeda,bolsa,logo,extra,atualizado_em";
@@ -650,13 +650,15 @@
         const b = cel[0].querySelector("b"), sm = cel[0].querySelector("small"), prev = S.prevPx[r.t];
         if (prev != null && prev !== r.preco) { b.classList.remove("tick-up", "tick-down"); void b.offsetWidth; b.classList.add(r.preco > prev ? "tick-up" : "tick-down"); }
         b.textContent = money(r.preco, r.moeda); if (sm && r.vd != null) { sm.textContent = pct(r.vd) + " hoje"; sm.className = cls(r.vd); }
-        const bv = cel[1].querySelector("b"); if (bv) bv.textContent = brl(r.valor);
-        const sv = cel[1].querySelector("small.mut"); if (sv && r.moeda === "USD" && r.valorNat != null) sv.textContent = usd(r.valorNat);
-        if (r.resRS != null && r.res != null) {
-          const rs = sinal(r.resRS, brl), pc = pct(r.res);
-          const mr = cel[1].querySelector(".m-res"); if (mr) { mr.textContent = rs + " · " + pc; mr.className = "m-res " + cls(r.resRS); }
+        const eU = r.moeda === "USD" && r.valorNat != null;
+        const bv = cel[1].querySelector("b"); if (bv) bv.textContent = eU ? usd(r.valorNat) : brl(r.valor);
+        const sv = cel[1].querySelector("small.eq"); if (sv && eU) sv.textContent = "≈ " + brl(r.valor);
+        if (r.resRS != null) {
+          const uR = (v) => "US$ " + num(v, Math.abs(v) < 0.01 && v !== 0 ? 4 : 2);
+          const rs = eU ? sinal(r.resNat, uR) : sinal(r.resRS, brl), pc = eU ? "≈ " + sinal(r.resRS, brl) : (r.res != null ? pct(r.res) : ""), k = eU ? r.resNat : r.resRS;
+          const mr = cel[1].querySelector(".m-res"); if (mr) { mr.textContent = rs + " · " + pc; mr.className = "m-res " + cls(k); }
           const rb = cel[2] && cel[2].querySelector("b"), rsm = cel[2] && cel[2].querySelector("small");
-          if (rb) { rb.textContent = rs; rb.className = cls(r.resRS); } if (rsm) { rsm.textContent = pc; rsm.className = cls(r.res); }
+          if (rb) { rb.textContent = rs; rb.className = cls(k); } if (rsm) { rsm.textContent = pc; rsm.className = cls(eU ? r.resRS : r.res); }
         }
         S.prevPx[r.t] = r.preco;
       });
@@ -688,8 +690,13 @@
       const vdBRL = vd != null ? ((1 + vd / 100) * (1 + (moeda === "USD" ? fxVar() : 0) / 100) - 1) * 100 : null;
       const res = (preco != null && p.pm) ? (preco / p.pm - 1) * 100 : null;
       // Resultado desde a compra em R$ (ativo em dólar: ganho em dólar x dólar de hoje)
-      const resRS = (valorNat != null && p.pm) ? paraBRL(valorNat - p.pm * qtd, moeda) : null;
-      return { p, t, qtd, classe, moeda, resRS, a: S.analises[t] || null, preco, vd, vdBRL, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
+      // Ativo em dólar: se você informou quanto pagou em R$ (com IOF e taxas), o resultado em R$ usa isso e bate com o do banco;
+      // sem isso, o custo é convertido pelo dólar de hoje.
+      const custoRS = p.pm ? (moeda === "USD" ? (p.custo_brl || paraBRL(p.pm * qtd, "USD")) : p.pm * qtd) : null;
+      const resRS = (valor != null && custoRS) ? valor - custoRS : null;
+      const resNat = (valorNat != null && p.pm) ? valorNat - p.pm * qtd : null;
+      const resPctRS = resRS != null ? resRS / custoRS * 100 : null;
+      return { p, t, qtd, classe, moeda, resRS, resNat, resPctRS, custoRS, a: S.analises[t] || null, preco, vd, vdBRL, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
     });
     rows.forEach((r) => { r.peso = (r.valor && patr) ? r.valor / patr : 0; });
     rows.sort((x, y) => (y.valor || 0) - (x.valor || 0));
@@ -700,7 +707,7 @@
     rows.forEach((r) => {
       if (r.valor == null) return; temPreco = true;
       if (r.vdBRL != null) dia += r.valor - r.valor / (1 + r.vdBRL / 100);
-      if (r.p.pm) { custo += paraBRL(r.p.pm * r.qtd, r.moeda) || 0; base += r.valor; }
+      if (r.p.pm && r.custoRS) { custo += r.custoRS; base += r.valor; }
       const e = S.empresas[r.t]; const p12 = e && e.fundamentos && e.fundamentos.proventos12m;
       if (p12 && r.moeda === "BRL") { prov += p12 * r.qtd; temProv = true; }
       else if (r.moeda === "USD" && e && e.fundamentos && e.fundamentos.ind && e.fundamentos.ind.dy) { prov += r.valor * e.fundamentos.ind.dy / 100 * 0.7; temProv = true; }
@@ -922,6 +929,8 @@
     const altas = mov.filter((x) => x.r.vdBRL > 0).sort((a, b) => b.r.vdBRL - a.r.vdBRL).slice(0, 3);
     const baixas = mov.filter((x) => x.r.vdBRL < 0).sort((a, b) => a.r.vdBRL - b.r.vdBRL).slice(0, 3);
     // Resultado acumulado: valor de hoje menos o que foi investido (só ativos com preço médio informado; renda fixa entra pelo valor aplicado)
+    const uR = rows.filter((r) => r.moeda === "USD" && r.resNat != null && r.resRS != null);
+    const usdNota = uR.length ? `em dólar: ${sinal(uR.reduce((a, r) => a + r.resNat, 0), (v) => "US$ " + num(v, 2))} (≈ ${sinal(uR.reduce((a, r) => a + r.resRS, 0), brl)})` : "";
     const resCusto = T.custo + (RF ? RF.apl : 0), resBase = T.base + (RF ? RF.bruto : 0), resTot = resBase - resCusto, semPm = rows.filter((r) => r.valor != null && !r.p.pm).length;
     const movHtml = (x) => `<button type="button" class="dia-mov" data-emp="${esc(x.r.t)}">${logoHtml(x.r.t)}<span class="tk">${esc(x.r.t)}</span><b class="${cls(x.r.vdBRL)}">${esc(pct(x.r.vdBRL))}</b><small class="${cls(x.imp)}">${esc(sinal(x.imp, brl))}${x.r.moeda === "USD" && x.r.valorNat != null && x.r.vd != null ? ` <span class="usd-d" title="O valor em R$ junta a variação do ativo e a do dólar hoje. Em dólar, o ativo variou só o valor com US$.">${esc(sinal(x.r.valorNat - x.r.valorNat / (1 + x.r.vd / 100), (v) => "US$ " + num(v, Math.abs(v) < 0.01 ? 4 : 2)))} no ativo${fxVar() ? ` · dólar ${esc(pct(fxVar()))}` : ""}</span>` : ""}</small></button>`;
     // O que pede atenção
@@ -977,7 +986,7 @@
           <span class="label">${util ? "Hoje" : "Último pregão"}</span>
           <div class="dia-tit">Seu patrimônio ${dia >= 0 ? "sobe" : "cai"} <b class="${cls(dia)}">${esc(pct(pDia))}</b> <span class="${cls(dia)}">(${esc(sinal(dia, brl))})</span></div>
           <p class="hint" style="margin:4px 0 0">${comp.join(" · ")}${total ? ` · patrimônio de ${esc(brl(total))}` : ""}</p>
-          <div class="dia-pg"><span class="pg ${dia >= 0 ? "up" : "down"}"><small>${dia >= 0 ? "Lucro do dia" : "Perda do dia"}</small><b>${esc(sinal(dia, brl))} <i>${esc(pct(pDia))}</i></b><em>${util ? "hoje" : "último pregão"}, ativos${rfDia > 0 ? " e renda fixa" : ""}</em></span>${resCusto ? `<span class="pg ${resTot >= 0 ? "up" : "down"}"><small>${resTot >= 0 ? "Lucro total" : "Prejuízo total"}</small><b>${esc(sinal(resTot, brl))} <i>${esc(pct((resBase / resCusto - 1) * 100))}</i></b><em>desde a compra${semPm ? ` · ${semPm} sem preço médio fora` : ""}</em></span>` : ""}</div>
+          <div class="dia-pg"><span class="pg ${dia >= 0 ? "up" : "down"}"><small>${dia >= 0 ? "Lucro do dia" : "Perda do dia"}</small><b>${esc(sinal(dia, brl))} <i>${esc(pct(pDia))}</i></b><em>${util ? "hoje" : "último pregão"}, ativos${rfDia > 0 ? " e renda fixa" : ""}</em></span>${resCusto ? `<span class="pg ${resTot >= 0 ? "up" : "down"}"><small>${resTot >= 0 ? "Lucro total" : "Prejuízo total"}</small><b>${esc(sinal(resTot, brl))} <i>${esc(pct((resBase / resCusto - 1) * 100))}</i></b><em>desde a compra${usdNota ? ` · ${esc(usdNota)}` : ""}${semPm ? ` · ${semPm} sem preço médio fora` : ""}</em></span>` : ""}</div>
         </div>
         <div class="dia-ctx">${ctx.map((c) => `<span>${c}</span>`).join("")}</div>
       </div>
@@ -1112,7 +1121,7 @@
       const detail = !open ? "" : `<div class="pos-detail two">
         <div class="pd-col">
           ${a ? `<p class="motivo">${esc(a.motivo || "")}</p>` : `<p class="neutro">A análise de ${esc(t)} está sendo preparada e aparece aqui em instantes.</p>`}
-          <div class="meta"><span>Quantidade<b>${fmtQtd(r.qtd)}</b></span><span>Preço médio<b>${p.pm ? money(p.pm, moeda) : "—"}</b></span><span>Hoje<b class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) : "—"}</b></span>${p.pm && valorNat != null ? (() => { const rs = valorNat - p.pm * r.qtd, f = (v) => moeda === "USD" ? "US$ " + num(v, 2) : brl(v); return `<span>Resultado<b class="${cls(rs)}">${esc(sinal(rs, f))} <small>${esc(pct((preco / p.pm - 1) * 100))}</small></b></span>`; })() : ""}<span>Peso<b>${num(r.peso * 100, 1)}%</b></span>${moeda === "USD" ? `<span>Em dólar<b>${usd(valorNat)}</b></span>` : ""}<span>${classe === "fii" ? "Segmento" : "Setor"}<b style="font-family:var(--body);font-size:12.5px">${esc(classe === "fii" ? r.seg || "—" : classe === "etf" || classe === "etf_ext" ? "ETF" : r.setor)}</b></span></div>
+          <div class="meta"><span>Quantidade<b>${fmtQtd(r.qtd)}</b></span><span>Preço médio<b>${p.pm ? money(p.pm, moeda) : "—"}</b></span><span>Hoje<b class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) : "—"}</b></span>${p.pm && valorNat != null ? (() => { const rs = r.resNat, f = (v) => moeda === "USD" ? "US$ " + num(v, 2) : brl(v); return `<span>Resultado<b class="${cls(rs)}">${esc(sinal(rs, f))} <small>${esc(pct((preco / p.pm - 1) * 100))}</small></b></span>${moeda === "USD" && r.resRS != null ? `<span>Resultado em R$<b class="${cls(r.resRS)}">${esc(sinal(r.resRS, brl))} <small>${esc(pct(r.resPctRS))}</small></b></span><span>Custo em R$<b>${esc(brl(r.custoRS))}</b><small class="mut">${p.custo_brl ? "valor que você informou" : "dólar de hoje; edite e informe o que pagou"}</small></span>` : ""}`; })() : ""}<span>Peso<b>${num(r.peso * 100, 1)}%</b></span><span>${classe === "fii" ? "Segmento" : "Setor"}<b style="font-family:var(--body);font-size:12.5px">${esc(classe === "fii" ? r.seg || "—" : classe === "etf" || classe === "etf_ext" ? "ETF" : r.setor)}</b></span></div>
           <div class="acts"><button type="button" class="btn sm primary" data-emp="${esc(t)}">Ver ${classe === "fii" || classe === "etf" || classe === "etf_ext" ? "fundo" : classe === "cripto" ? "cripto" : "empresa"}</button>${nNews ? `<button type="button" class="btn sm" data-news="${esc(t)}">Ver ${nNews} ${nNews === 1 ? "notícia" : "notícias"}</button>` : ""}<button type="button" class="btn sm" data-edit="${esc(t)}">Editar</button>
           ${S.confirmDel === t ? `<button type="button" class="btn sm danger" data-del-ok="${esc(t)}">Confirmar remoção</button><button type="button" class="btn ghost sm" data-del-no="1">Cancelar</button>` : `<button type="button" class="btn ghost sm" data-del="${esc(t)}">Remover</button>`}</div>
           ${a && a.atualizado_em ? `<span class="hint">Sinal recalculado ${esc(ago(a.atualizado_em))}${ind && ind.indice && ind.indice !== "Ibovespa" ? " · comparado com o " + esc(ind.indice) : ""}</span>` : ""}
@@ -1123,14 +1132,17 @@
           ${temSent ? sentHtml(sentDe(t), preco, moeda) : ""}
         </div>
       </div>`;
-      const resTxt = r.resRS != null ? `${sinal(r.resRS, brl)}` : null;
-      const resPct = res != null ? pct(res) : "";
-      const sub = moeda === "USD" && valorNat != null ? usd(valorNat) : `${fmtQtd(r.qtd)} ${un}`;
+      const eUSD = moeda === "USD" && valorNat != null;
+      const usdR = (v) => "US$ " + num(v, Math.abs(v) < 0.01 && v !== 0 ? 4 : 2);
+      const resTxt = r.resRS != null ? (eUSD ? sinal(r.resNat, usdR) : sinal(r.resRS, brl)) : null;
+      const resPct = eUSD ? (r.resRS != null ? "≈ " + sinal(r.resRS, brl) : "") : (res != null ? pct(res) : "");
+      const mainV = eUSD ? usd(valorNat) : brl(valor);
+      const sub = eUSD ? "≈ " + brl(valor) : `${fmtQtd(r.qtd)} ${un}`;
       return `<div class="pos${open ? " open" : ""}" data-cl="${classe}"><button type="button" class="pos-row" data-open="${esc(t)}" aria-expanded="${open}">
         <span class="pos-id">${logoHtml(t)}<span class="tkw"><span class="tk">${esc(t)}</span><span class="chev" aria-hidden="true"></span></span><span class="nm">${esc(nome)}</span></span>
         <span class="cell c-preco"><b class="${tick}">${money(preco, moeda)}</b><small class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) + " hoje" : ""}</small></span>
-        <span class="cell"><b>${brl(valor)}</b><small class="mut">${esc(sub)}</small>${resTxt ? `<small class="m-res ${cls(r.resRS)}">${esc(resTxt)} · ${esc(resPct)}</small>` : ""}</span>
-        <span class="cell c-res">${resTxt ? `<b class="${cls(r.resRS)}">${esc(resTxt)}</b><small class="${cls(res)}">${esc(resPct)}</small>` : `<b class="mut">—</b><small class="mut">sem preço médio</small>`}</span>
+        <span class="cell"><b>${esc(mainV)}</b><small class="${eUSD ? "eq" : "mut"}">${esc(sub)}</small>${resTxt ? `<small class="m-res ${cls(eUSD ? r.resNat : r.resRS)}">${esc(resTxt)} · ${esc(resPct)}</small>` : ""}</span>
+        <span class="cell c-res">${resTxt ? `<b class="${cls(eUSD ? r.resNat : r.resRS)}">${esc(resTxt)}</b><small class="${cls(eUSD ? r.resRS : res)}">${esc(resPct)}</small>` : `<b class="mut">—</b><small class="mut">sem preço médio</small>`}</span>
         <span class="c-sig">${sn === "pendente" ? "" : `<span class="pill s-${sn}">${SINAL[sn]}</span>`}</span></button>${detail}</div>`;
     }).join("") || `<p class="skel" style="padding:12px">Nenhum ativo desta classe.</p>`;
     rows.forEach((r) => { if (r.preco != null) S.prevPx[r.t] = r.preco; });
@@ -1232,7 +1244,7 @@
     const b = e.target.closest("button"); if (!b || b.dataset.emp) return;
     if (b.dataset.open) { S.open = S.open === b.dataset.open ? null : b.dataset.open; S.confirmDel = null; renderCarteira(); return; }
     if (b.dataset.news) { verNoticias(b.dataset.news); return; }
-    if (b.dataset.edit) { const p = S.carteira.find((x) => x.ticker === b.dataset.edit); if (p) { $("#addbox").open = true; $("#f-ticker").value = p.ticker; $("#f-qtd").value = p.qtd; $("#f-pm").value = p.pm || ""; ajustarForm(); $("#form-add").scrollIntoView({ behavior: reduz ? "auto" : "smooth", block: "center" }); setTimeout(() => $("#f-qtd").focus({ preventScroll: true }), 300); } return; }
+    if (b.dataset.edit) { const p = S.carteira.find((x) => x.ticker === b.dataset.edit); if (p) { $("#addbox").open = true; $("#f-ticker").value = p.ticker; $("#f-qtd").value = p.qtd; $("#f-pm").value = p.pm || ""; $("#f-custo").value = p.custo_brl || ""; ajustarForm(); $("#form-add").scrollIntoView({ behavior: reduz ? "auto" : "smooth", block: "center" }); setTimeout(() => $("#f-qtd").focus({ preventScroll: true }), 300); } return; }
     if (b.dataset.del) { S.confirmDel = b.dataset.del; renderCarteira(); return; }
     if (b.dataset.delNo) { S.confirmDel = null; renderCarteira(); return; }
     if (b.dataset.delOk) {
@@ -1256,6 +1268,7 @@
     $("#f-submit").textContent = S.carteira.some((x) => x.ticker === t) ? "Salvar" : "Adicionar";
     const usdT = t && (S.cotMap[t] ? S.cotMap[t].moeda === "USD" : (ATIVO_RE.test(t) && !TICKER_RE.test(t) && t.length >= 1 && /^[A-Z.]+$/.test(t)));
     $("#f-pm-lbl").textContent = usdT ? "Preço médio (US$)" : "Preço médio (R$)";
+    $("#f-custo-w").hidden = !usdT;
     const c = S.cotMap[t];
     $("#f-qtd").placeholder = c && c.classe === "cripto" ? "0,0025" : c && ext(c.classe) ? "0,35" : "100";
   }
@@ -1264,6 +1277,7 @@
     e.preventDefault();
     let t = normTicker($("#f-ticker").value); const qRaw = String($("#f-qtd").value).replace(",", "."), pmRaw = String($("#f-pm").value).trim().replace(",", ".");
     const q = Number(qRaw), pm = pmRaw ? Number(pmRaw) : null;
+    const cuRaw = String($("#f-custo").value).trim().replace(",", "."), custo = cuRaw ? Number(cuRaw) : null;
     if (!ATIVO_RE.test(t)) return msg("Use o código do ativo, como PETR4, HGLG11, BOVA11, VOO ou BTC.", false);
     if (!S.cotMap[t]) {
       if (TICKER_RE.test(t)) return msg("Não encontrei " + t + " entre os ativos negociados na B3. Confira o código em Explorar ativos.", false);
@@ -1280,9 +1294,10 @@
     if (!frac && !Number.isInteger(q)) return msg("Na B3 a quantidade é um número inteiro de " + CLS[c.classe].un + ".", false);
     if (frac && Math.round(q * 1e8) / 1e8 !== q) return msg("Use no máximo 8 casas decimais na quantidade.", false);
     if (pm != null && !(pm > 0 && pm <= 1e7)) return msg("O preço médio precisa ser um valor " + (fora ? "em dólares, como 512,30." : "em reais, como 38,50."), false);
+    if (fora && custo != null && !(custo > 0 && custo < 1e9)) return msg("O total pago em reais precisa ser maior que zero, como 98,40.", false);
     const existe = S.carteira.some((x) => x.ticker === t);
     $("#f-submit").disabled = true;
-    const { error } = await sb.from("carteira").upsert({ ticker: t, qtd: q, pm: pm, user_id: S.user.id }, { onConflict: "user_id,ticker" });
+    const { error } = await sb.from("carteira").upsert({ ticker: t, qtd: q, pm: pm, custo_brl: fora && pm != null ? custo : null, user_id: S.user.id }, { onConflict: "user_id,ticker" });
     $("#f-submit").disabled = false;
     if (error) return msg(/Limite de 200/.test(error.message || "") ? "Sua carteira chegou ao limite de 200 ativos." : /check/i.test(error.message || "") ? "O banco ainda não aceita esse tipo de ativo. Tente de novo em alguns minutos." : "Não foi possível salvar agora. Tente de novo em instantes.", false);
     $("#form-add").reset(); ajustarForm();

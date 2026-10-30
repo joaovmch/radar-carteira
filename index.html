@@ -342,6 +342,7 @@ details.fat[open] .fatores{animation:rise .35s var(--ease)}
 .cell small.mut,.cell b.mut{color:var(--muted)}
 .tkw{min-width:0;white-space:nowrap}
 .cell .m-res{display:none}
+.cell small.eq{color:var(--muted)}
 .c-sent{text-align:center}
 .c-sig{text-align:right}
 @media (max-width:760px){.pos-head,.pos-row{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}.pos-row .pos-id{grid-row:1 / span 2}.pos-row .cell,.pos-row .c-sig{grid-column:2}.pos-head span:last-child,.pos-head .c-res{display:none}.c-sig .pill{font-size:11px;padding:2px 8px}.c-preco,.c-sent,.c-res{display:none}.cell .m-res{display:block}.cell small.mut{display:none}.pos-id{grid-template-columns:32px minmax(0,1fr)}.pos-id .lg{width:32px;height:32px}.pos-row .tk{white-space:nowrap}}
@@ -1291,8 +1292,9 @@ button .ic,.btn .ic{margin:0}
             <label class="f-tk">Código<input id="f-ticker" placeholder="PETR4, HGLG11, VOO, BTC" maxlength="10" list="dl-tickers" required><datalist id="dl-tickers"></datalist></label>
             <label>Quantidade<input id="f-qtd" type="number" min="0" step="any" inputmode="decimal" placeholder="100" required></label>
             <label><span id="f-pm-lbl">Preço médio (R$)</span><input id="f-pm" type="number" min="0" step="any" inputmode="decimal" placeholder="opcional"></label>
+            <label id="f-custo-w" hidden><span>Total pago em R$ (opcional)</span><input id="f-custo" type="number" min="0" step="any" inputmode="decimal" placeholder="com IOF e taxas"></label>
             <div class="f-btn"><button class="btn primary" id="f-submit" type="submit" style="width:100%">Adicionar</button></div>
-            <p class="f-hint" id="f-hint">Aceita ações e FIIs da B3, ETFs (BOVA11, IVVB11), BDRs, ações ou ETFs dos EUA (VOO, AAPL) e criptomoedas (BTC, ETH, SOL). Para ativos dos EUA, use frações se tiver (ex.: 0,35) e o preço médio em dólar; para cripto, a quantidade de moedas (ex.: 0,0025) e o preço médio em reais.</p>
+            <p class="f-hint" id="f-hint">Aceita ações e FIIs da B3, ETFs (BOVA11, IVVB11), BDRs, ações ou ETFs dos EUA (VOO, AAPL) e criptomoedas (BTC, ETH, SOL). Para ativos dos EUA, use frações se tiver (ex.: 0,35) e o preço médio em dólar; informe também o total pago em reais (com IOF e taxas) para o resultado em R$ bater com o do seu banco; para cripto, a quantidade de moedas (ex.: 0,0025) e o preço médio em reais.</p>
             <p class="form-msg" id="form-msg" role="status"></p>
           </form>
         </details>
@@ -1504,6 +1506,6 @@ button .ic,.btn .ic{margin:0}
 <script src="vendor/supabase-js-2.45.4.js"></script>
 <script src="icones.js?v=6"></script>
 <script src="escritorio.js?v=3d14"></script>
-<script src="app.js?v=20261103x"></script>
+<script src="app.js?v=20261103z"></script>
 </body>
 </html>
