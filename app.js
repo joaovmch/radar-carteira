@@ -45,7 +45,7 @@
   }
   const fresco = (iso, dias) => iso && Date.now() - Date.parse(iso) < dias * 864e5;
   function toast(t) {
-    const r = $("#toast-root"); r.innerHTML = ""; const d = document.createElement("div"); d.className = "toast"; d.setAttribute("role", "status"); d.textContent = t; r.appendChild(d);
+    const r = $("#toast-root"); r.innerHTML = ""; const d = document.createElement("div"); d.className = "toast"; d.textContent = t; r.appendChild(d);
     clearTimeout(toast._t); toast._t = setTimeout(() => { d.remove(); }, 6000);
   }
   async function radar(body) {
@@ -171,6 +171,27 @@
   }
   pregao(); setInterval(pregao, 60000);
 
+  /* ---------- Offline e foco nas gavetas ---------- */
+  // Service worker sempre registrado (antes, só ao ligar as notificações): sem internet, o app abre a última versão guardada
+  if ("serviceWorker" in navigator && window.isSecureContext) window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+  // Aberto já sem internet, a carteira não carrega (os dados não ficam guardados no aparelho); caindo no meio do uso, o que está na tela fica
+  const avisoRede = (inicio) => { if (!navigator.onLine) toast(inicio === true ? "Sem internet: o app abriu, mas a carteira e as cotações só carregam quando a conexão voltar." : "Sem internet: os valores na tela são os da última atualização. Eles voltam a se atualizar quando a conexão voltar."); };
+  window.addEventListener("offline", avisoRede);
+  window.addEventListener("online", async () => { toast("Conexão de volta. Atualizando…"); if (S.user) { await Promise.all([carregarCarteira(), carregarCotacoes(), carregarPainel(), carregarRF()]); await carregarEmpresas(); renderAll(); } });
+  if (!navigator.onLine) setTimeout(() => avisoRede(true), 1500);
+  // Tab e Shift+Tab ficam dentro da gaveta aberta (empresa, perfil, notificações), como num diálogo
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    const abertas = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].filter((d) => d.offsetParent !== null || d.getClientRects().length);
+    const dlg = abertas[abertas.length - 1]; if (!dlg) return;
+    const foco = [...dlg.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter((el) => el.getClientRects().length);
+    if (!foco.length) return;
+    const pri = foco[0], ult = foco[foco.length - 1];
+    if (!dlg.contains(document.activeElement)) { e.preventDefault(); pri.focus(); }
+    else if (e.shiftKey && document.activeElement === pri) { e.preventDefault(); ult.focus(); }
+    else if (!e.shiftKey && document.activeElement === ult) { e.preventDefault(); pri.focus(); }
+  });
+
   /* ---------- Login ---------- */
   function setAuthMode(signup) {
     S.signup = signup;
@@ -290,20 +311,33 @@
     await Promise.all([carregarCarteira().then(carregarEmpresas), carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarRF(), carregarPerfil()]);
     renderAll();
     if (canal) sb.removeChannel(canal);
-    let tCot = null, tAn = null, tEmp = null;
     canal = sb.channel("radar")
-      .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes" }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoes(); renderAll(); if (S.emp) cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); }, 2500); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "analises" }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderDia(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "empresas" }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderDia(); renderEmpresas(); }, 4000); })
       .on("postgres_changes", { event: "*", schema: "public", table: "painel" }, async () => { await carregarPainel(); renderMercado(); renderHero(); renderCarteira(); renderRecs(); renderDiv(); renderNews(); renderTape(); renderRF(); renderDia(); renderEscritorio(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "carteira" }, async () => { await carregarCarteira(); await carregarEmpresas(); renderAll(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "carteira" }, async () => { await carregarCarteira(); await Promise.all([carregarEmpresas(), carregarCotacoesCarteira()]); renderAll(); assinarAtivos(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "renda_fixa" }, async () => { await carregarRF(); aposRF(); })
       .subscribe();
+    assinarAtivos();
     abrirPeloEndereco();
     carregarCambio(true);
     vivoIniciar();
   }
-  function parar() { vivoParar(); if (canal) { sb.removeChannel(canal); canal = null; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
+  // Cotações, sinais e perfis em tempo real só dos ativos da carteira: antes, cada atualização das ~2 mil cotações
+  // mandava um evento por linha para todos os aparelhos e recarregava a tabela inteira.
+  let canalAtivos = null, assinados = "";
+  function assinarAtivos() {
+    const tk = [...new Set(S.carteira.map((p) => p.ticker))].filter((t) => ATIVO_RE.test(t)).sort();
+    const chave = tk.join(","); if (canalAtivos && chave === assinados) return;
+    if (canalAtivos) { sb.removeChannel(canalAtivos); canalAtivos = null; }
+    assinados = chave; if (!tk.length || tk.length > 100) return; // sem filtro possível: fica a recarga de 2 em 2 minutos
+    const filtro = "ticker=in.(" + tk.join(",") + ")"; // formato do filtro "in" do Supabase Realtime
+    let tCot = null, tAn = null, tEmp = null;
+    canalAtivos = sb.channel("radar-ativos")
+      .on("postgres_changes", { event: "*", schema: "public", table: "cotacoes", filter: filtro }, () => { clearTimeout(tCot); tCot = setTimeout(async () => { await carregarCotacoesCarteira(); renderAll(); if (S.emp) cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); }, 2500); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "analises", filter: filtro }, () => { clearTimeout(tAn); tAn = setTimeout(async () => { await carregarAnalises(); renderCarteira(); renderDia(); renderAnalistas(); renderNews(); renderEmpresas(); atualizarGaveta(); }, 1500); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "empresas", filter: filtro }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderDia(); renderEmpresas(); }, 4000); })
+      .subscribe();
+  }
+  function parar() { vivoParar(); if (canal) { sb.removeChannel(canal); canal = null; } if (canalAtivos) { sb.removeChannel(canalAtivos); canalAtivos = null; assinados = ""; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
   async function carregarCarteira() {
     const { data, error } = await sb.from("carteira").select("id,ticker,qtd,pm,custo_brl").order("criado_em");
     if (error) { toast("Não foi possível carregar sua carteira. Recarregue a página."); return; }
@@ -324,7 +358,22 @@
     todas.sort((a, b) => b.volume - a.volume);
     S.cot = todas; const mp = {}; let ts = null;
     todas.forEach((r) => { mp[r.ticker] = r; if (r.classe === "acao" && (!ts || r.atualizado_em > ts)) ts = r.atualizado_em; });
-    S.cotMap = mp; S.cotTs = ts;
+    S.cotMap = mp; S.cotTs = ts; S.cotFullT = Date.now();
+  }
+  S.cotFullT = 0;
+  const COLS_COT = "ticker,nome,preco,var_dia,volume,setor,setor_macro,valor_mercado_mi,classe,moeda,bolsa,logo,extra,atualizado_em";
+  // Só as cotações dos ativos da carteira (para o tempo real e a recarga de 2 em 2 minutos); a lista completa
+  // (destaques, fita, diversificação, todas as ações) é renovada a cada 10 minutos.
+  async function carregarCotacoesCarteira() {
+    if (!S.cot || !S.cot.length || Date.now() - S.cotFullT > 600000) return carregarCotacoes();
+    const tk = [...new Set(S.carteira.map((p) => p.ticker))]; if (!tk.length) return;
+    const { data, error } = await sb.from("cotacoes").select(COLS_COT).in("ticker", tk);
+    if (error || !data) return;
+    data.forEach((r) => {
+      r.classe = r.classe || "acao"; r.moeda = r.moeda || "BRL"; r.preco = Number(r.preco); r.var_dia = Number(r.var_dia); r.volume = Number(r.volume) || 0;
+      const i = S.cot.findIndex((x) => x.ticker === r.ticker); if (i >= 0) S.cot[i] = r; else S.cot.push(r);
+      S.cotMap[r.ticker] = r; if (r.classe === "acao" && (!S.cotTs || r.atualizado_em > S.cotTs)) S.cotTs = r.atualizado_em;
+    });
   }
   async function carregarAnalises() {
     const { data } = await sb.from("analises").select("*"); const o = {}; (data || []).forEach((a) => { o[a.ticker] = a; }); S.analises = o;
@@ -341,10 +390,10 @@
   // Reserva caso a conexão em tempo real caia: recarrega tudo a cada 2 minutos com a página aberta
   setInterval(async () => {
     if (!S.user || document.visibilityState !== "visible") return;
-    await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarEmpresas()]);
+    await Promise.all([carregarCotacoesCarteira(), carregarAnalises(), carregarPainel(), carregarEmpresas()]);
     renderAll(); atualizarGaveta();
   }, 120000);
-  document.addEventListener("visibilitychange", async () => { if (S.user && document.visibilityState === "visible") { await Promise.all([carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarEmpresas(), carregarRF()]); renderAll(); atualizarGaveta(); } });
+  document.addEventListener("visibilitychange", async () => { if (S.user && document.visibilityState === "visible") { await Promise.all([carregarCotacoesCarteira(), carregarAnalises(), carregarPainel(), carregarEmpresas(), carregarRF()]); renderAll(); atualizarGaveta(); } });
 
   /* Atualizar cotações agora */
   $("#btn-refresh").addEventListener("click", async () => {
@@ -694,11 +743,13 @@
   const SINAL = { reforcar: "Considerar reforçar", manter: "Manter", atencao: "Atenção", reduzir: "Considerar reduzir" };
   function cotacao(t) {
     const c = S.cotMap[t], a = S.analises[t];
-    const lv = VIVO.q[t]; if (lv && Date.now() / 1000 - lv.ts < 120) return { preco: lv.p, varDia: lv.v, nome: (a && a.nome) || (c ? nomeBom(c.nome) : t), setor: c ? c.setor_macro : a && a.setor, seg: c ? c.setor : null };
-    if (c) return { preco: Number(c.preco), varDia: Number(c.var_dia), nome: (a && a.nome) || nomeBom(c.nome), setor: c.setor_macro, seg: c.setor };
-    if (a && a.preco != null) return { preco: Number(a.preco), varDia: a.var_dia != null ? Number(a.var_dia) : null, nome: a.nome, setor: a.setor, seg: null };
+    const lv = VIVO.q[t]; if (lv && Date.now() / 1000 - lv.ts < 120) return { preco: lv.p, varDia: lv.v, hoje: true, nome: (a && a.nome) || (c ? nomeBom(c.nome) : t), setor: c ? c.setor_macro : a && a.setor, seg: c ? c.setor : null };
+    if (c) return { preco: Number(c.preco), varDia: Number(c.var_dia), hoje: doDia(c.atualizado_em), nome: (a && a.nome) || nomeBom(c.nome), setor: c.setor_macro, seg: c.setor };
+    if (a && a.preco != null) return { preco: Number(a.preco), varDia: a.var_dia != null ? Number(a.var_dia) : null, hoje: false, nome: a.nome, setor: a.setor, seg: null };
     return null;
   }
+  // A cotação foi atualizada hoje? No fim de semana, em feriado ou antes da abertura, a variação guardada é a da última sessão
+  const doDia = (iso) => !!iso && ehUtil(hojeISO()) && new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) === hojeISO();
   function linhas() {
     let patr = 0;
     const rows = S.carteira.map((p) => {
@@ -708,6 +759,8 @@
       const valor = paraBRL(valorNat, moeda); if (valor) patr += valor;
       // Variação do dia em reais: ativo em dólar também sobe ou cai com o câmbio
       const vdBRL = vd != null ? ((1 + vd / 100) * (1 + (moeda === "USD" ? fxVar() : 0) / 100) - 1) * 100 : null;
+      // Para o "Hoje": cripto entra pela variação de 24 h; os demais só se a cotação for de hoje
+      const vdHoje = vdBRL == null ? null : (classe === "cripto" || (q && q.hoje)) ? vdBRL : 0;
       const res = (preco != null && p.pm) ? (preco / p.pm - 1) * 100 : null;
       // Resultado desde a compra em R$ (ativo em dólar: ganho em dólar x dólar de hoje)
       // Ativo em dólar: se você informou quanto pagou em R$ (com IOF e taxas), o resultado em R$ usa isso e bate com o do banco;
@@ -716,7 +769,7 @@
       const resRS = (valor != null && custoRS) ? valor - custoRS : null;
       const resNat = (valorNat != null && p.pm) ? valorNat - p.pm * qtd : null;
       const resPctRS = resRS != null ? resRS / custoRS * 100 : null;
-      return { p, t, qtd, classe, moeda, resRS, resNat, resPctRS, custoRS, a: S.analises[t] || null, preco, vd, vdBRL, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
+      return { p, t, qtd, classe, moeda, resRS, resNat, resPctRS, custoRS, a: S.analises[t] || null, preco, vd, vdBRL, vdHoje, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
     });
     rows.forEach((r) => { r.peso = (r.valor && patr) ? r.valor / patr : 0; });
     rows.sort((x, y) => (y.valor || 0) - (x.valor || 0));
@@ -726,9 +779,9 @@
     let dia = 0, custo = 0, base = 0, temPreco = false, prov = 0, temProv = false;
     rows.forEach((r) => {
       if (r.valor == null) return; temPreco = true;
-      if (r.vdBRL != null) dia += r.valor - r.valor / (1 + r.vdBRL / 100);
+      if (r.vdHoje != null) dia += r.valor - r.valor / (1 + r.vdHoje / 100);
       if (r.p.pm && r.custoRS) { custo += r.custoRS; base += r.valor; }
-      const e = S.empresas[r.t]; const p12 = e && e.fundamentos && e.fundamentos.proventos12m;
+      const e = S.empresas[r.t]; const fu = e && e.fundamentos; const p12 = fu && (fu.proventos12mLiq != null ? fu.proventos12mLiq : fu.proventos12m);
       if (p12 && r.moeda === "BRL") { prov += p12 * r.qtd; temProv = true; }
       else if (r.moeda === "USD" && e && e.fundamentos && e.fundamentos.ind && e.fundamentos.ind.dy) { prov += r.valor * e.fundamentos.ind.dy / 100 * 0.7; temProv = true; }
     });
@@ -812,11 +865,17 @@
     const dia = (T.temPreco ? T.dia : 0) + rfDia;
     contar($("#t-dia"), T.temPreco || rfV ? dia : null, (v) => esc(sinal(v, brl)) + (patrTot ? ` <small>${esc(pct(v / (patrTot - v) * 100))}</small>` : ""));
     $("#t-dia").className = cls(dia);
-    const custo = T.custo + (RF ? RF.apl : 0), base = T.base + (RF ? RF.bruto : 0);
+    const semPregao = !rows.some((r) => r.classe !== "cripto" && r.valor && r.vdHoje !== 0 && r.vdHoje != null) && !ehUtil(hojeISO());
+    const lbDia = $("#t-dia").previousElementSibling; if (lbDia) lbDia.textContent = semPregao ? "Hoje · sem pregão" : "Hoje";
+    $("#t-dia").parentElement.title = (semPregao ? "Hoje não tem pregão na B3: ações, FIIs, ETFs e ativos dos EUA ficam parados. " : "") + (rows.some((r) => r.classe === "cripto") ? "Criptomoedas entram pela variação das últimas 24 horas. " : "") + (rfDia ? "Inclui o rendimento de um dia útil da renda fixa." : "");
+    // Renda fixa no resultado pelo valor líquido (se resgatasse hoje, com IR e IOF), como no extrato do banco
+    const custo = T.custo + (RF ? RF.apl : 0), base = T.base + (RF ? RF.liq : 0);
+    $("#t-res").parentElement.title = RF ? "Ativos: valor de hoje menos o preço médio. Renda fixa: valor líquido (descontados IR e IOF de um resgate hoje) menos o aplicado." : "Valor de hoje menos o preço médio informado.";
     if (custo) { const res = base - custo; contar($("#t-res"), res, (v) => esc(sinal(v, brl)) + ` <small>${esc(pct((base / custo - 1) * 100))}</small>`); $("#t-res").className = cls(res); }
     else { $("#t-res").innerHTML = `<span class="hint">Informe o preço médio</span>`; $("#t-res")._v = null; $("#t-res").className = ""; }
     if (T.temProv) contar($("#t-prov"), T.prov, (v) => esc(brl(v)) + (patr ? ` <small>${esc(num(T.prov / patr * 100, 1))}% a.a.</small>` : ""));
     else { $("#t-prov").innerHTML = `<span class="hint">Aguardando dados</span>`; $("#t-prov")._v = null; }
+    $("#t-prov").parentElement.title = "Estimativa: proventos pagos nos últimos 12 meses vezes a sua quantidade de hoje. JCP já sem os 15% de IR; ativos dos EUA sem os 30% retidos.";
     // Divisão por classe
     const porCls = {}; rows.forEach((r) => { porCls[r.classe] = (porCls[r.classe] || 0) + (patrTot ? (r.valor || 0) / patrTot : 0); });
     if (rfV && patrTot) porCls.rf = rfV / patrTot;
@@ -945,13 +1004,13 @@
     if (T.temPreco) comp.push(`ativos ${esc(sinal(T.dia, brl))}`);
     if (rfDia) comp.push(`renda fixa +${esc(brl(rfDia))}`);
     // Quem mais mexeu hoje
-    const mov = rows.filter((r) => r.vdBRL != null && r.valor).map((r) => ({ r, imp: r.valor - r.valor / (1 + r.vdBRL / 100) }));
+    const mov = rows.filter((r) => r.vdHoje && r.valor).map((r) => ({ r, imp: r.valor - r.valor / (1 + r.vdHoje / 100) }));
     const altas = mov.filter((x) => x.r.vdBRL > 0).sort((a, b) => b.r.vdBRL - a.r.vdBRL).slice(0, 3);
     const baixas = mov.filter((x) => x.r.vdBRL < 0).sort((a, b) => a.r.vdBRL - b.r.vdBRL).slice(0, 3);
     // Resultado acumulado: valor de hoje menos o que foi investido (só ativos com preço médio informado; renda fixa entra pelo valor aplicado)
     const uR = rows.filter((r) => r.moeda === "USD" && r.resNat != null && r.resRS != null);
     const usdNota = uR.length ? `em dólar: ${sinal(uR.reduce((a, r) => a + r.resNat, 0), (v) => "US$ " + num(v, 2))} (≈ ${sinal(uR.reduce((a, r) => a + r.resRS, 0), brl)})` : "";
-    const resCusto = T.custo + (RF ? RF.apl : 0), resBase = T.base + (RF ? RF.bruto : 0), resTot = resBase - resCusto, semPm = rows.filter((r) => r.valor != null && !r.p.pm).length;
+    const resCusto = T.custo + (RF ? RF.apl : 0), resBase = T.base + (RF ? RF.liq : 0), resTot = resBase - resCusto, semPm = rows.filter((r) => r.valor != null && !r.p.pm).length;
     const movHtml = (x) => `<button type="button" class="dia-mov" data-emp="${esc(x.r.t)}">${logoHtml(x.r.t)}<span class="tk">${esc(x.r.t)}</span><b class="${cls(x.r.vdBRL)}">${esc(pct(x.r.vdBRL))}</b><small class="${cls(x.imp)}">${esc(sinal(x.imp, brl))}${x.r.moeda === "USD" && x.r.valorNat != null && x.r.vd != null ? ` <span class="usd-d" title="O valor em R$ junta a variação do ativo e a do dólar hoje. Em dólar, o ativo variou só o valor com US$.">${esc(sinal(x.r.valorNat - x.r.valorNat / (1 + x.r.vd / 100), (v) => "US$ " + num(v, Math.abs(v) < 0.01 ? 4 : 2)))} no ativo${fxVar() ? ` · dólar ${esc(pct(fxVar()))}` : ""}</span>` : ""}</small></button>`;
     // O que pede atenção
     const at = [];
@@ -1006,7 +1065,7 @@
           <span class="label">${util ? "Hoje" : "Último pregão"}</span>
           <div class="dia-tit">Seu patrimônio ${dia >= 0 ? "sobe" : "cai"} <b class="${cls(dia)}">${esc(pct(pDia))}</b> <span class="${cls(dia)}">(${esc(sinal(dia, brl))})</span></div>
           <p class="hint" style="margin:4px 0 0">${comp.join(" · ")}${total ? ` · patrimônio de ${esc(brl(total))}` : ""}</p>
-          <div class="dia-pg"><span class="pg ${dia >= 0 ? "up" : "down"}"><small>${dia >= 0 ? "Lucro do dia" : "Perda do dia"}</small><b>${esc(sinal(dia, brl))} <i>${esc(pct(pDia))}</i></b><em>${util ? "hoje" : "último pregão"}, ativos${rfDia > 0 ? " e renda fixa" : ""}</em></span>${resCusto ? `<span class="pg ${resTot >= 0 ? "up" : "down"}"><small>${resTot >= 0 ? "Lucro total" : "Prejuízo total"}</small><b>${esc(sinal(resTot, brl))} <i>${esc(pct((resBase / resCusto - 1) * 100))}</i></b><em>desde a compra${usdNota ? ` · ${esc(usdNota)}` : ""}${semPm ? ` · ${semPm} sem preço médio fora` : ""}</em></span>` : ""}</div>
+          <div class="dia-pg"><span class="pg ${dia >= 0 ? "up" : "down"}"><small>${dia >= 0 ? "Lucro do dia" : "Perda do dia"}</small><b>${esc(sinal(dia, brl))} <i>${esc(pct(pDia))}</i></b><em>${util ? "hoje, ativos" + (rfDia > 0 ? " e renda fixa" : "") : rows.some((r) => r.classe === "cripto") ? "sem pregão hoje: só cripto (24 h)" : "sem pregão hoje"}</em></span>${resCusto ? `<span class="pg ${resTot >= 0 ? "up" : "down"}"><small>${resTot >= 0 ? "Lucro total" : "Prejuízo total"}</small><b>${esc(sinal(resTot, brl))} <i>${esc(pct((resBase / resCusto - 1) * 100))}</i></b><em>desde a compra${RF ? " · renda fixa líquida de IR" : ""}${usdNota ? ` · ${esc(usdNota)}` : ""}${semPm ? ` · ${semPm} sem preço médio fora` : ""}</em></span>` : ""}</div>
         </div>
         <div class="dia-ctx">${ctx.map((c) => `<span>${c}</span>`).join("")}</div>
       </div>

@@ -20,9 +20,9 @@
 <style>
 :root{
   --bg:#F3F5FA; --surface:#FFFFFF; --sunk:#EDF0F7; --line:#DDE2EE; --line-2:#E9ECF4;
-  --fg:#111827; --muted:#5B6478; --faint:#8D95A8;
+  --fg:#111827; --muted:#5B6478; --faint:#626A80;
   --accent:#2457F5; --accent-ink:#FFFFFF; --accent-bg:#E7EDFF;
-  --up:#0B8F5F; --up-bg:#DFF5EA; --down:#D93A3F; --down-bg:#FCE6E6; --warn:#A16800; --warn-bg:#FBF0D9;
+  --up:#087A50; --up-bg:#DFF5EA; --down:#C42F35; --down-bg:#FCE6E6; --warn:#8F5C00; --warn-bg:#FBF0D9;
   --c-acao:#2F6BFF; --c-fii:#F59E0B; --c-etf:#8B5CF6; --c-bdr:#D946EF; --c-acao_ext:#06B6D4; --c-etf_ext:#65A30D; --c-rf:#0F9D8A; --c-cripto:#E11D48;
   --hero-a:#1E40E6; --hero-b:#6D28D9;
   --display:"Archivo","Arial Narrow",system-ui,sans-serif;
@@ -37,7 +37,7 @@
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0A0F1C; --surface:#111829; --sunk:#182137; --line:#243049; --line-2:#1B2540;
-  --fg:#E8EDF7; --muted:#9AA6BF; --faint:#6B7792;
+  --fg:#E8EDF7; --muted:#9AA6BF; --faint:#7E8AA4;
   --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1B2650;
   --up:#3DDC97; --up-bg:#0F2F24; --down:#FF7A7A; --down-bg:#3A1A1D; --warn:#F5C25B; --warn-bg:#33270F;
   --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF; --c-cripto:#FB7185;
@@ -46,7 +46,7 @@
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0A0F1C; --surface:#111829; --sunk:#182137; --line:#243049; --line-2:#1B2540;
-  --fg:#E8EDF7; --muted:#9AA6BF; --faint:#6B7792;
+  --fg:#E8EDF7; --muted:#9AA6BF; --faint:#7E8AA4;
   --accent:#7C9BFF; --accent-ink:#0B1230; --accent-bg:#1B2650;
   --up:#3DDC97; --up-bg:#0F2F24; --down:#FF7A7A; --down-bg:#3A1A1D; --warn:#F5C25B; --warn-bg:#33270F;
   --c-acao:#6E97FF; --c-fii:#FBBF24; --c-etf:#A78BFA; --c-bdr:#E879F9; --c-acao_ext:#22D3EE; --c-etf_ext:#A3E635; --c-rf:#2DD4BF; --c-cripto:#FB7185;
@@ -262,7 +262,7 @@ main{padding-block:22px 80px}
 .hero-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 
 /* Cores das classes */
-.cl{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.02em;border-radius:999px;padding:2px 8px 2px 7px;white-space:nowrap;background:color-mix(in srgb,var(--cc) 14%,transparent);color:color-mix(in srgb,var(--cc) 80%,var(--fg))}
+.cl{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.02em;border-radius:999px;padding:2px 8px 2px 7px;white-space:nowrap;background:color-mix(in srgb,var(--cc) 14%,transparent);color:color-mix(in srgb,var(--cc) 55%,var(--fg))}
 .cl::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--cc)}
 [data-cl="acao"]{--cc:var(--c-acao)}[data-cl="fii"]{--cc:var(--c-fii)}[data-cl="etf"]{--cc:var(--c-etf)}[data-cl="bdr"]{--cc:var(--c-bdr)}[data-cl="acao_ext"]{--cc:var(--c-acao_ext)}[data-cl="etf_ext"]{--cc:var(--c-etf_ext)}[data-cl="cripto"]{--cc:var(--c-cripto)}[data-cl="rf"]{--cc:var(--c-rf)}
 
@@ -1083,7 +1083,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 @keyframes ofBalanca{50%{transform:rotate(-8deg) scale(1.08)}}
 @media (max-width:760px){.of-svg{padding-top:0}.of-card{position:static;margin:8px;max-width:none;border-radius:12px}}
 @media (max-width:560px){.of-card strong{font-size:15px}}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}.reveal{opacity:1;transform:none}.logo path{stroke-dashoffset:0}#arcs path,.chart .ln{stroke-dashoffset:0}.tape-track{flex-wrap:wrap}html{scroll-behavior:auto}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-property:color,background-color,border-color,opacity,fill,stroke!important;transition-duration:.15s!important}.tick-up,.tick-down{animation-duration:1.6s!important}.reveal{opacity:1;transform:none}.logo path{stroke-dashoffset:0}#arcs path,.chart .ln{stroke-dashoffset:0}.tape-track{flex-wrap:wrap}html{scroll-behavior:auto}}
 
 /* Ícones (Phosphor) */
 .ic{width:1.15em;height:1.15em;flex:none;vertical-align:-.2em;display:inline-block}
@@ -1502,10 +1502,10 @@ button .ic,.btn .ic{margin:0}
   </section>
 </div>
 
-<div id="toast-root"></div>
+<div id="toast-root" role="status" aria-live="polite"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
 <script src="icones.js?v=6"></script>
-<script src="escritorio.js?v=3d14"></script>
-<script src="app.js?v=20261103z"></script>
+<script src="escritorio.js?v=20261104"></script>
+<script src="app.js?v=20261104a"></script>
 </body>
 </html>

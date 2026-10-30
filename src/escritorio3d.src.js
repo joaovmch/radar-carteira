@@ -3213,6 +3213,8 @@ class Escritorio {
   setEdicao(on) {
     this.edit = !!on; this.sel = null; this.sujo = true;
     this.renderer.domElement.style.cursor = on ? "grab" : "";
+    // No toque, arrumando: o arrasto em qualquer direção move o móvel (com pan-y, o arrasto vertical rolava a página)
+    this.renderer.domElement.style.touchAction = on ? "none" : "pan-y";
     for (const id in this.moveis) this.moveis[id].marca.visible = false;
     if (on && this.camModo !== "sala") this.setCam("sala", true);
     this.log(on ? "arrumando o escritório" : "terminou de arrumar");
