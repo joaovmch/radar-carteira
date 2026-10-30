@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://icons.brapi.dev https://s3-symbol-logo.tradingview.com https://upload.wikimedia.org https://commons.wikimedia.org https://coin-images.coingecko.com https://assets.coingecko.com; connect-src https://urdtzrquiypewetklwxm.supabase.co wss://urdtzrquiypewetklwxm.supabase.co https://economia.awesomeapi.com.br; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://icons.brapi.dev https://s3-symbol-logo.tradingview.com https://upload.wikimedia.org https://commons.wikimedia.org https://coin-images.coingecko.com https://assets.coingecko.com; connect-src https://urdtzrquiypewetklwxm.supabase.co wss://urdtzrquiypewetklwxm.supabase.co https://economia.awesomeapi.com.br; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex,nofollow">
 <title>Valoriza+</title>
@@ -312,7 +312,7 @@ details.fat[open] .fatores{animation:rise .35s var(--ease)}
 .fchip:hover{color:var(--fg);border-color:var(--cc,var(--accent))}
 .fchip[aria-pressed="true"]{background:var(--cc,var(--accent));border-color:var(--cc,var(--accent));color:#fff}
 .fchip small{font-family:var(--mono);font-size:11.5px;opacity:.8}
-.pos-head,.pos-row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.1fr) 132px 128px;gap:12px;align-items:center}
+.pos-head,.pos-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.1fr) 132px;gap:12px;align-items:center}
 .pos-head{padding:0 10px 8px;border-bottom:1px solid var(--line)}
 .pos-head span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .pos-head .r,.pos-row .cell{text-align:right}
@@ -336,9 +336,12 @@ details.fat[open] .fatores{animation:rise .35s var(--ease)}
 .tick-down{animation:tickD 1.6s ease}
 @keyframes tickU{0%,30%{background:var(--up-bg);color:var(--up)}}
 @keyframes tickD{0%,30%{background:var(--down-bg);color:var(--down)}}
+.cell small.mut,.cell b.mut{color:var(--muted)}
+.tkw{min-width:0;white-space:nowrap}
+.cell .m-res{display:none}
 .c-sent{text-align:center}
 .c-sig{text-align:right}
-@media (max-width:760px){.pos-head,.pos-row{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}.pos-row .pos-id{grid-row:1 / span 2}.pos-row .cell,.pos-row .c-sig{grid-column:2}.pos-head span:last-child{display:none}.c-sig .pill{font-size:11px;padding:2px 8px}.c-preco,.c-sent{display:none}.pos-id{grid-template-columns:32px minmax(0,1fr)}.pos-id .lg{width:32px;height:32px}.pos-row .tk{white-space:nowrap}}
+@media (max-width:760px){.pos-head,.pos-row{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}.pos-row .pos-id{grid-row:1 / span 2}.pos-row .cell,.pos-row .c-sig{grid-column:2}.pos-head span:last-child,.pos-head .c-res{display:none}.c-sig .pill{font-size:11px;padding:2px 8px}.c-preco,.c-sent,.c-res{display:none}.cell .m-res{display:block}.cell small.mut{display:none}.pos-id{grid-template-columns:32px minmax(0,1fr)}.pos-id .lg{width:32px;height:32px}.pos-row .tk{white-space:nowrap}}
 .pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;white-space:nowrap}
 .s-reforcar{background:var(--up-bg);color:var(--up)}
 .s-manter{background:var(--surface);color:var(--fg);border:1px solid var(--line)}
@@ -1186,7 +1189,7 @@ button .ic,.btn .ic{margin:0}
     <div class="top-in">
       <div class="brand">
         <span class="vlz-logo" aria-hidden="true"><svg class="vlz-mark" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><defs><linearGradient id="hr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#99A2B3"/><stop offset="1" stop-color="#363D49"/></linearGradient><linearGradient id="hb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#45FF8F"/><stop offset="1" stop-color="#0DB562"/></linearGradient><clipPath id="hc"><circle cx="100" cy="100" r="80"/></clipPath></defs><circle cx="100" cy="100" r="86" fill="none" stroke="url(#hr)" stroke-width="6"/><circle cx="100" cy="100" r="58" fill="none" stroke="#5B6474" stroke-opacity=".55" stroke-width="3"/><circle cx="100" cy="100" r="34" fill="none" stroke="#5B6474" stroke-opacity=".45" stroke-width="2.5"/><g class="vlz-sweep"><path d="M100 100L120.08 19.47A83 83 0 0 1 123.75 20.47Z" fill="#22E06F" fill-opacity="0.08"/><path d="M100 100L123.75 20.47A83 83 0 0 1 127.36 21.64Z" fill="#22E06F" fill-opacity="0.12"/><path d="M100 100L127.36 21.64A83 83 0 0 1 130.92 22.98Z" fill="#22E06F" fill-opacity="0.16"/><path d="M100 100L130.92 22.98A83 83 0 0 1 134.42 24.47Z" fill="#22E06F" fill-opacity="0.20"/><path d="M100 100L134.42 24.47A83 83 0 0 1 137.84 26.13Z" fill="#22E06F" fill-opacity="0.25"/><path d="M100 100L137.84 26.13A83 83 0 0 1 141.19 27.94Z" fill="#22E06F" fill-opacity="0.30"/><path d="M100 100L141.19 27.94A83 83 0 0 1 144.44 29.90Z" fill="#22E06F" fill-opacity="0.36"/><path d="M100 100L144.44 29.90A83 83 0 0 1 147.61 32.01Z" fill="#22E06F" fill-opacity="0.42"/><path d="M100 100L147.61 32.01A83 83 0 0 1 150.67 34.26Z" fill="#22E06F" fill-opacity="0.48"/><path d="M100 100L150.67 34.26A83 83 0 0 1 153.63 36.65Z" fill="#22E06F" fill-opacity="0.55"/><path d="M100 100L153.63 36.65A83 83 0 0 1 156.47 39.17Z" fill="#22E06F" fill-opacity="0.61"/><path d="M100 100L156.47 39.17A83 83 0 0 1 159.20 41.82Z" fill="#22E06F" fill-opacity="0.68"/><path d="M100 100L159.20 41.82A83 83 0 0 1 161.80 44.60Z" fill="#22E06F" fill-opacity="0.76"/><path d="M100 100L161.80 44.60A83 83 0 0 1 164.27 47.49Z" fill="#22E06F" fill-opacity="0.83"/><path d="M100 100L164.27 47.49A83 83 0 0 1 166.61 50.48Z" fill="#22E06F" fill-opacity="0.90"/><path d="M100 100L166.61 50.48A83 83 0 0 1 168.81 53.59Z" fill="#22E06F" fill-opacity="0.98"/></g><g clip-path="url(#hc)" fill="url(#hb)"><rect class="vlz-bar" x="96.5" y="139" width="17" height="70" rx="3"/><rect class="vlz-bar" x="123.5" y="115.5" width="17" height="90" rx="3"/><rect class="vlz-bar" x="151" y="88" width="17.5" height="100" rx="3"/></g><circle class="vlz-ping" cx="100" cy="100" r="8" fill="none" stroke="#22E06F" stroke-width="2"/><circle cx="100" cy="100" r="8.5" fill="#22E06F"/></svg></span>
-        <div><h1 aria-label="Valoriza+"><span class="vlz-word">valoriza</span><span class="vlz-plus">+</span></h1><p>Ações, FIIs, ETFs e EUA · sua carteira, notícias e sinais do dia</p></div>
+        <div><h1 aria-label="Valoriza+"><span class="vlz-word">valoriza</span><span class="vlz-plus">+</span></h1></div>
       </div>
       <div class="status">
         <span class="pregao" id="pregao"><span class="dot"></span><span id="pregao-txt">Pregão</span></span>
@@ -1200,19 +1203,13 @@ button .ic,.btn .ic{margin:0}
     </div>
     <nav class="tabs" id="tabs" aria-label="Seções" hidden>
       <span class="tab-ind" id="tab-ind" aria-hidden="true"></span>
-      <a href="#sec-resumo">Resumo</a>
-      <a href="#sec-dia">Hoje</a>
-      <a href="#sec-escritorio">Escritório</a>
-      <a href="#sec-mercado">Mercado</a>
-      <a href="#sec-conv">Câmbio</a>
-      <a href="#sec-carteira">Carteira</a>
-      <a href="#sec-rf">Renda fixa</a>
-      <a href="#sec-noticias">Notícias</a>
-      <a href="#sec-empresas">Ativos</a>
-      <a href="#sec-analistas">Analistas</a>
-      <a href="#sec-div">Diversificação</a>
-      <a href="#sec-rank">Ranking</a>
-      <a href="#todas">Explorar</a>
+      <a href="#sec-resumo" data-g="sec-resumo sec-dia">Início</a>
+      <a href="#sec-carteira" data-g="sec-carteira sec-noticias sec-div">Carteira</a>
+      <a href="#sec-rf" data-g="sec-rf">Renda fixa</a>
+      <a href="#sec-escritorio" data-g="sec-escritorio">Escritório</a>
+      <a href="#sec-mercado" data-g="sec-mercado sec-conv">Mercado</a>
+      <a href="#sec-empresas" data-g="sec-empresas sec-analistas sec-recs todas">Explorar</a>
+      <a href="#sec-rank" data-g="sec-rank">Ranking</a>
     </nav>
   </div>
   <div class="tape" id="tape" hidden aria-label="Cotações"><div class="tape-track" id="tape-track"></div></div>
@@ -1277,61 +1274,13 @@ button .ic,.btn .ic{margin:0}
       <div id="dia-body"><div class="carregando"><i></i><i style="width:80%"></i><i style="width:60%"></i></div></div>
     </section>
 
-    <!-- 0b. Escritório animado -->
-    <section class="band panel" id="sec-escritorio" aria-labelledby="h-esc">
-      <div class="panel-head"><h2 id="h-esc">Seu escritório</h2><span class="esc-hd"><span class="when" id="esc-when">o humor segue o seu dia</span><button type="button" class="btn ghost sm" id="esc-boneco" data-meu-perfil="boneco" hidden><i data-ic="t-shirt"></i> Personalizar boneco</button></span></div>
-      <div id="esc-body"></div>
-      <div class="of-sim" id="esc-sim" role="group" aria-label="Ver outros humores"><span class="hint">Ver como fica:</span><button type="button" data-humor="" aria-pressed="true" title="Hoje de verdade"><i data-ic="map-pin"></i> Hoje</button><button type="button" data-humor="-3" title="Queda forte" aria-label="Queda forte"><i data-ic="smiley-sad"></i></button><button type="button" data-humor="-1" title="Queda" aria-label="Queda"><i data-ic="smiley-nervous"></i></button><button type="button" data-humor="0" title="Estável" aria-label="Estável"><i data-ic="smiley-meh"></i></button><button type="button" data-humor="1" title="Alta" aria-label="Alta"><i data-ic="smiley"></i></button><button type="button" data-humor="3" title="Alta forte" aria-label="Alta forte"><i data-ic="confetti"></i></button><button type="button" data-tudo aria-pressed="false" title="Mostrar toda a decoração"><i data-ic="sparkle"></i> Ver tudo liberado</button></div>
-      <div class="of-deco" id="esc-deco"></div>
-    </section>
-
-    <!-- 1. Mercado hoje -->
-    <section class="band" id="sec-mercado" aria-labelledby="h-thermo">
-      <div class="overview">
-        <div class="panel">
-          <div class="panel-head" style="margin-bottom:10px"><h2 id="h-thermo">Termômetro do mercado</h2><span class="when" id="thermo-when"></span></div>
-          <div class="thermo">
-            <div class="g">
-              <svg class="gauge" viewBox="0 0 220 130" role="img" aria-labelledby="gauge-title">
-                <title id="gauge-title">Termômetro do mercado</title>
-                <g id="arcs"></g>
-                <g id="needle"><line x1="110" y1="110" x2="110" y2="34" stroke="var(--fg)" stroke-width="4" stroke-linecap="round"/></g>
-                <circle cx="110" cy="110" r="8" fill="var(--fg)"/>
-              </svg>
-              <div class="gauge-read"><div class="score" id="thermo-score">nota de 0 a 100</div></div>
-            </div>
-            <div class="rot" id="thermo-rot">—</div>
-            <p class="resumo" id="thermo-resumo"><span class="skel">Carregando o clima do mercado…</span></p>
-          </div>
-          <details class="fat" id="fat-det"><summary>O que está pesando hoje</summary><ul class="fatores" id="fatores"></ul></details>
-        </div>
-        <div class="kpis" id="kpis"></div>
-      </div>
-    </section>
-
-
-    <!-- 1b. Conversor de moedas -->
-    <section class="band panel" id="sec-conv" aria-labelledby="h-conv">
-      <div class="panel-head"><h2 id="h-conv">Conversor de moedas</h2><span class="when" id="conv-when"></span></div>
-      <form class="conv" id="conv-form"  autocomplete="off">
-        <label class="conv-v">Valor<input id="conv-valor" type="text" inputmode="decimal" value="100" aria-label="Valor a converter"></label>
-        <label>De<select id="conv-de"></select></label>
-        <button type="button" class="conv-troca" id="conv-troca" aria-label="Inverter moedas" title="Inverter"><i data-ic="arrows-left-right"></i></button>
-        <label>Para<select id="conv-para"></select></label>
-      </form>
-      <div class="conv-res" id="conv-res" aria-live="polite"></div>
-      <label class="conv-iof"><input type="checkbox" id="conv-iof"> Somar o IOF de compras no cartão internacional (3,5%)</label>
-      <div class="conv-tx" id="conv-tx"></div>
-      <p class="rec-src" id="conv-fonte">Câmbio comercial, atualizado a cada minuto com a página aberta (AwesomeAPI). Casas de câmbio e cartões cobram mais: use o dólar turismo como referência para viagem.</p>
-    </section>
-
     <!-- 2. Carteira + notícias -->
     <div class="band main-row">
       <section class="panel" aria-labelledby="h-cart" id="sec-carteira">
         <div class="panel-head"><h2 id="h-cart">Minha carteira</h2><span class="when" id="cart-when"></span></div>
         <div class="fchips" id="cart-filtro" role="group" aria-label="Filtrar por classe" hidden></div>
         <div class="alerts" id="alerts" hidden></div>
-        <div class="pos-head" id="pos-head" hidden><span>Ativo</span><span class="r c-preco">Cotação</span><span class="r">Posição</span><span class="c c-sent">Analistas</span><span class="r">Sinal</span></div>
+        <div class="pos-head" id="pos-head" hidden><span>Ativo</span><span class="r c-preco">Preço</span><span class="r">Seu saldo</span><span class="r c-res">Resultado</span><span class="r">Sinal</span></div>
         <div class="pos-list" id="pos-list"><div class="carregando" style="padding:10px"><i></i><i style="width:80%"></i><i style="width:65%"></i></div></div>
         <details class="addbox" id="addbox">
           <summary><span class="plus" aria-hidden="true">+</span>Adicionar ou editar ativo</summary>
@@ -1363,6 +1312,12 @@ button .ic,.btn .ic{margin:0}
         </div>
       </aside>
     </div>
+
+    <!-- 5. Diversificação -->
+    <section class="band panel" aria-labelledby="h-div" id="sec-div">
+      <div class="panel-head"><h2 id="h-div">Diversificação da carteira</h2></div>
+      <div id="div-body"><p class="skel">Cadastre seus ativos para ver como a carteira está distribuída.</p></div>
+    </section>
 
     <!-- 2b. Renda fixa -->
     <section class="band panel" aria-labelledby="h-rf" id="sec-rf">
@@ -1403,43 +1358,77 @@ button .ic,.btn .ic{margin:0}
       <p class="rec-src" id="rf-fonte">Taxas e regras pesquisadas em out/2026 nos sites, blogs e comunicados dos bancos e em portais de finanças. Os bancos mudam essas condições com frequência: confira no app antes de aplicar.</p>
     </section>
 
+    <!-- 0b. Escritório animado -->
+    <section class="band panel" id="sec-escritorio" aria-labelledby="h-esc">
+      <div class="panel-head"><h2 id="h-esc">Seu escritório</h2><span class="esc-hd"><span class="when" id="esc-when">o humor segue o seu dia</span><button type="button" class="btn ghost sm" id="esc-boneco" data-meu-perfil="boneco" hidden><i data-ic="t-shirt"></i> Personalizar boneco</button></span></div>
+      <div id="esc-body"></div>
+      <div class="of-sim" id="esc-sim" role="group" aria-label="Ver outros humores"><span class="hint">Ver como fica:</span><button type="button" data-humor="" aria-pressed="true" title="Hoje de verdade"><i data-ic="map-pin"></i> Hoje</button><button type="button" data-humor="-3" title="Queda forte" aria-label="Queda forte"><i data-ic="smiley-sad"></i></button><button type="button" data-humor="-1" title="Queda" aria-label="Queda"><i data-ic="smiley-nervous"></i></button><button type="button" data-humor="0" title="Estável" aria-label="Estável"><i data-ic="smiley-meh"></i></button><button type="button" data-humor="1" title="Alta" aria-label="Alta"><i data-ic="smiley"></i></button><button type="button" data-humor="3" title="Alta forte" aria-label="Alta forte"><i data-ic="confetti"></i></button><button type="button" data-tudo aria-pressed="false" title="Mostrar toda a decoração"><i data-ic="sparkle"></i> Ver tudo liberado</button></div>
+      <div class="of-deco" id="esc-deco"></div>
+    </section>
+
+    <!-- 1. Mercado hoje -->
+    <section class="band" id="sec-mercado" aria-labelledby="h-thermo">
+      <div class="overview">
+        <div class="panel">
+          <div class="panel-head" style="margin-bottom:10px"><h2 id="h-thermo">Termômetro do mercado</h2><span class="when" id="thermo-when"></span></div>
+          <div class="thermo">
+            <div class="g">
+              <svg class="gauge" viewBox="0 0 220 130" role="img" aria-labelledby="gauge-title">
+                <title id="gauge-title">Termômetro do mercado</title>
+                <g id="arcs"></g>
+                <g id="needle"><line x1="110" y1="110" x2="110" y2="34" stroke="var(--fg)" stroke-width="4" stroke-linecap="round"/></g>
+                <circle cx="110" cy="110" r="8" fill="var(--fg)"/>
+              </svg>
+              <div class="gauge-read"><div class="score" id="thermo-score">nota de 0 a 100</div></div>
+            </div>
+            <div class="rot" id="thermo-rot">—</div>
+            <p class="resumo" id="thermo-resumo"><span class="skel">Carregando o clima do mercado…</span></p>
+          </div>
+          <details class="fat" id="fat-det"><summary>O que está pesando hoje</summary><ul class="fatores" id="fatores"></ul></details>
+        </div>
+        <div class="kpis" id="kpis"></div>
+      </div>
+    </section>
+
+    <!-- 1b. Conversor de moedas -->
+    <section class="band panel" id="sec-conv" aria-labelledby="h-conv">
+      <div class="panel-head"><h2 id="h-conv">Conversor de moedas</h2><span class="when" id="conv-when"></span></div>
+      <form class="conv" id="conv-form"  autocomplete="off">
+        <label class="conv-v">Valor<input id="conv-valor" type="text" inputmode="decimal" value="100" aria-label="Valor a converter"></label>
+        <label>De<select id="conv-de"></select></label>
+        <button type="button" class="conv-troca" id="conv-troca" aria-label="Inverter moedas" title="Inverter"><i data-ic="arrows-left-right"></i></button>
+        <label>Para<select id="conv-para"></select></label>
+      </form>
+      <div class="conv-res" id="conv-res" aria-live="polite"></div>
+      <label class="conv-iof"><input type="checkbox" id="conv-iof"> Somar o IOF de compras no cartão internacional (3,5%)</label>
+      <div class="conv-tx" id="conv-tx"></div>
+      <p class="rec-src" id="conv-fonte">Câmbio comercial, atualizado a cada minuto com a página aberta (AwesomeAPI). Casas de câmbio e cartões cobram mais: use o dólar turismo como referência para viagem.</p>
+    </section>
+
     <!-- 3. Ativos -->
     <section class="band panel" aria-labelledby="h-emp" id="sec-empresas">
-      <div class="panel-head"><h2 id="h-emp">Conheça seus ativos</h2><span class="when">Toque em um ativo para ver o resumo completo</span></div>
-      <p class="sub">O que cada empresa ou fundo faz, números, rendimentos, desempenho, reputação e notícias.</p>
-      <form class="emp-busca" id="emp-form" autocomplete="off">
+      <div class="panel-head"><h2 id="h-emp">Pesquisar um ativo</h2><span class="when">Ficha completa de qualquer ação, fundo ou cripto</span></div>
+            <form class="emp-busca" id="emp-form" autocomplete="off">
         <input id="emp-q" placeholder="Código, ex.: WEGE3, HGLG11, VOO, BTC" maxlength="10" list="dl-tickers" aria-label="Código do ativo">
         <button class="btn primary" type="submit">Ver ativo</button>
       </form>
-      <div class="emp-grid" id="emp-grid"><p class="skel">Cadastre ativos na carteira para vê-los aqui. Você também pode buscar qualquer ativo acima.</p></div>
+      <div class="emp-grid" id="emp-grid" hidden><p class="skel">Cadastre ativos na carteira para vê-los aqui. Você também pode buscar qualquer ativo acima.</p></div>
     </section>
 
     <!-- 4. Analistas -->
     <section class="band panel" aria-labelledby="h-an" id="sec-analistas">
-      <div class="panel-head"><h2 id="h-an">O que os analistas acham dos seus ativos</h2><span class="when" id="an-when"></span></div>
-      <p class="sub">Consenso de corretoras e bancos, preço-alvo médio e a leitura técnica de curto prazo. Atualizado a cada 5 minutos no pregão. ETFs e FIIs costumam não ter cobertura de analistas.</p>
+      <div class="panel-head"><h2 id="h-an">Análise dos seus ativos</h2><span class="when" id="an-when"></span></div>
+      <p class="sub">Opinião de corretoras e bancos e preço-alvo médio. Só aparecem ativos com cobertura de analistas.</p>
       <div class="an-list" id="an-list"><p class="skel">Carregando…</p></div>
     </section>
 
     <section class="band" aria-labelledby="h-recs" id="sec-recs">
       <div class="band-head">
-        <div><h2 id="h-recs">O que os analistas recomendam</h2><p>Ações mais citadas nas carteiras recomendadas das corretoras este mês. As barrinhas mostram em quantas carteiras cada uma aparece.</p></div>
+        <div><h2 id="h-recs">Ações mais recomendadas</h2><p>As mais citadas nas carteiras recomendadas das corretoras neste mês.</p></div>
         <span class="when" id="recs-when"></span>
       </div>
       <div class="recs" id="recs"><p class="skel">Carregando…</p></div>
       <p class="rec-src" id="recs-fonte"></p>
-    </section>
-
-    <!-- 5. Diversificação -->
-    <section class="band panel" aria-labelledby="h-div" id="sec-div">
-      <div class="panel-head"><h2 id="h-div">Diversificação da carteira</h2></div>
-      <div id="div-body"><p class="skel">Cadastre seus ativos para ver como a carteira está distribuída.</p></div>
-    </section>
-
-    <!-- 5b. Comunidade -->
-    <section class="band panel" aria-labelledby="h-rank" id="sec-rank">
-      <div class="panel-head"><h2 id="h-rank">Ranking de investidores</h2><span class="when" id="rank-when"></span></div>
-      <div id="rank-body"><p class="skel">Carregando…</p></div>
     </section>
 
     <!-- 6. Explorar -->
@@ -1464,6 +1453,12 @@ button .ic,.btn .ic{margin:0}
         </table>
       </div>
       <div class="more-row"><span id="all-count" class="when"></span><button class="btn" id="all-more" type="button" hidden>Mostrar mais 50</button></div>
+    </section>
+
+    <!-- 5b. Comunidade -->
+    <section class="band panel" aria-labelledby="h-rank" id="sec-rank">
+      <div class="panel-head"><h2 id="h-rank">Ranking de investidores</h2><span class="when" id="rank-when"></span></div>
+      <div id="rank-body"><p class="skel">Carregando…</p></div>
     </section>
 
     <p class="foot">Cotações de ações, FIIs, ETFs e BDRs da B3 pela brapi.dev, atualizadas a cada 2 minutos durante o pregão (com atraso de até cerca de 30 minutos da fonte gratuita). Ações e ETFs dos EUA pelo TradingView, convertidos para reais pelo dólar do momento. Criptomoedas pela CoinGecko, a cada 10 minutos, todos os dias (variação em 24 horas). Renda fixa calculada com o CDI diário do Banco Central. O termômetro, os destaques, o sinal de cada ativo e a opinião dos analistas são recalculados a cada 5 minutos no pregão e a cada 3 horas fora dele, com histórico de preços do Yahoo Finance, consenso de analistas e leitura técnica do TradingView, Selic do Banco Central, notícias do Google Notícias e indicadores do StatusInvest. O perfil das empresas vem da Wikipedia, Wikidata, StatusInvest e TradingView. Os sinais seguem regras fixas e transparentes, não são recomendação individual de investimento: confira antes de comprar ou vender.</p>
@@ -1506,6 +1501,6 @@ button .ic,.btn .ic{margin:0}
 <script src="vendor/supabase-js-2.45.4.js"></script>
 <script src="icones.js?v=5"></script>
 <script src="escritorio.js?v=3d14"></script>
-<script src="app.js?v=20261103u"></script>
+<script src="app.js?v=20261103w"></script>
 </body>
 </html>

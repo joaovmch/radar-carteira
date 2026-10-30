@@ -116,15 +116,21 @@
     const nav = $("#tabs"); if (a.offsetLeft < nav.scrollLeft || a.offsetLeft + a.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: a.offsetLeft - 20, behavior: reduz ? "auto" : "smooth" });
   }
   let spyObs = null;
+  // Cada aba cobre um grupo de seções (data-g): a aba acende enquanto qualquer seção do grupo está na tela
   function prepararAbas() {
     if (spyObs || !("IntersectionObserver" in window)) return;
-    const vis = new Map();
+    const vis = new Map(), grupo = new Map(), ordem = [];
+    document.querySelectorAll("#tabs a").forEach((a) => {
+      const id = a.getAttribute("href").slice(1); (a.dataset.g || id).split(/\s+/).forEach((g) => grupo.set(g, id));
+    });
     spyObs = new IntersectionObserver((es) => {
       es.forEach((e) => vis.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0));
-      const ids = [...document.querySelectorAll("#tabs a")].map((a) => a.getAttribute("href").slice(1));
-      const ativo = ids.find((id) => vis.get(id) > 0); if (ativo) marcarAba(ativo);
+      // a seção visível mais acima na página decide a aba
+      const vivas = [...grupo.keys()].filter((g) => vis.get(g) > 0).map((g) => document.getElementById(g)).filter(Boolean);
+      if (!vivas.length) return; vivas.sort((x, y) => x.getBoundingClientRect().top - y.getBoundingClientRect().top);
+      marcarAba(grupo.get(vivas[0].id));
     }, { rootMargin: "-160px 0px -55% 0px", threshold: [0, 0.01] });
-    document.querySelectorAll("#tabs a").forEach((a) => { const s = document.getElementById(a.getAttribute("href").slice(1)); if (s) spyObs.observe(s); });
+    grupo.forEach((_, g) => { const s = document.getElementById(g); if (s) spyObs.observe(s); });
     $("#tabs").addEventListener("click", (e) => { const a = e.target.closest("a"); if (a) setTimeout(() => marcarAba(a.getAttribute("href").slice(1)), 50); });
     window.addEventListener("resize", () => { const a = document.querySelector('#tabs a[aria-current="true"]'); if (a) marcarAba(a.getAttribute("href").slice(1)); });
     setTimeout(() => marcarAba("sec-resumo"), 100);
@@ -631,9 +637,15 @@
         const cel = row.querySelectorAll(".cell"); if (cel.length < 2) return;
         const b = cel[0].querySelector("b"), sm = cel[0].querySelector("small"), prev = S.prevPx[r.t];
         if (prev != null && prev !== r.preco) { b.classList.remove("tick-up", "tick-down"); void b.offsetWidth; b.classList.add(r.preco > prev ? "tick-up" : "tick-down"); }
-        b.textContent = money(r.preco, r.moeda); if (sm && r.vd != null) { sm.textContent = pct(r.vd); sm.className = cls(r.vd); }
+        b.textContent = money(r.preco, r.moeda); if (sm && r.vd != null) { sm.textContent = pct(r.vd) + " hoje"; sm.className = cls(r.vd); }
         const bv = cel[1].querySelector("b"); if (bv) bv.textContent = brl(r.valor);
-        const sv = cel[1].querySelector("small"); if (sv && r.res != null) { sv.textContent = pct(r.res); sv.className = cls(r.res); }
+        const sv = cel[1].querySelector("small.mut"); if (sv && r.moeda === "USD" && r.valorNat != null) sv.textContent = usd(r.valorNat);
+        if (r.resRS != null && r.res != null) {
+          const rs = sinal(r.resRS, brl), pc = pct(r.res);
+          const mr = cel[1].querySelector(".m-res"); if (mr) { mr.textContent = rs + " · " + pc; mr.className = "m-res " + cls(r.resRS); }
+          const rb = cel[2] && cel[2].querySelector("b"), rsm = cel[2] && cel[2].querySelector("small");
+          if (rb) { rb.textContent = rs; rb.className = cls(r.resRS); } if (rsm) { rsm.textContent = pc; rsm.className = cls(r.res); }
+        }
         S.prevPx[r.t] = r.preco;
       });
     } catch (_) { /* tabela ainda não montada */ }
@@ -662,7 +674,9 @@
       // Variação do dia em reais: ativo em dólar também sobe ou cai com o câmbio
       const vdBRL = vd != null ? ((1 + vd / 100) * (1 + (moeda === "USD" ? fxVar() : 0) / 100) - 1) * 100 : null;
       const res = (preco != null && p.pm) ? (preco / p.pm - 1) * 100 : null;
-      return { p, t, qtd, classe, moeda, a: S.analises[t] || null, preco, vd, vdBRL, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
+      // Resultado desde a compra em R$ (ativo em dólar: ganho em dólar x dólar de hoje)
+      const resRS = (valorNat != null && p.pm) ? paraBRL(valorNat - p.pm * qtd, moeda) : null;
+      return { p, t, qtd, classe, moeda, resRS, a: S.analises[t] || null, preco, vd, vdBRL, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
     });
     rows.forEach((r) => { r.peso = (r.valor && patr) ? r.valor / patr : 0; });
     rows.sort((x, y) => (y.valor || 0) - (x.valor || 0));
@@ -1095,12 +1109,15 @@
           ${temSent ? sentHtml(sentDe(t), preco, moeda) : ""}
         </div>
       </div>`;
+      const resTxt = r.resRS != null ? `${sinal(r.resRS, brl)}` : null;
+      const resPct = res != null ? pct(res) : "";
+      const sub = moeda === "USD" && valorNat != null ? usd(valorNat) : `${fmtQtd(r.qtd)} ${un}`;
       return `<div class="pos${open ? " open" : ""}" data-cl="${classe}"><button type="button" class="pos-row" data-open="${esc(t)}" aria-expanded="${open}">
-        <span class="pos-id">${logoHtml(t)}<span style="min-width:0"><span class="tk">${esc(t)}</span><span class="chev" aria-hidden="true"></span> ${clsChip(classe)}</span><span class="nm">${esc(nome)}</span></span>
-        <span class="cell c-preco"><b class="${tick}">${money(preco, moeda)}</b><small class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) : ""}</small></span>
-        <span class="cell"><b>${brl(valor)}</b><small class="${res != null ? cls(res) : ""}">${res != null ? pct(res) : fmtQtd(r.qtd) + " " + un}</small></span>
-        <span class="c-sent">${anChip(t, preco)}</span>
-        <span class="c-sig"><span class="pill s-${sn}">${sn === "pendente" ? "Aguardando" : SINAL[sn]}</span></span></button>${detail}</div>`;
+        <span class="pos-id">${logoHtml(t)}<span class="tkw"><span class="tk">${esc(t)}</span><span class="chev" aria-hidden="true"></span></span><span class="nm">${esc(nome)}</span></span>
+        <span class="cell c-preco"><b class="${tick}">${money(preco, moeda)}</b><small class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) + " hoje" : ""}</small></span>
+        <span class="cell"><b>${brl(valor)}</b><small class="mut">${esc(sub)}</small>${resTxt ? `<small class="m-res ${cls(r.resRS)}">${esc(resTxt)} · ${esc(resPct)}</small>` : ""}</span>
+        <span class="cell c-res">${resTxt ? `<b class="${cls(r.resRS)}">${esc(resTxt)}</b><small class="${cls(res)}">${esc(resPct)}</small>` : `<b class="mut">—</b><small class="mut">sem preço médio</small>`}</span>
+        <span class="c-sig">${sn === "pendente" ? "" : `<span class="pill s-${sn}">${SINAL[sn]}</span>`}</span></button>${detail}</div>`;
     }).join("") || `<p class="skel" style="padding:12px">Nenhum ativo desta classe.</p>`;
     rows.forEach((r) => { if (r.preco != null) S.prevPx[r.t] = r.preco; });
   }
@@ -1155,8 +1172,10 @@
       return { r, s, an, pot, c, n, v, t };
     });
     itens.sort((x, y) => ((y.s && y.s.nota != null) ? y.s.nota : -1) - ((x.s && x.s.nota != null) ? x.s.nota : -1) || (y.pot || 0) - (x.pot || 0));
-    box.innerHTML = itens.map(({ r, s, an, pot, c, n, v, t }) => `<button type="button" class="an-row" data-emp="${esc(r.t)}">
-        <span class="an-tk"><span><span class="tk" style="font-size:15px">${esc(r.t)}</span> ${clsChip(r.classe)}</span><span class="nm">${esc(r.nome)}</span></span>
+    const cobertos = itens.filter((x) => x.t || (x.an && x.an.alvoMedio != null));
+    if (!cobertos.length) { box.innerHTML = `<p class="skel">Nenhum dos seus ativos tem cobertura de analistas hoje. ETFs, FIIs e criptomoedas normalmente não têm.</p>`; $("#an-when").textContent = ""; return; }
+    box.innerHTML = cobertos.map(({ r, s, an, pot, c, n, v, t }) => `<button type="button" class="an-row" data-emp="${esc(r.t)}">
+        <span class="an-tk"><span><span class="tk" style="font-size:15px">${esc(r.t)}</span></span><span class="nm">${esc(r.nome)}</span></span>
         <span class="an-bar">${t ? `<span class="sbar" role="img" aria-label="${c} compra, ${n} neutro, ${v} venda"><i class="c" style="width:${c / t * 100}%"></i><i class="n" style="width:${n / t * 100}%"></i><i class="v" style="width:${v / t * 100}%"></i></span><small>${c} de ${t} recomendam compra${v ? ", " + v + " venda" : ""}</small>` : `<small class="hint">${s ? (r.classe === "fii" || r.classe === "etf" || r.classe === "etf_ext" ? "Fundos não têm cobertura de analistas" : "Sem cobertura de analistas") : r.classe === "fii" || r.classe === "etf" || r.classe === "etf_ext" ? "Fundos não têm cobertura de analistas" : r.classe === "cripto" ? "Criptomoedas não têm cobertura de analistas" : "Aguardando a próxima atualização"}</small>`}</span>
         <span class="an-alvo">${an && an.alvoMedio != null ? `<b>${money(an.alvoMedio, r.moeda)}</b><small class="${cls(pot)}">${pot != null ? pct(pot) + " até o alvo" : ""}</small>` : `<small class="hint">—</small>`}</span>
         <span class="an-tec">${s && s.tecnico ? `<small class="hint">Técnico</small><b class="${/Compra/.test(s.tecnico.rotulo) ? "up" : /Venda/.test(s.tecnico.rotulo) ? "down" : ""}">${esc(s.tecnico.rotulo)}</b>` : ""}</span>
