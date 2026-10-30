@@ -137,7 +137,27 @@
   }
 
   /* ---------- Pregão (com feriados da B3) ---------- */
-  const FERIADOS = new Set(["2026-11-02", "2026-11-20", "2026-12-24", "2026-12-25", "2026-12-31", "2027-01-01", "2027-02-08", "2027-02-09", "2027-03-26", "2027-04-21", "2027-05-27", "2027-09-07", "2027-10-12", "2027-11-02", "2027-11-15", "2027-12-24", "2027-12-31"]);
+  // Feriados da B3 calculados por regra para qualquer ano: datas fixas, Carnaval, Sexta-feira Santa e Corpus Christi
+  // (a partir da Páscoa), Consciência Negra (desde 2024) e os dias sem pregão de 24 e 31 de dezembro.
+  const FERIADOS = (() => {
+    const cache = new Map();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    // Páscoa pelo algoritmo de Meeus/Jones/Butcher
+    const pascoa = (a) => {
+      const b = a % 19, c = Math.floor(a / 100), d = a % 100, e = Math.floor(c / 4), f = c % 4, g = Math.floor((c + 8) / 25), h = Math.floor((c - g + 1) / 3);
+      const i = (19 * b + c - e - h + 15) % 30, L = (32 + 2 * f + 2 * Math.floor(d / 4) - i - (d % 4)) % 7, m = Math.floor((b + 11 * i + 22 * L) / 451);
+      const n = i + L - 7 * m + 114;
+      return new Date(Date.UTC(a, Math.floor(n / 31) - 1, (n % 31) + 1, 12));
+    };
+    const doAno = (a) => {
+      if (cache.has(a)) return cache.get(a);
+      const p = pascoa(a).getTime(), rel = (n) => iso(new Date(p + n * 864e5));
+      const fixos = ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-24", "12-25", "12-31"].concat(a >= 2024 ? ["11-20"] : []);
+      const set = new Set(fixos.map((md) => a + "-" + md).concat([rel(-48), rel(-47), rel(-2), rel(60)]));
+      cache.set(a, set); return set;
+    };
+    return { has: (d) => /^\d{4}-/.test(d || "") && doAno(+d.slice(0, 4)).has(d) };
+  })();
   function pregao() {
     const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date());
     const g = (t) => (parts.find((p) => p.type === t) || {}).value;
@@ -339,7 +359,7 @@
   });
 
   function renderAll() { renderStatus(); renderMercado(); renderConv(); renderHero(); renderDia(); renderEscritorio(); renderCarteira(); renderRF(); renderAnalistas(); renderDiv(); renderRecs(); renderNews(); renderEmpresas(); renderTodas(); renderTape(); renderRanking(); }
-  function renderStatus() { const el = $("#last-upd"); const v = typeof VIVO !== "undefined" && VIVO.ativo(); el.classList.toggle("vivo", v); el.textContent = v ? "Cotações " + VIVO.rotulo() : S.cotTs ? "Cotações " + ago(S.cotTs) : ""; }
+  function renderStatus() { const el = $("#last-upd"); const v = typeof VIVO !== "undefined" && VIVO.ativo(); el.classList.toggle("vivo", v); el.textContent = v ? "Cotações " + VIVO.rotulo() : S.cotTs ? "Cotações buscadas " + ago(S.cotTs) : ""; el.title = v ? "" : "Preços da B3 pela brapi.dev, com atraso de até 30 minutos; EUA pelo TradingView. O horário é o da última busca, não o do preço."; }
 
   /* ---------- Logos ---------- */
   function logoUrl(t) {
@@ -1782,8 +1802,9 @@
     const c = S.painel.cdi;
     if (c && Array.isArray(c.serie) && c.serie.length) return { anual: Number(c.anual), diario: Number(c.diario), serie: c.serie, data: c.serie[c.serie.length - 1][0], ok: true };
     const sel = S.painel.mercado && S.painel.mercado.selic && Number(S.painel.mercado.selic.taxa);
+    // Sem Selic também: valor fixo de reserva, avisado na tela como estimativa sem dado do Banco Central
     const anual = sel ? sel - 0.1 : 13.65;
-    return { anual, diario: (Math.pow(1 + anual / 100, 1 / 252) - 1) * 100, serie: [], data: null, ok: false };
+    return { anual, diario: (Math.pow(1 + anual / 100, 1 / 252) - 1) * 100, serie: [], data: null, ok: false, fonte: sel ? "selic" : "fixo" };
   }
   // Fator acumulado de uma taxa (% do CDI ou prefixada) entre duas datas (início incluso, fim excluso)
   function fatorRF(ini, fim, indexador, taxa, C) {
@@ -1792,12 +1813,15 @@
       for (let d = ini; d < fim; d = somaDias(d, 1)) if (ehUtil(d)) du++;
       return { f: Math.pow(1 + taxa / 100, du / 252), du };
     }
-    let ultima = null;
+    let ultima = null, est = 0;
+    // Dias úteis antes do início da série guardada: estima com o primeiro CDI conhecido (antes, rendiam zero)
+    const ini0 = C.serie.length ? C.serie[0][0] : null;
+    if (ini0 && ini < ini0) for (let d = ini; d < ini0 && d < fim; d = somaDias(d, 1)) if (ehUtil(d)) { f *= 1 + (C.serie[0][1] / 100) * (taxa / 100); du++; est++; }
     for (const [d, v] of C.serie) { if (d < ini) continue; if (d >= fim) break; f *= 1 + (v / 100) * (taxa / 100); du++; ultima = d; }
     // Dias úteis ainda sem CDI publicado: usa o CDI do último dia
     let d = ultima ? somaDias(ultima, 1) : (C.data && C.data >= ini ? somaDias(C.data, 1) : ini);
     for (; d < fim; d = somaDias(d, 1)) if (ehUtil(d)) { f *= 1 + (C.diario / 100) * (taxa / 100); du++; }
-    return { f, du };
+    return { f, du, est };
   }
   function rfCalc(a, C) {
     C = C || cdiInfo();
@@ -1854,7 +1878,7 @@
   }
   function renderRF() {
     const T = rfTotais(), C = T.C;
-    $("#rf-cdi").textContent = `CDI ${num(C.anual, 2)}% a.a.` + (C.data ? ` · Banco Central, ${dataBR(C.data)}` : " · estimado pela Selic");
+    $("#rf-cdi").textContent = `CDI ${num(C.anual, 2)}% a.a.` + (C.data ? ` · Banco Central, ${dataBR(C.data)}` : C.fonte === "fixo" ? " · estimativa: Banco Central e Selic indisponíveis agora" : " · estimado pela Selic");
     if (!S.rfOk) {
       $("#rf-kpis").hidden = true; $("#rf-alerts").hidden = true;
       $("#rf-list").innerHTML = `<div class="empty"><strong>Renda fixa ainda não ativada</strong>Falta criar a tabela no banco de dados (arquivo supabase/migrations/20261026_renda_fixa.sql). Depois disso, recarregue a página.</div>`;
@@ -2216,11 +2240,11 @@
     $("#pf-body").innerHTML = `<div class="carregando"><i></i><i style="width:80%"></i></div>`;
     await carregarConquistas();
     const lib = new Set((S.conq && S.conq.itens) || ["m_basica", "a_bone", "a_broto", "a_cafe"]);
-    const N = meusNumeros(); const patr = N.patr; const nv = nivelDe(patr);
+    const N = meusNumeros(); const patr = N.rv; const nv = nivelDe(patr);
     const prox = NIVEIS[nv + 1]; const ini = NIVEIS[nv][1];
     const pctNv = prox ? Math.max(0, Math.min(100, (patr - ini) / (prox[1] - ini) * 100)) : 100;
     const nvServ = S.conq && S.conq.nivel != null ? S.conq.nivel : null;
-    const aviso = !S.v2 ? "" : !S.conq || nvServ == null ? "As recompensas aparecem depois que você entra no ranking (o Valoriza+ confere a carteira e a renda fixa a cada 15 minutos)."
+    const aviso = !S.v2 ? "" : !S.conq || nvServ == null ? "As recompensas aparecem depois que você entra no ranking (o Valoriza+ confere a carteira a cada 15 minutos; a faixa conta só ativos com cotação, sem a renda fixa)."
       : S.conq.verificado || (S.conq.motivos || []).every((x) => /7 dias/.test(x)) ? (nvServ < nv ? `A faixa ${NIVEIS[nv][0]} libera depois de 7 dias seguidos com esse valor investido (regra anti-troll: vale o menor valor da semana).` : "")
       : "Recompensas pausadas: " + (S.conq.motivos || []).filter((x) => !/7 dias/.test(x)).join("; ") + ".";
     const acDe = (n) => ITENS.find((i) => i.t === "a" && i.n === n);

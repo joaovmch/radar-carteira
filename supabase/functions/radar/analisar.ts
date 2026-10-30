@@ -136,9 +136,13 @@ async function mercado(sb: SupabaseClient) {
   await sb.from("painel").upsert({ id: "mercado", dados, atualizado_em: dados.atualizadoEm });
 
   // CDI diário do Banco Central para a renda fixa: renovado a cada 6 horas
-  const { data: cdiAnt } = await sb.from("painel").select("atualizado_em").eq("id", "cdi").maybeSingle();
-  if (!cdiAnt || Date.now() - Date.parse(cdiAnt.atualizado_em) > 6 * 36e5) {
-    const c = await cdi().catch(() => null);
+  // A série começa na aplicação mais antiga das carteiras (antes, só 3 anos: aplicações antigas rendiam zero no começo)
+  const { data: cdiAnt } = await sb.from("painel").select("atualizado_em,pedido:dados->>pedido").eq("id", "cdi").maybeSingle();
+  const { data: maisAntiga } = await sb.from("renda_fixa").select("data_aplicacao").order("data_aplicacao").limit(1).maybeSingle();
+  const desde = maisAntiga?.data_aplicacao ? String(maisAntiga.data_aplicacao) : null;
+  const faltaInicio = !!(desde && cdiAnt && (!(cdiAnt as any).pedido || desde < String((cdiAnt as any).pedido)));
+  if (!cdiAnt || faltaInicio || Date.now() - Date.parse(cdiAnt.atualizado_em) > 6 * 36e5) {
+    const c = await cdi(desde).catch(() => null);
     if (c) await sb.from("painel").upsert({ id: "cdi", dados: c, atualizado_em: c.atualizadoEm });
   }
 

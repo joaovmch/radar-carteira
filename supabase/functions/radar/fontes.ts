@@ -356,6 +356,8 @@ export async function statusInvest(ticker: string) {
   };
 }
 
+// Alíquota de IR retida na fonte sobre JCP para pessoa física (confira se a lei mudar)
+const IR_JCP = 0.15;
 // Lista de proventos no formato do StatusInvest (ed = data com, pd = pagamento, et/etd = tipo, v = valor)
 function resumoProventos(arr: any[]) {
   const proventos = (arr || []).slice(0, 40).map((p: any) => ({ tipo: p.etd || p.et || "", dataCom: p.ed || "", pagamento: p.pd || "", valor: Number(p.v) || 0 }));
@@ -365,6 +367,8 @@ function resumoProventos(arr: any[]) {
   return {
     proventos: proventos.slice(0, 12),
     proventos12m: r2(ult12.reduce((a, p) => a + p.valor, 0), 4),
+    // Líquido para pessoa física: JCP tem IR retido na fonte (IR_JCP); dividendos e rendimentos de FII, não
+    proventos12mLiq: r2(ult12.reduce((a, p) => a + p.valor * (/jcp|juros/i.test(p.tipo) ? 1 - IR_JCP : 1), 0), 4),
     proximosProventos: proventos.filter((p) => dt(p.pagamento) > hoje).sort((a, b) => dt(a.pagamento) - dt(b.pagamento)).slice(0, 4),
   };
 }
@@ -959,23 +963,36 @@ export function proximoCopom() {
   const meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   return `${dia - 1}–${dia} ${meses[m - 1]}${a !== new Date().getUTCFullYear() ? " " + a : ""}`;
 }
-// CDI diário (% ao dia, série 12 do Banco Central) desde ~3 anos atrás e a taxa anual de hoje (série 4389).
-// Usado no navegador para calcular quanto rende cada aplicação de renda fixa desde a data em que foi feita.
-export async function cdi() {
-  const ini = new Date(Date.now() - 3 * 366 * 864e5);
+// CDI diário (% ao dia, série 12 do Banco Central) desde a aplicação mais antiga das carteiras (no mínimo ~3 anos)
+// e a taxa anual de hoje (série 4389). Usado no navegador para calcular quanto rende cada aplicação de renda fixa.
+// O Banco Central limita a série diária a 10 anos por consulta: períodos maiores são buscados em partes.
+export async function cdi(desde?: string | null) {
+  const tresAnos = new Date(Date.now() - 3 * 366 * 864e5);
+  let ini = tresAnos;
+  if (desde && /^\d{4}-\d{2}-\d{2}$/.test(desde)) { const d = new Date(desde + "T12:00:00Z"); if (d < ini) ini = d; }
+  if (ini < new Date("2000-01-01T12:00:00Z")) ini = new Date("2000-01-01T12:00:00Z");
   const dd = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
-  const [dia, ano] = await Promise.all([
-    obj(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json&dataInicial=${dd(ini)}&dataFinal=${dd(new Date())}`, 20000),
+  const hoje = new Date();
+  const partes: [Date, Date][] = [];
+  for (let a = ini; a <= hoje;) {
+    const b = new Date(Math.min(hoje.getTime(), a.getTime() + 9 * 365 * 864e5));
+    partes.push([a, b]);
+    a = new Date(b.getTime() + 864e5);
+  }
+  const [blocos, ano] = await Promise.all([
+    Promise.all(partes.map(([a, b]) => obj(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json&dataInicial=${dd(a)}&dataFinal=${dd(b)}`, 20000))),
     obj("https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json").catch(() => null),
   ]);
   const n = (v: any) => Number(String(v).replace(",", "."));
-  const serie: [string, number][] = (Array.isArray(dia) ? dia : [])
+  const vistos = new Set<string>();
+  const serie: [string, number][] = blocos.flatMap((dia: any) => (Array.isArray(dia) ? dia : []))
     .map((x: any) => { const [d, m, a] = String(x.data).split("/"); return [`${a}-${m}-${d}`, n(x.valor)] as [string, number]; })
-    .filter(([d, v]) => /^\d{4}-\d{2}-\d{2}$/.test(d) && isFinite(v) && v >= 0 && v < 1);
+    .filter(([d, v]) => /^\d{4}-\d{2}-\d{2}$/.test(d) && isFinite(v) && v >= 0 && v < 1 && !vistos.has(d) && !!vistos.add(d))
+    .sort((x, y) => (x[0] < y[0] ? -1 : 1));
   if (serie.length < 50) throw new Error("CDI incompleto");
   const ult = serie[serie.length - 1][1];
   const anual = ano?.[0] ? n(ano[0].valor) : Math.round((Math.pow(1 + ult / 100, 252) - 1) * 10000) / 100;
-  return { anual, diario: ult, serie, fonte: "Banco Central (SGS 12 e 4389)", atualizadoEm: new Date().toISOString() };
+  return { anual, diario: ult, serie, inicio: serie[0][0], pedido: ini.toISOString().slice(0, 10), fonte: "Banco Central (SGS 12 e 4389)", atualizadoEm: new Date().toISOString() };
 }
 
 export async function selic() {

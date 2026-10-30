@@ -21,13 +21,13 @@ function conteudo(quando: string, r: any) {
   const dp = Number(r.dia_pct) || 0, drs = Number(r.dia_rs) || 0;
   const seta = dp > 0 ? "📈" : dp < 0 ? "📉" : "➖";
   if (quando === "abre") {
-    return { title: "☀️ Pregão aberto", body: `Patrimônio ${brl(Number(r.patr) || 0)}. Bom acompanhamento!` };
+    return { title: "☀️ Pregão aberto", body: `Seus ativos: ${brl(Number(r.patr) || 0)} (sem a renda fixa). Bom acompanhamento!` };
   }
   const subiu = dp > 0 ? "subiu" : dp < 0 ? "caiu" : "estável";
   const partes: string[] = [`${(drs >= 0 ? "+" : "−")}${brl(Math.abs(drs)).slice(3)} hoje`];
   if (r.melhor) partes.push(`maior alta ${r.melhor.t} ${pct(r.melhor.pct)}`);
   if (r.pior && r.pior.t !== (r.melhor && r.melhor.t)) partes.push(`maior baixa ${r.pior.t} ${pct(r.pior.pct)}`);
-  const quadro = quando === "fecha" ? "Fechamento do pregão" : "Sua carteira";
+  const quadro = quando === "fecha" ? "Fechamento do pregão" : "Seus ativos";
   return { title: `${seta} ${quadro}: ${subiu === "estável" ? "estável" : subiu + " " + pct(dp).replace("+", "").replace("−", "")}`, body: partes.join(" · ") };
 }
 
