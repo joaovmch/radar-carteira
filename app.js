@@ -563,7 +563,7 @@
      Só enquanto a página está aberta e o mercado do ativo está funcionando (B3, bolsas dos EUA; cripto o dia todo).
      Cada consulta vira um ponto do gráfico "Hoje"; os pontos do dia ficam guardados neste aparelho. */
   const VIVO = {
-    q: {}, pts: [], tk: {}, dia: null, uid: null, timer: 0, falhas: 0, ultimo: 0, atraso: null, salvo: 0,
+    q: {}, pts: [], tk: {}, sig: null, dia: null, uid: null, timer: 0, falhas: 0, ultimo: 0, atraso: null, salvo: 0,
     ativo() { return Date.now() - this.ultimo < 30000; },
     rotulo() { return this.atraso ? `ao vivo · atraso de ${this.atraso} min da fonte` : "ao vivo"; },
   };
@@ -579,11 +579,23 @@
   function vivoCarregar() {
     const uid = S.user && S.user.id; if (VIVO.uid === uid && VIVO.dia === hojeISO()) return;
     VIVO.uid = uid; VIVO.dia = hojeISO(); VIVO.pts = []; VIVO.tk = {}; VIVO.q = {};
-    try { const s = JSON.parse(localStorage.getItem("radar-vivo") || "null"); if (s && s.uid === uid && s.dia === VIVO.dia) { VIVO.pts = s.pts || []; VIVO.tk = s.tk || {}; } } catch (_) { /* sem storage */ }
+    try { const s = JSON.parse(localStorage.getItem("radar-vivo") || "null"); if (s && s.uid === uid && s.dia === VIVO.dia) { VIVO.pts = s.pts || []; VIVO.tk = s.tk || {}; VIVO.sig = s.sig || ""; } } catch (_) { /* sem storage */ }
   }
   function vivoGuardar(forca) {
     if (!forca && Date.now() - VIVO.salvo < 30000) return; VIVO.salvo = Date.now();
-    try { localStorage.setItem("radar-vivo", JSON.stringify({ uid: VIVO.uid, dia: VIVO.dia, pts: VIVO.pts, tk: VIVO.tk })); } catch (_) { /* cheio ou modo privado */ }
+    try { localStorage.setItem("radar-vivo", JSON.stringify({ uid: VIVO.uid, dia: VIVO.dia, pts: VIVO.pts, tk: VIVO.tk, sig: VIVO.sig })); } catch (_) { /* cheio ou modo privado */ }
+  }
+  // Os pontos ao vivo guardados são totais da carteira "daquela hora". Se você mudou quantidades, retirou dinheiro ou
+  // adicionou/removeu algo, esses pontos antigos ficariam fora de escala: descartamos e o gráfico recomeça de agora.
+  const vivoAssinatura = () => S.carteira.map((p) => p.ticker + ":" + Number(p.qtd)).sort().join("|") + "#" + (S.rf || []).map((a) => a.id + ":" + Number(a.valor)).sort().join("|");
+  function vivoConferir() {
+    if (!S.user) return; const sg = vivoAssinatura();
+    if (VIVO.sig !== sg) { if (VIVO.pts.length) VIVO.pts = []; VIVO.sig = sg; vivoGuardar(true); }
+  }
+  function reiniciarGrafico() {
+    VIVO.pts = []; VIVO.sig = vivoAssinatura(); vivoGuardar(true);
+    try { renderHero(); renderEscritorio(); renderDia(); } catch (_) { /* tela ainda montando */ }
+    toast("Gráfico de hoje reiniciado. Ele volta a crescer a partir de agora, com a carteira como está.");
   }
   const afinar = (a, max) => { if (a.length <= max) return a; const meio = a.length >> 1; return a.slice(0, meio).filter((_, i) => i % 2 === 0).concat(a.slice(meio)); };
   // junta o histórico do dia (a cada 2 min, do banco) com os pontos ao vivo, sem repetir o mesmo trecho
@@ -597,7 +609,7 @@
   async function vivoPasso() {
     if (!S.user) return;
     if (document.hidden || !S.carteira.length) return vivoAgendar(15000);
-    vivoCarregar();
+    vivoCarregar(); vivoConferir();
     const ab = mercadosAbertos(); const b3 = [], eua = [], cg = {}, cgT = {};
     S.carteira.forEach((p) => {
       const t = p.ticker, c = S.cotMap[t], cl = classeDe(t);
@@ -651,6 +663,7 @@
     } catch (_) { /* tabela ainda não montada */ }
     if (S.emp && VIVO.q[S.emp] && CH.emp) { try { cabecalhoEmpresa(S.emp, S.empresas[S.emp] || null); const q = VIVO.q[S.emp]; atualizarGrafico("emp", CH.emp.serie, { intra: comVivo(S.intra && S.intra[S.emp], VIVO.tk[S.emp]), base: q.p / (1 + q.v / 100) }); } catch (_) { /* página do ativo fechou */ } }
   }
+  document.addEventListener("click", (e) => { if (e.target.closest("#hero-reset")) reiniciarGrafico(); });
   function vivoIniciar() { vivoCarregar(); vivoAgendar(800); }
   function vivoParar() { clearTimeout(VIVO.timer); VIVO.q = {}; VIVO.pts = []; VIVO.tk = {}; VIVO.uid = null; VIVO.ultimo = 0; try { localStorage.removeItem("radar-vivo"); } catch (_) { /* sem storage */ } }
   document.addEventListener("visibilitychange", () => { if (S.user && !document.hidden) vivoAgendar(300); });
@@ -788,9 +801,10 @@
     const temUsd = rows.some((r) => r.moeda === "USD");
     $("#hero-fx").textContent = temUsd && fx() ? "Dólar R$ " + num(fx(), 3) : "";
     const { serie, fora, rf: comRF } = serieCarteira();
-    const box = $("#hero-chart");
+    const box = $("#hero-chart"); const rb = $("#hero-reset"); if (rb) rb.hidden = !serie;
     if (!serie) { box.innerHTML = `<p class="hint" style="color:rgba(255,255,255,.8);margin-top:14px">O gráfico aparece assim que o histórico dos seus ativos for carregado (alguns minutos depois de adicioná-los).</p>`; return; }
     pedirIntradia();
+    vivoConferir();
     const intraH = comVivo(serieIntradia(RF ? RF.bruto : 0), VIVO.pts), baseH = T.temPreco || rfV ? patrTot - dia : null;
     if (box.querySelector('[data-cw="hero"]') && atualizarGrafico("hero", serie, { intra: intraH, base: baseH })) return;
     box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff", intra: intraH, base: baseH, vivo: true }) + `<p class="hint g-nota" style="color:rgba(255,255,255,.75);margin:6px 0 0">Com as quantidades de hoje${temUsd ? " · dólar ao câmbio atual" : ""}${comRF ? " · renda fixa incluída" : ""}${fora ? ` · ${fora} ${fora === 1 ? "ativo sem histórico ficou" : "ativos sem histórico ficaram"} de fora` : ""}.</p>`;

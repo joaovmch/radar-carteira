@@ -256,6 +256,9 @@ main{padding-block:22px 80px}
 .hero-chart .g-res{color:#fff}.hero-chart .g-res .hint{color:rgba(255,255,255,.75)}
 .hero-chart .chart text{fill:rgba(255,255,255,.75)}
 .hero-chart .g-tip{color:var(--fg)}
+.hero-ac{display:inline-flex;align-items:center;gap:10px}
+.g-reset{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:3px 10px;transition:background .2s}
+.g-reset:hover{background:rgba(255,255,255,.26)}.g-reset .ic{width:13px;height:13px}
 .hero-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 
 /* Cores das classes */
@@ -1263,7 +1266,7 @@ button .ic,.btn .ic{margin:0}
         <div class="alloc" id="alloc"></div>
       </div>
       <div class="hero-chart">
-        <div class="hero-head"><span class="label">Evolução da carteira</span><span class="label" id="hero-fx"></span></div>
+        <div class="hero-head"><span class="label">Evolução da carteira</span><span class="hero-ac"><span class="label" id="hero-fx"></span><button type="button" class="g-reset" id="hero-reset" hidden title="Recomeça o gráfico de hoje. Use depois de retirar dinheiro ou mudar suas posições."><i data-ic="arrow-counter-clockwise"></i> Reiniciar</button></span></div>
         <div id="hero-chart"><div class="carregando" style="margin-top:20px"><i style="width:90%;opacity:.4"></i><i style="width:70%;opacity:.4"></i></div></div>
       </div>
     </section>
@@ -1499,8 +1502,8 @@ button .ic,.btn .ic{margin:0}
 
 <div id="toast-root"></div>
 <script src="vendor/supabase-js-2.45.4.js"></script>
-<script src="icones.js?v=5"></script>
+<script src="icones.js?v=6"></script>
 <script src="escritorio.js?v=3d14"></script>
-<script src="app.js?v=20261103w"></script>
+<script src="app.js?v=20261103x"></script>
 </body>
 </html>
