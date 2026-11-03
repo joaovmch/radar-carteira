@@ -132,6 +132,8 @@
     }, { rootMargin: "-160px 0px -55% 0px", threshold: [0, 0.01] });
     grupo.forEach((_, g) => { const s = document.getElementById(g); if (s) spyObs.observe(s); });
     $("#tabs").addEventListener("click", (e) => { const a = e.target.closest("a"); if (a) setTimeout(() => marcarAba(a.getAttribute("href").slice(1)), 50); });
+    { const nav = $("#tabs"), dica = () => nav.classList.toggle("mais", nav.scrollWidth - nav.clientWidth - nav.scrollLeft > 8);
+      nav.addEventListener("scroll", dica, { passive: true }); window.addEventListener("resize", dica); new MutationObserver(dica).observe(nav, { attributes: true, attributeFilter: ["hidden"] }); setTimeout(dica, 400); }
     window.addEventListener("resize", () => { const a = document.querySelector('#tabs a[aria-current="true"]'); if (a) marcarAba(a.getAttribute("href").slice(1)); });
     setTimeout(() => marcarAba("sec-resumo"), 100);
   }
