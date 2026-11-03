@@ -309,6 +309,7 @@
   async function iniciar() {
     prepararEntrada(); prepararAbas();
     await Promise.all([carregarCarteira().then(carregarEmpresas), carregarCotacoes(), carregarAnalises(), carregarPainel(), carregarRF(), carregarPerfil()]);
+    S.dadosOk = S.cartOk === true;
     renderAll();
     if (canal) sb.removeChannel(canal);
     canal = sb.channel("radar")
@@ -337,10 +338,11 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "empresas", filter: filtro }, () => { clearTimeout(tEmp); tEmp = setTimeout(async () => { await carregarEmpresas(); renderHero(); renderDia(); renderEmpresas(); }, 4000); })
       .subscribe();
   }
-  function parar() { vivoParar(); if (canal) { sb.removeChannel(canal); canal = null; } if (canalAtivos) { sb.removeChannel(canalAtivos); canalAtivos = null; assinados = ""; } S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
+  function parar() { vivoParar(); if (canal) { sb.removeChannel(canal); canal = null; } if (canalAtivos) { sb.removeChannel(canalAtivos); canalAtivos = null; assinados = ""; } S.dadosOk = false; S.carteira = []; S.analises = {}; S.painel = {}; S.empresas = {}; S.rf = []; S.anim.clear(); }
   async function carregarCarteira() {
     const { data, error } = await sb.from("carteira").select("id,ticker,qtd,pm,custo_brl").order("criado_em");
-    if (error) { toast("Não foi possível carregar sua carteira. Recarregue a página."); return; }
+    if (error) { S.cartOk = false; toast("Não foi possível carregar sua carteira. Recarregue a página."); return; }
+    S.cartOk = true;
     S.carteira = (data || []).map((p) => ({ ...p, qtd: Number(p.qtd), pm: p.pm != null ? Number(p.pm) : null, custo_brl: p.custo_brl != null ? Number(p.custo_brl) : null }));
   }
   async function carregarCotacoes() {
@@ -658,7 +660,11 @@
   // adicionou/removeu algo, esses pontos antigos ficariam fora de escala: descartamos e o gráfico recomeça de agora.
   const vivoAssinatura = () => S.carteira.map((p) => p.ticker + ":" + Number(p.qtd)).sort().join("|") + "#" + (S.rf || []).map((a) => a.id + ":" + Number(a.valor)).sort().join("|");
   function vivoConferir() {
-    if (!S.user) return; const sg = vivoAssinatura();
+    // Só depois que carteira e renda fixa terminaram de carregar, e depois de ler o que estava guardado neste aparelho:
+    // antes disso a "assinatura" parece diferente e o gráfico seria apagado toda vez que o site abre.
+    if (!S.user || !S.dadosOk) return;
+    vivoCarregar(); const sg = vivoAssinatura();
+    if (!VIVO.sig) { VIVO.sig = sg; vivoGuardar(true); return; }   // guardado por versão antiga, sem assinatura: adota
     if (VIVO.sig !== sg) { if (VIVO.pts.length) VIVO.pts = []; VIVO.sig = sg; vivoGuardar(true); }
   }
   function reiniciarGrafico() {

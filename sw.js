@@ -1,7 +1,7 @@
 /* Valoriza+ — service worker: notificações push e funcionamento offline.
    Arquivos do próprio site: sempre tenta a rede primeiro (nunca serve versão velha com internet) e guarda uma cópia;
    sem internet, abre a última cópia guardada. Dados (Supabase) e outros domínios não passam por aqui. */
-const CACHE = "valoriza-v20261104";
+const CACHE = "valoriza-v20261103b";
 const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable.png", "vendor/supabase-js-2.45.4.js"];
 
 self.addEventListener("install", (e) => {
