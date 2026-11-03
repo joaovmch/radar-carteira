@@ -180,6 +180,8 @@ main{padding-block:22px 80px}
 .auth h2{font-size:30px;font-stretch:78%;margin-bottom:4px;text-align:center}
 .auth p{color:var(--muted);margin:0 0 20px;text-align:center}
 .field{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:12px}
+.pw{position:relative;display:flex}.pw input{flex:1;min-width:0;padding-right:84px}.pw-ver{position:absolute;right:4px;top:50%;transform:translateY(-50%);min-height:44px;padding:0 12px;border:0;background:transparent;color:var(--accent);font-weight:600;font-size:13px;border-radius:8px}
+#auth .row .btn,#a-reset{min-height:44px}
 .field input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:11px 12px;font-size:16px;color:var(--fg);transition:border-color .2s,box-shadow .2s}
 .field input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-bg);outline:none}
 .auth .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:6px}
@@ -1229,7 +1231,7 @@ button .ic,.btn .ic{margin:0}
       <div class="chips-cls" aria-hidden="true"><span class="cl" data-cl="acao">Ações</span><span class="cl" data-cl="fii">FIIs</span><span class="cl" data-cl="etf">ETFs</span><span class="cl" data-cl="bdr">BDRs</span><span class="cl" data-cl="acao_ext">EUA</span><span class="cl" data-cl="cripto">Cripto</span><span class="cl" data-cl="rf">Renda fixa</span></div>
       <form id="auth-form" autocomplete="on" novalidate>
         <label class="field">E-mail<input id="a-email" type="email" autocomplete="email" required></label>
-        <label class="field">Senha<input id="a-senha" type="password" autocomplete="current-password" minlength="6" maxlength="72" required></label>
+        <div class="field"><label for="a-senha">Senha</label><div class="pw"><input id="a-senha" type="password" autocomplete="current-password" minlength="6" maxlength="72" required><button class="pw-ver" id="a-ver" type="button" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button></div></div>
         <div class="row">
           <button class="btn primary" id="a-go" type="submit">Entrar</button>
           <button class="btn ghost" id="a-toggle" type="button">Criar conta</button>
@@ -1506,6 +1508,6 @@ button .ic,.btn .ic{margin:0}
 <script src="vendor/supabase-js-2.45.4.js"></script>
 <script src="icones.js?v=6"></script>
 <script src="escritorio.js?v=20261104"></script>
-<script src="app.js?v=20261104a"></script>
+<script src="app.js?v=20261104b"></script>
 </body>
 </html>

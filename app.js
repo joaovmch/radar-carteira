@@ -193,6 +193,17 @@
   });
 
   /* ---------- Login ---------- */
+  (function () {
+    const ver = document.getElementById("a-ver"), sn = document.getElementById("a-senha");
+    if (!ver || !sn) return;
+    ver.addEventListener("click", () => {
+      const mostrar = sn.type === "password";
+      sn.type = mostrar ? "text" : "password";
+      ver.textContent = mostrar ? "Ocultar" : "Mostrar";
+      ver.setAttribute("aria-label", mostrar ? "Ocultar senha" : "Mostrar senha");
+      ver.setAttribute("aria-pressed", String(mostrar));
+    });
+  })();
   function setAuthMode(signup) {
     S.signup = signup;
     $("#auth-title").textContent = signup ? "Criar conta" : "Entrar";
