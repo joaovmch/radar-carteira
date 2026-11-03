@@ -492,10 +492,14 @@
   function prepGrafico(key) {
     const c = CH[key], s = recorte(key); if (s.length < 2) return null;
     const hoje = c.per === "Hoje";
-    let x0, x1, tx, ts, v;
+    let x0, x1, tx, ts, v, curto = false;
     if (hoje) {
       const d = diaSP(s[0][0]); const ab = Date.parse(d + "T10:00:00-03:00") / 1000, fe = Date.parse(d + "T18:00:00-03:00") / 1000;
-      x0 = Math.min(s[0][0], ab); x1 = Math.max(s[s.length - 1][0], fe);
+      // Poucos minutos de dados (conta nova ou ativo ainda sem histórico no servidor): o eixo acompanha os dados,
+      // em vez de espremer a linha no canto direito de um pregão inteiro.
+      const span = s[s.length - 1][0] - s[0][0]; curto = span < 3600;
+      if (curto) { const pad = Math.max(120, span * 0.2); x0 = s[0][0] - pad; x1 = s[s.length - 1][0] + pad; }
+      else { x0 = Math.min(s[0][0], ab); x1 = Math.max(s[s.length - 1][0], fe); }
       const B = (x1 - x0) / 360; const out = [];
       s.forEach((p) => { const b = Math.floor((p[0] - x0) / B); if (out.length && out[out.length - 1].b === b) out[out.length - 1].p = p; else out.push({ b, p }); });
       ts = out.map((o) => o.p[0]); v = out.map((o) => o.p[1]); tx = ts.slice();
@@ -510,7 +514,7 @@
     let mn = Math.min(base, ...v), mx = Math.max(base, ...v);
     const minR = Math.abs(mx) * 0.003 || 1; if (mx - mn < minR) { const m = (mx + mn) / 2; mn = m - minR / 2; mx = m + minR / 2; }
     const fol = (mx - mn) * 0.12;
-    return { hoje, tx, ts, v, x0, x1, y0: mn - fol, y1: mx + fol, base, n: tx.length };
+    return { hoje, curto, tx, ts, v, x0, x1, y0: mn - fol, y1: mx + fol, base, n: tx.length };
   }
   function passoBonito(r) { const p = Math.pow(10, Math.floor(Math.log10(r))); const f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
   function chartSvg(key) {
@@ -557,7 +561,11 @@
     q(".g-grade").innerHTML = g;
     // eixo do tempo
     let ex = "";
-    if (e.hoje) { const d0 = diaSP(e.ts[0]); for (let h = 10; h <= 18; h += 2) { const t = Date.parse(d0 + "T" + String(h).padStart(2, "0") + ":00:00-03:00") / 1000; if (t >= e.x0 && t <= e.x1) ex += `<text x="${X(t).toFixed(1)}" y="${H + 16}" font-size="10.5" text-anchor="middle">${h}h</text>`; } }
+    if (e.hoje && e.curto) {
+      const hm = (ts) => new Date(ts * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+      const n = e.ts.length - 1; ex += `<text x="${X(e.tx[0]).toFixed(1)}" y="${H + 16}" font-size="10.5" text-anchor="start">${hm(e.ts[0])}</text>`;
+      if (n > 0) ex += `<text x="${X(e.tx[n]).toFixed(1)}" y="${H + 16}" font-size="10.5" text-anchor="end">${hm(e.ts[n])}</text>`;
+    } else if (e.hoje) { const d0 = diaSP(e.ts[0]); for (let h = 10; h <= 18; h += 2) { const t = Date.parse(d0 + "T" + String(h).padStart(2, "0") + ":00:00-03:00") / 1000; if (t >= e.x0 && t <= e.x1) ex += `<text x="${X(t).toFixed(1)}" y="${H + 16}" font-size="10.5" text-anchor="middle">${h}h</text>`; } }
     else {
       const longo = (e.ts[e.ts.length - 1] - e.ts[0]) > 100 * 86400, intra = c.per === "5D";
       const f = (ts) => intra ? new Date(ts * 1000).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", timeZone: "America/Sao_Paulo" }) : new Date(ts * 1000).toLocaleDateString("pt-BR", longo ? { month: "short", year: "2-digit" } : { day: "2-digit", month: "short" });
