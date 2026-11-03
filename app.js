@@ -196,6 +196,21 @@
 
   /* ---------- Login ---------- */
   (function () {
+    const bt = document.getElementById("btn-export");
+    if (!bt) return;
+    bt.addEventListener("click", () => {
+      if (!S.carteira.length) { toast("Sua carteira está vazia: nada para exportar."); return; }
+      const lin = [["ticker", "quantidade", "preco_medio", "custo_brl"]].concat(S.carteira.map((p) => [p.ticker, p.qtd, p.pm ?? "", p.custo_brl ?? ""]));
+      const csv = "\ufeff" + lin.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = "valoriza-carteira-" + new Date().toISOString().slice(0, 10) + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast("Carteira exportada.");
+    });
+  })();
+  (function () {
     const ver = document.getElementById("a-ver"), sn = document.getElementById("a-senha");
     if (!ver || !sn) return;
     ver.addEventListener("click", () => {

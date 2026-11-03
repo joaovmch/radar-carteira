@@ -183,6 +183,7 @@ main{padding-block:22px 80px}
 .field{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:12px}
 .pw{position:relative;display:flex}.pw input{flex:1;min-width:0;padding-right:84px}.pw-ver{position:absolute;right:4px;top:50%;transform:translateY(-50%);min-height:44px;padding:0 12px;border:0;background:transparent;color:var(--accent);font-weight:600;font-size:13px;border-radius:8px}
 #auth .row .btn,#a-reset{min-height:44px}
+@media (pointer:coarse){#btn-sair{min-height:44px;padding-left:12px;padding-right:12px}}
 .field input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:11px 12px;font-size:16px;color:var(--fg);transition:border-color .2s,box-shadow .2s}
 .field input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-bg);outline:none}
 .auth .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:6px}
@@ -390,6 +391,7 @@ form.add input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accen
 .conv label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
 .conv input,.conv select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px;font-size:16px;width:100%;min-width:0;color:var(--fg)}
 .conv input{font-family:var(--mono);font-size:18px;font-weight:600}
+.conv select{text-overflow:ellipsis;white-space:nowrap;overflow:hidden;padding-right:4px}
 .conv input:focus,.conv select:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-bg);outline:none}
 .conv-troca{border:1px solid var(--line);background:var(--surface);border-radius:999px;width:42px;height:42px;font-size:18px;font-weight:700;color:var(--accent);transition:transform .3s var(--ease),border-color .2s}
 .conv-troca:hover{transform:rotate(180deg);border-color:var(--accent)}
@@ -1302,6 +1304,7 @@ button .ic,.btn .ic{margin:0}
             <p class="form-msg" id="form-msg" role="status"></p>
           </form>
         </details>
+        <button class="btn ghost sm" id="btn-export" type="button" style="margin-top:8px">Exportar carteira (CSV)</button>
       </section>
 
       <aside class="panel news-panel" aria-labelledby="h-news" id="sec-noticias">
@@ -1418,7 +1421,7 @@ button .ic,.btn .ic{margin:0}
     <section class="band panel" aria-labelledby="h-emp" id="sec-empresas">
       <div class="panel-head"><h2 id="h-emp">Pesquisar um ativo</h2><span class="when">Ficha completa de qualquer ação, fundo ou cripto</span></div>
             <form class="emp-busca" id="emp-form" autocomplete="off">
-        <input id="emp-q" placeholder="Código, ex.: WEGE3, HGLG11, VOO, BTC" maxlength="10" list="dl-tickers" aria-label="Código do ativo">
+        <input id="emp-q" placeholder="Ex.: WEGE3, VOO, BTC" maxlength="10" list="dl-tickers" aria-label="Código do ativo">
         <button class="btn primary" type="submit">Ver ativo</button>
       </form>
       <div class="emp-grid" id="emp-grid" hidden><p class="skel">Cadastre ativos na carteira para vê-los aqui. Você também pode buscar qualquer ativo acima.</p></div>
@@ -1510,6 +1513,6 @@ button .ic,.btn .ic{margin:0}
 <script src="vendor/supabase-js-2.45.4.js"></script>
 <script src="icones.js?v=6"></script>
 <script src="escritorio.js?v=20261104"></script>
-<script src="app.js?v=20261104c"></script>
+<script src="app.js?v=20261104d"></script>
 </body>
 </html>
