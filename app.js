@@ -872,14 +872,28 @@
   }
   // Cotações ao longo do dia (tabela cotacoes_hist, gravada pelo banco a cada atualização de preço)
   S.intra = null; S.intraT = 0;
+  // O Supabase devolve no máximo 1000 linhas por consulta. Por isso o histórico vem em páginas, do mais novo para o mais
+  // antigo (se a carteira for enorme, o que falta é o começo da semana, nunca o dia de hoje). Depois da primeira carga,
+  // cada atualização busca só os pontos novos.
   async function carregarIntradia() {
-    const tk = [...new Set(S.carteira.map((p) => p.ticker))]; if (!tk.length) { S.intra = null; return; }
+    const tk = [...new Set(S.carteira.map((p) => p.ticker))]; if (!tk.length) { S.intra = null; S.intraSig = null; S.intraMax = 0; return; }
     S.intraT = Date.now();
-    const desde = new Date(Date.now() - 7 * 864e5).toISOString();
-    const { data, error } = await sb.from("cotacoes_hist").select("ticker,em,preco").in("ticker", tk).gte("em", desde).order("em").limit(20000);
-    if (error) { S.intra = null; return; }
-    const por = {}; (data || []).forEach((r) => { (por[r.ticker] ||= []).push([Date.parse(r.em) / 1000, Number(r.preco)]); });
-    S.intra = por;
+    const sig = tk.slice().sort().join("|");
+    const inc = !!(S.intra && S.intraSig === sig && S.intraMax);
+    const desde = new Date(inc ? S.intraMax - 60000 : Date.now() - 7 * 864e5).toISOString();
+    const PAG = 1000; let linhas = [];
+    for (let n = 0; n < 30; n++) {
+      const { data, error } = await sb.from("cotacoes_hist").select("ticker,em,preco").in("ticker", tk).gte("em", desde).order("em", { ascending: false }).order("ticker").range(n * PAG, n * PAG + PAG - 1);
+      if (error) { if (!inc) S.intra = null; return; }
+      linhas = linhas.concat(data || []); if (!data || data.length < PAG) break;
+    }
+    const por = inc ? S.intra : {}; let max = inc ? S.intraMax : 0;
+    linhas.reverse().forEach((r) => {
+      const ts = Date.parse(r.em) / 1000, arr = (por[r.ticker] ||= []);
+      if (arr.length && arr[arr.length - 1][0] >= ts) return;   // já tínhamos esse ponto
+      arr.push([ts, Number(r.preco)]); if (ts * 1000 > max) max = ts * 1000;
+    });
+    S.intra = por; S.intraSig = sig; S.intraMax = max;
   }
   function pedirIntradia() { if (Date.now() - S.intraT > 110000 && S.user) carregarIntradia().then(() => { if (S.intra) { renderHero(); renderEscritorio(); } }); }
   // soma da carteira em blocos de 5 minutos, carregando o último preço conhecido de cada ativo
