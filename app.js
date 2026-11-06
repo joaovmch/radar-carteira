@@ -13,7 +13,7 @@
   const linkExpirado = /error_code=otp_expired|error=access_denied/.test(urlEntrada);
 
   const $ = (s) => document.querySelector(s);
-  const S = { user: null, carteira: [], cot: [], cotMap: {}, cotTs: null, analises: {}, painel: {}, empresas: {}, open: null, newsTk: null, confirmDel: null, lim: 50, signup: false, emp: null, fcls: null, exCls: "acao", prevPx: {}, anim: new Set() };
+  const S = { user: null, carteira: [], cot: [], cotMap: {}, cotTs: null, analises: {}, painel: {}, empresas: {}, open: null, newsTk: null, confirmDel: null, lim: 20, signup: false, emp: null, fcls: null, exCls: "acao", prevPx: {}, anim: new Set() };
   const reduz = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   /* ---------- Formatação ---------- */
@@ -160,18 +160,81 @@
     };
     return { has: (d) => /^\d{4}-/.test(d || "") && doAno(+d.slice(0, 4)).has(d) };
   })();
-  function pregao() {
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date());
-    const g = (t) => (parts.find((p) => p.type === t) || {}).value;
-    const dia = g("year") + "-" + g("month") + "-" + g("day");
-    const mins = (+g("hour") % 24) * 60 + (+g("minute"));
-    const feriado = FERIADOS.has(dia);
-    const util = !["Sat", "Sun"].includes(g("weekday")) && !feriado;
-    const aberto = util && mins >= 600 && mins < 1020;
-    $("#pregao").classList.toggle("aberto", aberto);
-    $("#pregao-txt").textContent = aberto ? "Pregão aberto" : feriado ? "Feriado na B3" : (util && mins < 600 ? "Pregão abre às 10h" : "Pregão fechado");
+  /* ---------- Horário de cada mercado (abertura parcial) ----------
+     B3: 10h até o fechamento de Nova York (17h55 + call até 18h sem horário de verão nos EUA; até 17h com ele).
+     EUA (NYSE/Nasdaq): 9h30 às 16h de Nova York, que dá 11h30 às 18h ou 10h30 às 17h em Brasília, conforme o horário de verão de lá.
+     Cripto: 24 horas. Tudo calculado pelo fuso de cada bolsa, então a troca de horário de verão nos EUA é automática. */
+  const FERIADOS_EUA = (() => {
+    const cache = new Map();
+    const iso = (a, m, d) => new Date(Date.UTC(a, m - 1, d, 12)).toISOString().slice(0, 10);
+    const enesima = (a, m, wd, n) => { const d1 = new Date(Date.UTC(a, m - 1, 1, 12)).getUTCDay(); return iso(a, m, 1 + ((wd - d1 + 7) % 7) + (n - 1) * 7); };
+    const ultima = (a, m, wd) => { const ul = new Date(Date.UTC(a, m, 0, 12)); return iso(a, m, ul.getUTCDate() - ((ul.getUTCDay() - wd + 7) % 7)); };
+    const obs = (a, m, d) => { const w = new Date(Date.UTC(a, m - 1, d, 12)).getUTCDay(); return w === 6 ? iso(a, m, d - 1) : w === 0 ? iso(a, m, d + 1) : iso(a, m, d); };
+    const pascoa = (a) => { const b = a % 19, c = Math.floor(a / 100), d = a % 100, e = Math.floor(c / 4), f = c % 4, g = Math.floor((c + 8) / 25), h = Math.floor((c - g + 1) / 3), i = (19 * b + c - e - h + 15) % 30, L = (32 + 2 * f + 2 * Math.floor(d / 4) - i - (d % 4)) % 7, m = Math.floor((b + 11 * i + 22 * L) / 451), n = i + L - 7 * m + 114; return Date.UTC(a, Math.floor(n / 31) - 1, (n % 31) + 1, 12); };
+    const doAno = (a) => {
+      if (cache.has(a)) return cache.get(a);
+      const fechado = new Set([obs(a, 1, 1), enesima(a, 1, 1, 3), enesima(a, 2, 1, 3), new Date(pascoa(a) - 2 * 864e5).toISOString().slice(0, 10), ultima(a, 5, 1), obs(a, 6, 19), obs(a, 7, 4), enesima(a, 9, 1, 1), enesima(a, 11, 4, 4), obs(a, 12, 25)]);
+      const ac = enesima(a, 11, 4, 4); const meio = new Set([new Date(Date.parse(ac + "T12:00:00Z") + 864e5).toISOString().slice(0, 10)]);   // dia seguinte ao Dia de Ação de Graças: fecha às 13h
+      const w24 = new Date(Date.UTC(a, 11, 24, 12)).getUTCDay(); if (w24 >= 1 && w24 <= 4) meio.add(iso(a, 12, 24));
+      const w3 = new Date(Date.UTC(a, 6, 3, 12)).getUTCDay(); if (w3 >= 1 && w3 <= 4) meio.add(iso(a, 7, 3));
+      const r = { fechado, meio }; cache.set(a, r); return r;
+    };
+    return { has: (d) => doAno(+d.slice(0, 4)).fechado.has(d), meio: (d) => doAno(+d.slice(0, 4)).meio.has(d) };
+  })();
+  // minutos de Brasília em que um horário de Nova York cai hoje (lida sozinho com o horário de verão de lá)
+  const nyEmSP = (minNY) => { const sp = partesEm("America/Sao_Paulo"), ny = partesEm("America/New_York"); let d = sp.mins - ny.mins; if (d < -720) d += 1440; if (d > 720) d -= 1440; return minNY + d; };
+  const hhmm = (m) => { const h = Math.floor(m / 60), mi = m % 60; return h + "h" + (mi ? String(mi).padStart(2, "0") : ""); };
+  function mercados() {
+    const sp = partesEm("America/Sao_Paulo"), ny = partesEm("America/New_York");
+    const b3Util = !sp.fds && !FERIADOS.has(sp.dia), euaUtil = !ny.fds && !FERIADOS_EUA.has(ny.dia);
+    const b3 = { nome: "B3", util: b3Util, abre: 600, fecha: nyEmSP(960), agora: sp.mins };
+    const eua = { nome: "EUA", util: euaUtil, abre: nyEmSP(570), fecha: nyEmSP(FERIADOS_EUA.meio(ny.dia) ? 780 : 960), agora: sp.mins, meio: FERIADOS_EUA.meio(ny.dia) };
+    [b3, eua].forEach((m) => {
+      m.aberto = m.util && m.agora >= m.abre && m.agora < m.fecha;
+      m.abriu = m.util && m.agora >= m.abre;            // hoje já teve pregão (aberto agora ou já fechou)
+      m.antes = m.util && m.agora < m.abre;
+      m.txt = !m.util ? (m === b3 ? (FERIADOS.has(sp.dia) ? "feriado, sem pregão hoje" : "fechada no fim de semana") : (FERIADOS_EUA.has(ny.dia) ? "feriado nos EUA, sem pregão hoje" : "fechada no fim de semana"))
+        : m.aberto ? `aberta até ${hhmm(m.fecha)}${m.meio ? " (meio pregão)" : ""}` : m.antes ? `abre às ${hhmm(m.abre)}` : `fechou às ${hhmm(m.fecha)}`;
+      m.horario = `${hhmm(m.abre)} às ${hhmm(m.fecha)}`;
+    });
+    return { b3, eua, cripto: { nome: "Cripto", aberto: true, abriu: true, txt: "aberta 24 horas, todos os dias" } };
   }
-  pregao(); setInterval(pregao, 60000);
+  // O mercado deste ativo já teve pregão hoje? Antes da abertura, a variação guardada ainda é a do último pregão.
+  const mercadoDe = (classe) => classe === "cripto" ? "cripto" : ext(classe) ? "eua" : "b3";
+  const abriuHoje = (classe) => mercados()[mercadoDe(classe)].abriu;
+  function pregao() {
+    const M = mercados(), b = M.b3, e = M.eua, el = $("#pregao"); if (!el) return;
+    const temEua = S.carteira && S.carteira.some((p) => ext(classeDe(p.ticker)));
+    let txt, curto, est;
+    if (b.aberto && e.aberto) { txt = "Mercados abertos"; curto = "Aberto"; est = "aberto"; }
+    else if (b.aberto && e.antes) { txt = `Abertura parcial · EUA às ${hhmm(e.abre)}`; curto = "Parcial"; est = "parcial"; }
+    else if (b.aberto) { txt = e.util ? "Pregão aberto · EUA fechou" : "Pregão aberto · EUA sem pregão"; curto = "Aberto"; est = e.util || !temEua ? "aberto" : "parcial"; }
+    else if (e.aberto) { txt = b.util ? "Abertura parcial · só EUA" : "Só EUA aberto · B3 sem pregão"; curto = "Parcial"; est = "parcial"; }
+    else if (b.antes) { txt = `Pregão abre às ${hhmm(b.abre)}`; curto = "Abre " + hhmm(b.abre); est = "fechado"; }
+    else { txt = !b.util && FERIADOS.has(partesEm("America/Sao_Paulo").dia) ? "Feriado na B3" : "Mercados fechados"; curto = "Fechado"; est = "fechado"; }
+    el.classList.toggle("aberto", est === "aberto"); el.classList.toggle("parcial", est === "parcial");
+    if (est === "parcial") curto = "Parcial"; else if (est === "aberto") curto = "Aberto";
+    $("#pregao-txt").textContent = txt; const c = $("#pregao-curto"); if (c) c.textContent = curto;
+    el.setAttribute("aria-label", txt + ". Ver horário de cada mercado");
+    const pop = $("#pregao-pop"); if (pop && !pop.hidden) pregaoPop();
+  }
+  function pregaoPop() {
+    const M = mercados(), pop = $("#pregao-pop"); if (!pop) return;
+    const conta = (mk) => (S.carteira || []).filter((p) => mercadoDe(classeDe(p.ticker)) === mk).length;
+    const linha = (k, m, hor) => { const n = conta(k); return `<li class="${m.aberto ? "on" : ""}"><span class="dot"></span><span><b>${m.nome}</b> ${esc(m.txt)}<small>${esc(hor)}${n ? ` · ${n} ${n === 1 ? "ativo seu" : "ativos seus"}` : ""}</small></span></li>`; };
+    pop.innerHTML = `<p class="pp-t">Horário dos mercados <small>(horário de Brasília)</small></p><ul>
+      ${linha("b3", M.b3, "Ações, FIIs, ETFs e BDRs · " + (M.b3.util ? M.b3.horario : "10h às " + hhmm(M.b3.fecha) + " nos dias úteis"))}
+      ${linha("eua", M.eua, "Ações e ETFs dos EUA · " + M.eua.horario)}
+      ${linha("cripto", M.cripto, "Criptomoedas · sem horário")}</ul>
+      <p class="pp-n">Até o mercado de um ativo abrir, a variação dele é a do último pregão e não entra no "Hoje". Os horários dos EUA mudam uma hora com o horário de verão de lá.</p>`;
+  }
+  document.addEventListener("click", (e) => {
+    const pop = $("#pregao-pop"); if (!pop) return;
+    if (e.target.closest("#pregao")) { pop.hidden = !pop.hidden; $("#pregao").setAttribute("aria-expanded", String(!pop.hidden)); if (!pop.hidden) pregaoPop(); return; }
+    if (!pop.hidden && !e.target.closest("#pregao-pop")) { pop.hidden = true; $("#pregao").setAttribute("aria-expanded", "false"); }
+  });
+  document.addEventListener("keydown", (e) => { const pop = $("#pregao-pop"); if (e.key === "Escape" && pop && !pop.hidden) { pop.hidden = true; $("#pregao").focus(); } });
+  pregao(); setInterval(pregao, 30000);
 
   /* ---------- Offline e foco nas gavetas ---------- */
   // Service worker sempre registrado (antes, só ao ligar as notificações): sem internet, o app abre a última versão guardada
@@ -660,6 +723,7 @@
     const b = e.target.closest("[data-per]"); if (!b) return;
     const g = b.closest("[data-chart]"); if (!g) return; const key = g.dataset.chart; if (!CH[key]) return;
     CH[key].per = b.dataset.per; CH[key].escolhido = true;
+    if (key === "hero") { const rb = $("#hero-reset"); if (rb) rb.hidden = !ehIntra(CH.hero.per); }   // "Reiniciar" só faz sentido no gráfico do dia
     g.querySelectorAll("[data-per]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.per === CH[key].per)));
     const w = document.querySelector(`[data-cw="${key}"]`); if (!w) return;
     cancelAnimationFrame(CH[key].raf);
@@ -680,8 +744,8 @@
     return { dia: g("year") + "-" + g("month") + "-" + g("day"), mins: (+g("hour") % 24) * 60 + (+g("minute")), fds: ["Sat", "Sun"].includes(g("weekday")) };
   }
   function mercadosAbertos() {
-    const sp = partesEm("America/Sao_Paulo"), ny = partesEm("America/New_York");
-    return { b3: !sp.fds && !FERIADOS.has(sp.dia) && sp.mins >= 595 && sp.mins < 1095, eua: !ny.fds && ny.mins >= 570 && ny.mins < 965 };
+    const M = mercados(), dentro = (m) => m.util && m.agora >= m.abre - 5 && m.agora < m.fecha + 15;
+    return { b3: dentro(M.b3), eua: dentro(M.eua) };
   }
   function vivoCarregar() {
     const uid = S.user && S.user.id; if (VIVO.uid === uid && VIVO.dia === hojeISO()) return;
@@ -760,7 +824,7 @@
         const cel = row.querySelectorAll(".cell"); if (cel.length < 2) return;
         const b = cel[0].querySelector("b"), sm = cel[0].querySelector("small"), prev = S.prevPx[r.t];
         if (prev != null && prev !== r.preco) { b.classList.remove("tick-up", "tick-down"); void b.offsetWidth; b.classList.add(r.preco > prev ? "tick-up" : "tick-down"); }
-        b.textContent = money(r.preco, r.moeda); if (sm && r.vd != null) { sm.textContent = pct(r.vd) + " hoje"; sm.className = cls(r.vd); }
+        b.textContent = money(r.preco, r.moeda); if (sm && r.vd != null) { sm.textContent = pct(r.vd) + (r.doPregao ? " hoje" : " últ. pregão"); sm.className = cls(r.vd); }
         const eU = r.moeda === "USD" && r.valorNat != null;
         const bv = cel[1].querySelector("b"); if (bv) bv.textContent = eU ? usd(r.valorNat) : brl(r.valor);
         const sv = cel[1].querySelector("small.eq"); if (sv && eU) sv.textContent = "≈ " + brl(r.valor);
@@ -802,7 +866,8 @@
       // Variação do dia em reais: ativo em dólar também sobe ou cai com o câmbio
       const vdBRL = vd != null ? ((1 + vd / 100) * (1 + (moeda === "USD" ? fxVar() : 0) / 100) - 1) * 100 : null;
       // Para o "Hoje": cripto entra pela variação de 24 h; os demais só se a cotação for de hoje
-      const vdHoje = vdBRL == null ? null : (classe === "cripto" || (q && q.hoje)) ? vdBRL : 0;
+      const doPregao = classe === "cripto" || (q && q.hoje && abriuHoje(classe));
+      const vdHoje = vdBRL == null ? null : doPregao ? vdBRL : 0;
       const res = (preco != null && p.pm) ? (preco / p.pm - 1) * 100 : null;
       // Resultado desde a compra em R$ (ativo em dólar: ganho em dólar x dólar de hoje)
       // Ativo em dólar: se você informou quanto pagou em R$ (com IOF e taxas), o resultado em R$ usa isso e bate com o do banco;
@@ -811,7 +876,7 @@
       const resRS = (valor != null && custoRS) ? valor - custoRS : null;
       const resNat = (valorNat != null && p.pm) ? valorNat - p.pm * qtd : null;
       const resPctRS = resRS != null ? resRS / custoRS * 100 : null;
-      return { p, t, qtd, classe, moeda, resRS, resNat, resPctRS, custoRS, a: S.analises[t] || null, preco, vd, vdBRL, vdHoje, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
+      return { p, t, qtd, classe, moeda, doPregao, resRS, resNat, resPctRS, custoRS, a: S.analises[t] || null, preco, vd, vdBRL, vdHoje, valor, valorNat, res, nome: q ? q.nome : "", setor: (q && q.setor) || "Outros", seg: q && q.seg };
     });
     rows.forEach((r) => { r.peso = (r.valor && patr) ? r.valor / patr : 0; });
     rows.sort((x, y) => (y.valor || 0) - (x.valor || 0));
@@ -906,6 +971,13 @@
     const out = blocos.map((b) => { let tot = 0; pos.forEach((x, i) => { while (idx[i] < x.h.length && Math.floor(x.h[idx[i]][0] / B) * B <= b) { ult[i] = x.h[idx[i]][1]; idx[i]++; } tot += ult[i] * x.mult; }); return [b, Math.round((tot + (rfFixo || 0)) * 100) / 100]; });
     return out.length > 1 ? out : null;
   }
+  // O que ainda não abriu hoje entre os mercados da carteira (para o rótulo do "Hoje")
+  function pendentesHoje(rows) {
+    const M = mercados(), out = [];
+    if (rows.some((r) => mercadoDe(r.classe) === "b3") && M.b3.antes) out.push("B3 abre " + hhmm(M.b3.abre));
+    if (rows.some((r) => mercadoDe(r.classe) === "eua") && M.eua.antes) out.push("EUA abre " + hhmm(M.eua.abre));
+    return out;
+  }
   function renderHero() {
     const RF = S.rf.length ? rfTotais() : null, rfV = RF ? RF.bruto : 0;
     if (!S.carteira.length && !rfV) {
@@ -922,8 +994,9 @@
     contar($("#t-dia"), T.temPreco || rfV ? dia : null, (v) => esc(sinal(v, brl)) + (patrTot ? ` <small>${esc(pct(v / (patrTot - v) * 100))}</small>` : ""));
     $("#t-dia").className = cls(dia);
     const semPregao = !rows.some((r) => r.classe !== "cripto" && r.valor && r.vdHoje !== 0 && r.vdHoje != null) && !ehUtil(hojeISO());
-    const lbDia = $("#t-dia").previousElementSibling; if (lbDia) lbDia.textContent = semPregao ? "Hoje · sem pregão" : "Hoje";
-    $("#t-dia").parentElement.title = (semPregao ? "Hoje não tem pregão na B3: ações, FIIs, ETFs e ativos dos EUA ficam parados. " : "") + (rows.some((r) => r.classe === "cripto") ? "Criptomoedas entram pela variação das últimas 24 horas. " : "") + (rfDia ? "Inclui o rendimento de um dia útil da renda fixa." : "");
+    const pend = pendentesHoje(rows);
+    const lbDia = $("#t-dia").previousElementSibling; if (lbDia) lbDia.textContent = semPregao ? "Hoje · sem pregão" : pend.length ? "Hoje · " + pend[0] : "Hoje";
+    $("#t-dia").parentElement.title = (semPregao ? "Hoje não tem pregão na B3: ações, FIIs, ETFs e ativos dos EUA ficam parados. " : "") + (pend.length ? "Abertura parcial: " + pend.join(" e ") + ". Até lá, esses ativos não entram no resultado de hoje. " : "") + (rows.some((r) => r.classe === "cripto") ? "Criptomoedas entram pela variação das últimas 24 horas. " : "") + (rfDia ? "Inclui o rendimento de um dia útil da renda fixa." : "");
     // Renda fixa no resultado pelo valor líquido (se resgatasse hoje, com IR e IOF), como no extrato do banco
     const custo = T.custo + (RF ? RF.apl : 0), base = T.base + (RF ? RF.liq : 0);
     $("#t-res").parentElement.title = RF ? "Ativos: valor de hoje menos o preço médio. Renda fixa: valor líquido (descontados IR e IOF de um resgate hoje) menos o aplicado." : "Valor de hoje menos o preço médio informado.";
@@ -943,14 +1016,14 @@
     const temUsd = rows.some((r) => r.moeda === "USD");
     $("#hero-fx").textContent = temUsd && fx() ? "Dólar R$ " + num(fx(), 3) : "";
     const { serie, fora, rf: comRF } = serieCarteira();
-    const box = $("#hero-chart"); const rb = $("#hero-reset"); if (rb) rb.hidden = !serie;
+    const box = $("#hero-chart"); const rb = $("#hero-reset"); if (rb) rb.hidden = !serie || !(CH.hero && ehIntra(CH.hero.per));
     if (!serie) { box.innerHTML = `<p class="hint" style="color:rgba(255,255,255,.8);margin-top:14px">O gráfico aparece assim que o histórico dos seus ativos for carregado (alguns minutos depois de adicioná-los).</p>`; return; }
     pedirIntradia();
     vivoConferir();
     const intraH = comVivo(serieIntradia(RF ? RF.bruto : 0), VIVO.pts), baseH = T.temPreco || rfV ? patrTot - dia : null;
     if (box.querySelector('[data-cw="hero"]') && atualizarGrafico("hero", serie, { intra: intraH, base: baseH })) return;
     box.innerHTML = chartBox("hero", serie, { fmt: brl, cor: "#fff", intra: intraH, base: baseH, vivo: true }) + `<p class="hint g-nota" style="color:rgba(255,255,255,.75);margin:6px 0 0">Com as quantidades de hoje${temUsd ? " · dólar ao câmbio atual" : ""}${comRF ? " · renda fixa incluída" : ""}${fora ? ` · ${fora} ${fora === 1 ? "ativo sem histórico ficou" : "ativos sem histórico ficaram"} de fora` : ""}.</p>`;
-    ligarGrafico("hero");
+    ligarGrafico("hero"); if (rb) rb.hidden = !(CH.hero && ehIntra(CH.hero.per));
   }
 
   /* ---------- Escritório animado ---------- */
@@ -1052,8 +1125,9 @@
     const pDia = total ? dia / (total - dia) * 100 : 0;
     // Contexto do mercado
     const ctx = [];
-    const idx = (n, o) => { if (o && o.varDia != null) ctx.push(`${n} <b class="${cls(o.varDia)}">${esc(pct(o.varDia))}</b>`); };
-    idx("Ibovespa", m.ibov); idx("IFIX", m.ifix); idx("S&amp;P 500", m.sp500);
+    const MK = mercados();
+    const idx = (n, o, mk) => { if (o && o.varDia != null) ctx.push(`${n} <b class="${cls(o.varDia)}">${esc(pct(o.varDia))}</b>${mk.abriu ? "" : ` <small class="hint" title="Ainda não abriu hoje: variação do último pregão">últ. pregão</small>`}`); };
+    idx("Ibovespa", m.ibov, MK.b3); idx("IFIX", m.ifix, MK.b3); idx("S&amp;P 500", m.sp500, MK.eua);
     if (m.dolar) ctx.push(`Dólar <b class="${cls(-m.dolar.varDia)}">${esc(pct(m.dolar.varDia))}</b>`);
     const btc = S.cotMap["BTC-BRL"]; if (btc) ctx.push(`Bitcoin <b class="${cls(btc.var_dia)}">${esc(pct(btc.var_dia))}</b>`);
     const comp = [];
@@ -1075,7 +1149,7 @@
       const sn = r.a && r.a.sinal;
       if (sn === "reduzir") at.push({ k: "neg", t: r.t, txt: "Sinal: considerar reduzir. " + frase(r.a.motivo) + "." });
       else if (sn === "atencao") at.push({ k: "warn", t: r.t, txt: (frase(r.a.motivo) || "Pede atenção") + "." });
-      if (r.vdBRL != null && r.vdBRL <= -4) at.push({ k: "neg", t: r.t, txt: `Cai ${num(-r.vdBRL, 1)}% hoje.` });
+      if (r.doPregao && r.vdBRL != null && r.vdBRL <= -4) at.push({ k: "neg", t: r.t, txt: `Cai ${num(-r.vdBRL, 1)}% hoje.` });
       if (r.res != null && r.res <= -20) at.push({ k: "neg", t: r.t, txt: `Está ${num(-r.res, 0)}% abaixo do seu preço médio.` });
       const g = ((r.a && r.a.noticias) || []).find((n) => n.grave && n.data && Date.now() - Date.parse(n.data) < 3 * 864e5);
       if (g) at.push({ k: "neg", t: r.t, txt: "Notícia sensível: " + g.titulo });
@@ -1120,8 +1194,8 @@
         <div class="dia-main">
           <span class="label">${util ? "Hoje" : "Último pregão"}</span>
           <div class="dia-tit">Seu patrimônio ${dia >= 0 ? "sobe" : "cai"} <b class="${cls(dia)}">${esc(pct(pDia))}</b> <span class="${cls(dia)}">(${esc(sinal(dia, brl))})</span></div>
-          <p class="hint" style="margin:4px 0 0">${comp.join(" · ")}${total ? ` · patrimônio de ${esc(brl(total))}` : ""}</p>
-          <div class="dia-pg"><span class="pg ${dia >= 0 ? "up" : "down"}"><small>${dia >= 0 ? "Lucro do dia" : "Perda do dia"}</small><b>${esc(sinal(dia, brl))} <i>${esc(pct(pDia))}</i></b><em>${util ? "hoje, ativos" + (rfDia > 0 ? " e renda fixa" : "") : rows.some((r) => r.classe === "cripto") ? "sem pregão hoje: só cripto (24 h)" : "sem pregão hoje"}</em></span>${resCusto ? `<span class="pg ${resTot >= 0 ? "up" : "down"}"><small>${resTot >= 0 ? "Lucro total" : "Prejuízo total"}</small><b>${esc(sinal(resTot, brl))} <i>${esc(pct((resBase / resCusto - 1) * 100))}</i></b><em>desde a compra${RF ? " · renda fixa líquida de IR" : ""}${usdNota ? ` · ${esc(usdNota)}` : ""}${semPm ? ` · ${semPm} sem preço médio fora` : ""}</em></span>` : ""}</div>
+          <p class="hint" style="margin:4px 0 0">${comp.join(" · ")}${total ? ` · patrimônio de ${esc(brl(total))}` : ""}</p>${util && pendentesHoje(rows).length ? `<p class="dia-parcial">${IC("clock")} ${mercados().b3.antes ? "Antes da abertura" : "Abertura parcial"}: ${esc(pendentesHoje(rows).join(" e "))}. Até lá, esses ativos não entram na conta de hoje.</p>` : !util && rows.some((r) => r.classe === "cripto") ? `<p class="dia-parcial">Sem pregão hoje: só as criptomoedas (24 h) e a renda fixa se mexem.</p>` : ""}
+          <div class="dia-pg">${resCusto ? `<span class="pg ${resTot >= 0 ? "up" : "down"}"><small>${resTot >= 0 ? "Lucro total" : "Prejuízo total"}</small><b>${esc(sinal(resTot, brl))} <i>${esc(pct((resBase / resCusto - 1) * 100))}</i></b><em>desde a compra${RF ? " · renda fixa líquida de IR" : ""}${usdNota ? ` · ${esc(usdNota)}` : ""}${semPm ? ` · ${semPm} sem preço médio fora` : ""}</em></span>` : ""}</div>
         </div>
         <div class="dia-ctx">${ctx.map((c) => `<span>${c}</span>`).join("")}</div>
       </div>
@@ -1237,7 +1311,7 @@
       const s = r.a && r.a.sinal, frase = (txt) => (txt || "").replace(/^(Os sinais estão favoráveis|Sem motivo forte para mexer|Alguns sinais pedem atenção|Vários sinais negativos ao mesmo tempo)\.\s*/, "").replace(/^Hoje [^.]*\.\s*/, "").split(". ")[0].replace(/\.$/, "").trim();
       if (s === "reduzir") al.push({ t: r.t, k: "neg", txt: "Sinal: considerar reduzir" + (frase(r.a.motivo) ? ". " + frase(r.a.motivo) : "") + "." });
       else if (s === "atencao") al.push({ t: r.t, k: "", txt: (frase(r.a.motivo) || "Pede atenção") + "." });
-      if (r.vd != null && Math.abs(r.vd) >= 3) al.push({ t: r.t, k: r.vd < 0 ? "neg" : "pos", txt: (r.vd < 0 ? "Cai " : "Sobe ") + pct(Math.abs(r.vd)).replace("+", "") + " hoje." });
+      if (r.doPregao && r.vd != null && Math.abs(r.vd) >= 3) al.push({ t: r.t, k: r.vd < 0 ? "neg" : "pos", txt: (r.vd < 0 ? "Cai " : "Sobe ") + pct(Math.abs(r.vd)).replace("+", "") + " hoje." });
       if (r.res != null && r.res <= -15) al.push({ t: r.t, k: "neg", txt: "Está " + num(-r.res, 1) + "% abaixo do seu preço médio." });
     });
     $("#alerts").hidden = !al.length;
@@ -1256,7 +1330,7 @@
       const detail = !open ? "" : `<div class="pos-detail two">
         <div class="pd-col">
           ${a ? `<p class="motivo">${esc(a.motivo || "")}</p>` : `<p class="neutro">A análise de ${esc(t)} está sendo preparada e aparece aqui em instantes.</p>`}
-          <div class="meta"><span>Quantidade<b>${fmtQtd(r.qtd)}</b></span><span>Preço médio<b>${p.pm ? money(p.pm, moeda) : "—"}</b></span><span>Hoje<b class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) : "—"}</b></span>${p.pm && valorNat != null ? (() => { const rs = r.resNat, f = (v) => moeda === "USD" ? "US$ " + num(v, 2) : brl(v); return `<span>Resultado<b class="${cls(rs)}">${esc(sinal(rs, f))} <small>${esc(pct((preco / p.pm - 1) * 100))}</small></b></span>${moeda === "USD" && r.resRS != null ? `<span>Resultado em R$<b class="${cls(r.resRS)}">${esc(sinal(r.resRS, brl))} <small>${esc(pct(r.resPctRS))}</small></b></span><span>Custo em R$<b>${esc(brl(r.custoRS))}</b><small class="mut">${p.custo_brl ? "valor que você informou" : "dólar de hoje; edite e informe o que pagou"}</small></span>` : ""}`; })() : ""}<span>Peso<b>${num(r.peso * 100, 1)}%</b></span><span>${classe === "fii" ? "Segmento" : "Setor"}<b style="font-family:var(--body);font-size:12.5px">${esc(classe === "fii" ? r.seg || "—" : classe === "etf" || classe === "etf_ext" ? "ETF" : r.setor)}</b></span></div>
+          <div class="meta"><span>Quantidade<b>${fmtQtd(r.qtd)}</b></span><span>Preço médio<b>${p.pm ? money(p.pm, moeda) : "—"}</b></span><span>${r.doPregao ? "Hoje" : "Último pregão"}<b class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) : "—"}</b></span>${p.pm && valorNat != null ? (() => { const rs = r.resNat, f = (v) => moeda === "USD" ? "US$ " + num(v, 2) : brl(v); return `<span>Resultado<b class="${cls(rs)}">${esc(sinal(rs, f))} <small>${esc(pct((preco / p.pm - 1) * 100))}</small></b></span>${moeda === "USD" && r.resRS != null ? `<span>Resultado em R$<b class="${cls(r.resRS)}">${esc(sinal(r.resRS, brl))} <small>${esc(pct(r.resPctRS))}</small></b></span><span>Custo em R$<b>${esc(brl(r.custoRS))}</b><small class="mut">${p.custo_brl ? "valor que você informou" : "dólar de hoje; edite e informe o que pagou"}</small></span>` : ""}`; })() : ""}<span>Peso<b>${num(r.peso * 100, 1)}%</b></span><span>${classe === "fii" ? "Segmento" : "Setor"}<b style="font-family:var(--body);font-size:12.5px">${esc(classe === "fii" ? r.seg || "—" : classe === "etf" || classe === "etf_ext" ? "ETF" : r.setor)}</b></span></div>
           <div class="acts"><button type="button" class="btn sm primary" data-emp="${esc(t)}">Ver ${classe === "fii" || classe === "etf" || classe === "etf_ext" ? "fundo" : classe === "cripto" ? "cripto" : "empresa"}</button>${nNews ? `<button type="button" class="btn sm" data-news="${esc(t)}">Ver ${nNews} ${nNews === 1 ? "notícia" : "notícias"}</button>` : ""}<button type="button" class="btn sm" data-edit="${esc(t)}">Editar</button>
           ${S.confirmDel === t ? `<button type="button" class="btn sm danger" data-del-ok="${esc(t)}">Confirmar remoção</button><button type="button" class="btn ghost sm" data-del-no="1">Cancelar</button>` : `<button type="button" class="btn ghost sm" data-del="${esc(t)}">Remover</button>`}</div>
           ${a && a.atualizado_em ? `<span class="hint">Sinal recalculado ${esc(ago(a.atualizado_em))}${ind && ind.indice && ind.indice !== "Ibovespa" ? " · comparado com o " + esc(ind.indice) : ""}</span>` : ""}
@@ -1275,7 +1349,7 @@
       const sub = eUSD ? "≈ " + brl(valor) : `${fmtQtd(r.qtd)} ${un}`;
       return `<div class="pos${open ? " open" : ""}" data-cl="${classe}"><button type="button" class="pos-row" data-open="${esc(t)}" aria-expanded="${open}">
         <span class="pos-id">${logoHtml(t)}<span class="tkw"><span class="tk">${esc(t)}</span><span class="chev" aria-hidden="true"></span></span><span class="nm">${esc(nome)}</span></span>
-        <span class="cell c-preco"><b class="${tick}">${money(preco, moeda)}</b><small class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) + " hoje" : ""}</small></span>
+        <span class="cell c-preco"><b class="${tick}">${money(preco, moeda)}</b><small class="${vd != null ? cls(vd) : ""}">${vd != null ? pct(vd) + (r.doPregao ? " hoje" : " últ. pregão") : ""}</small></span>
         <span class="cell"><b>${esc(mainV)}</b><small class="${eUSD ? "eq" : "mut"}">${esc(sub)}</small>${resTxt ? `<small class="m-res ${cls(eUSD ? r.resNat : r.resRS)}">${esc(resTxt)} · ${esc(resPct)}</small>` : ""}</span>
         <span class="cell c-res">${resTxt ? `<b class="${cls(eUSD ? r.resNat : r.resRS)}">${esc(resTxt)}</b><small class="${cls(eUSD ? r.resRS : res)}">${esc(resPct)}</small>` : `<b class="mut">—</b><small class="mut">sem preço médio</small>`}</span>
         <span class="c-sig">${sn === "pendente" ? "" : `<span class="pill s-${sn}">${SINAL[sn]}</span>`}</span></button>${detail}</div>`;
@@ -1839,16 +1913,17 @@
     const so = { volume: (a, b) => b.volume - a.volume, alta: (a, b) => b.var_dia - a.var_dia, baixa: (a, b) => a.var_dia - b.var_dia, mc: (a, b) => (b.valor_mercado_mi || 0) - (a.valor_mercado_mi || 0), az: (a, b) => a.ticker.localeCompare(b.ticker) };
     rows = rows.slice().sort(so[ordem] || so.volume); if (ordem === "alta" || ordem === "baixa") rows = rows.filter((r) => r.volume > 0);
     if (q) rows.sort((a, b) => (b.ticker.toLowerCase() === q) - (a.ticker.toLowerCase() === q) || (b.ticker.toLowerCase().startsWith(q)) - (a.ticker.toLowerCase().startsWith(q)));
+    { const th = $("#th-dia"); if (th) { const ab = c === "cripto" ? true : abriuHoje(c); th.textContent = ab ? "Dia" : "Últ. pregão"; th.title = ab ? "" : "O mercado ainda não abriu hoje: variação do último pregão"; } }
     const mine = new Set(S.carteira.map((p) => p.ticker)); const shown = rows.slice(0, S.lim);
     $("#all-body").innerHTML = shown.length ? shown.map((r) => `<tr><td><button type="button" class="tk-btn idc" data-emp="${esc(r.ticker)}">${logoHtml(r.ticker)}<span class="tk">${esc(r.ticker)}${todasCls ? " " + clsChip(r.classe) : ""}</span><span class="nm">${esc(nomeBom(r.nome))}</span></button></td><td class="r">${money(r.preco, r.moeda)}</td><td class="r ${cls(r.var_dia)}">${pct(r.var_dia)}</td><td class="r hide-sm">${compacto(r.volume)}</td><td class="r hide-sm">${r.valor_mercado_mi ? (r.moeda === "USD" ? "US$ " : "R$ ") + compacto(r.valor_mercado_mi * 1e6) : "—"}</td><td class="r">${mine.has(r.ticker) ? '<span class="have">Na carteira</span>' : `<button type="button" class="add-btn" data-pick="${esc(r.ticker)}">+ Adicionar</button>`}</td></tr>`).join("")
       : `<tr><td colspan="6" class="skel">Nenhum ativo encontrado${q ? " para “" + esc(q) + "”" : ""}.${q && /^[a-z.\-]{1,6}$/.test(q) ? ` Se for uma ação ou ETF dos EUA, adicione pelo código na carteira que buscamos para você.` : ""}</td></tr>`;
     $("#all-count").textContent = rows.length ? `Mostrando ${shown.length} de ${rows.length} ${todasCls ? "ativos" : "· " + CLS[c].longo} · toque no código para ver o perfil${c === "acao_ext" && !todasCls ? " · as 150 maiores dos EUA" : c === "cripto" && !todasCls ? " · as 100 maiores do mundo, variação em 24 h" : c === "etf_ext" && !todasCls ? " · os maiores ETFs dos EUA" : ""}` : ""; $("#all-more").hidden = shown.length >= rows.length;
   }
-  $("#ex-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-excls]"); if (!b) return; S.exCls = b.dataset.excls; S.lim = 50; $("#q-busca").value = ""; renderTodas(); });
-  let tB; $("#q-busca").addEventListener("input", () => { clearTimeout(tB); tB = setTimeout(() => { S.lim = 50; renderTodas(); }, 150); });
-  $("#q-ordem").addEventListener("change", () => { S.lim = 50; renderTodas(); });
-  $("#q-setor").addEventListener("change", () => { S.lim = 50; renderTodas(); });
-  $("#all-more").addEventListener("click", () => { S.lim += 50; renderTodas(); });
+  $("#ex-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-excls]"); if (!b) return; S.exCls = b.dataset.excls; S.lim = 20; $("#q-busca").value = ""; renderTodas(); });
+  let tB; $("#q-busca").addEventListener("input", () => { clearTimeout(tB); tB = setTimeout(() => { S.lim = 20; renderTodas(); }, 150); });
+  $("#q-ordem").addEventListener("change", () => { S.lim = 20; renderTodas(); });
+  $("#q-setor").addEventListener("change", () => { S.lim = 20; renderTodas(); });
+  $("#all-more").addEventListener("click", () => { S.lim += 30; renderTodas(); });
 
   /* ---------- Renda fixa ---------- */
   // Taxas e regras pesquisadas em out/2026 (sites e comunicados dos bancos, portais de finanças).
