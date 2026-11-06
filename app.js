@@ -1312,7 +1312,9 @@
       if (s === "reduzir") al.push({ t: r.t, k: "neg", txt: "Sinal: considerar reduzir" + (frase(r.a.motivo) ? ". " + frase(r.a.motivo) : "") + "." });
       else if (s === "atencao") al.push({ t: r.t, k: "", txt: (frase(r.a.motivo) || "Pede atenção") + "." });
       if (r.doPregao && r.vd != null && Math.abs(r.vd) >= 3) al.push({ t: r.t, k: r.vd < 0 ? "neg" : "pos", txt: (r.vd < 0 ? "Cai " : "Sobe ") + pct(Math.abs(r.vd)).replace("+", "") + " hoje." });
-      if (r.res != null && r.res <= -15) al.push({ t: r.t, k: "neg", txt: "Está " + num(-r.res, 1) + "% abaixo do seu preço médio." });
+      const pmT = r.p.pm && r.preco && r.qtd ? Number(r.p.pm) / (r.qtd * r.preco) : null;
+      if (pmT && (r.p.pm < r.preco / 3 || r.p.pm > r.preco * 3) && pmT > 0.5 && pmT < 2) al.push({ t: r.t, k: "neg", txt: "O preço médio parece ser o total investido, não o preço por " + (r.classe === "acao" || r.classe === "acao_ext" ? "ação" : "cota") + ". Edite em Adicionar ou editar ativo." });
+      else if (r.res != null && r.res <= -15) al.push({ t: r.t, k: "neg", txt: "Está " + num(-r.res, 1) + "% abaixo do seu preço médio." });
     });
     $("#alerts").hidden = !al.length;
     $("#alerts").innerHTML = al.slice(0, 6).map((a) => `<button type="button" class="alert ${a.k}" data-open="${esc(a.t)}"><span class="tk" style="font-size:15px">${esc(a.t)}</span><span>${esc(a.txt)}</span></button>`).join("");
@@ -1476,7 +1478,7 @@
     const t = normTicker($("#f-ticker").value);
     $("#f-submit").textContent = S.carteira.some((x) => x.ticker === t) ? "Salvar" : "Adicionar";
     const usdT = t && (S.cotMap[t] ? S.cotMap[t].moeda === "USD" : (ATIVO_RE.test(t) && !TICKER_RE.test(t) && t.length >= 1 && /^[A-Z.]+$/.test(t)));
-    $("#f-pm-lbl").textContent = usdT ? "Preço médio (US$)" : "Preço médio (R$)";
+    $("#f-pm-lbl").textContent = usdT ? "Preço médio por cota (US$)" : "Preço médio (R$)";
     $("#f-custo-w").hidden = !usdT;
     const c = S.cotMap[t];
     $("#f-qtd").placeholder = c && c.classe === "cripto" ? "0,0025" : c && ext(c.classe) ? "0,35" : "100";
@@ -1485,7 +1487,7 @@
   $("#form-add").addEventListener("submit", async (e) => {
     e.preventDefault();
     let t = normTicker($("#f-ticker").value); const qRaw = String($("#f-qtd").value).replace(",", "."), pmRaw = String($("#f-pm").value).trim().replace(",", ".");
-    const q = Number(qRaw), pm = pmRaw ? Number(pmRaw) : null;
+    const q = Number(qRaw); let pm = pmRaw ? Number(pmRaw) : null; let notaPm = "";
     const cuRaw = String($("#f-custo").value).trim().replace(",", "."), custo = cuRaw ? Number(cuRaw) : null;
     if (!ATIVO_RE.test(t)) return msg("Use o código do ativo, como PETR4, HGLG11, BOVA11, VOO ou BTC.", false);
     if (!S.cotMap[t]) {
@@ -1504,13 +1506,21 @@
     if (frac && Math.round(q * 1e8) / 1e8 !== q) return msg("Use no máximo 8 casas decimais na quantidade.", false);
     if (pm != null && !(pm > 0 && pm <= 1e7)) return msg("O preço médio precisa ser um valor " + (fora ? "em dólares, como 512,30." : "em reais, como 38,50."), false);
     if (fora && custo != null && !(custo > 0 && custo < 1e9)) return msg("O total pago em reais precisa ser maior que zero, como 98,40.", false);
+    // Erro comum com frações (corretoras que mostram "valor investido"): digitar o total pago no lugar do preço médio.
+    // Se o "preço médio" está muito longe da cotação mas bate com quantidade × cotação, é o total: convertemos.
+    const px = Number(c.preco), un = (v) => fora ? "US$ " + num(v, 2) : brl(v), um = ({ "ações": "ação", "cotas": "cota", "unidades": "unidade" })[CLS[c.classe].un] || "unidade";
+    if (pm != null && px > 0 && q > 0) {
+      const longe = pm < px / 3 || pm > px * 3, total = q * px;
+      if (longe && pm / total > 0.5 && pm / total < 2) { pm = Math.round(pm / q * 100) / 100; notaPm = ` Entendi o valor digitado como total investido: preço médio de ${un(pm)} por ${um}.`; }
+      else if (longe) notaPm = ` Atenção: o preço médio (${un(pm)}) está muito longe da cotação de hoje (${un(px)}). Confira se digitou o preço por ${um} e não o total.`;
+    }
     const existe = S.carteira.some((x) => x.ticker === t);
     $("#f-submit").disabled = true;
     const { error } = await sb.from("carteira").upsert({ ticker: t, qtd: q, pm: pm, custo_brl: fora && pm != null ? custo : null, user_id: S.user.id }, { onConflict: "user_id,ticker" });
     $("#f-submit").disabled = false;
     if (error) return msg(/Limite de 200/.test(error.message || "") ? "Sua carteira chegou ao limite de 200 ativos." : /check/i.test(error.message || "") ? "O banco ainda não aceita esse tipo de ativo. Tente de novo em alguns minutos." : "Não foi possível salvar agora. Tente de novo em instantes.", false);
     $("#form-add").reset(); ajustarForm();
-    msg(existe ? t + " atualizado." : t + " adicionado. Calculando o sinal e buscando as notícias…", true);
+    msg((existe ? t + " atualizado." : t + " adicionado. Calculando o sinal e buscando as notícias…") + notaPm, !/Atenção/.test(notaPm));
     await carregarCarteira(); renderAll();
     if (!existe) {
       try { await radar({ acao: "analisar", ticker: t }); await Promise.all([carregarAnalises(), carregarEmpresas()]); renderAll(); msg(t + " adicionado, com sinal e notícias.", true); }
